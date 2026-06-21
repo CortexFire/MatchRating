@@ -3,14 +3,25 @@ import { expect, test } from "@playwright/test";
 test("core mobile screens render and match entry validates locally", async ({ page }) => {
   await page.goto("/groups/demo");
   await expect(page.getByRole("heading", { name: "Alice Tan" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Current Games" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Active Match" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pending Review" })).toBeVisible();
+  await expect(page.getByText("Alice Tan & Cory Shah")).toBeVisible();
+  await expect(page.getByText("Alice/Cory def. Bea/Dev")).toBeVisible();
+
   const bottomNav = page.getByRole("navigation");
   await expect(bottomNav.getByRole("link", { name: /home/i })).toBeVisible();
   await expect(bottomNav.getByRole("link", { name: /record/i })).toBeVisible();
-  await expect(bottomNav.getByRole("link", { name: /profile/i })).toBeVisible();
+  await expect(bottomNav.getByRole("link", { name: /members/i })).toBeVisible();
+  await expect(bottomNav.getByRole("link", { name: /profile/i })).toHaveCount(0);
   await expect(bottomNav.getByRole("link", { name: /rank/i })).toHaveCount(0);
   await expect(bottomNav.getByRole("link", { name: /history/i })).toHaveCount(0);
 
+  await page.getByLabel("Open profile").click();
+  await expect(page).toHaveURL(/\/profile$/);
+  await expect(page.getByRole("heading", { name: "Alice Tan" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
+
+  await page.goto("/groups/demo");
   await page.getByRole("link", { name: /record/i }).click();
   await expect(page.getByRole("heading", { name: "Match Recording" })).toBeVisible();
   await page.getByRole("button", { name: /Set 1 Team B 18 Loss/i }).click();

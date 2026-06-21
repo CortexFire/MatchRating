@@ -1,15 +1,12 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { MobileShell } from "@/components/app/mobile-shell";
-import {
-  PendingReviewList,
-  type PendingReviewMatch,
-} from "@/components/match/pending-review-list";
-import { demoMatches, type DemoMatch } from "@/lib/demo-data";
-import { getPendingReviewMatches } from "@/lib/home";
+import { PendingReviewList } from "@/components/match/pending-review-list";
+import { demoMatches } from "@/lib/demo-data";
+import { getPendingReviewMatches, toPendingReviewSummary } from "@/lib/home";
 
 export default function ReviewMatchesPage() {
-  const pendingMatches = getPendingReviewMatches(demoMatches).map(toPendingReviewMatch);
+  const pendingMatches = getPendingReviewMatches(demoMatches).map(toPendingReviewSummary);
 
   return (
     <MobileShell surfaceClassName="max-w-[488px]">
@@ -28,21 +25,4 @@ export default function ReviewMatchesPage() {
       <PendingReviewList matches={pendingMatches} />
     </MobileShell>
   );
-}
-
-function toPendingReviewMatch(match: DemoMatch): PendingReviewMatch {
-  const winningTeam = match.winnerTeam === "A" ? match.teamA : match.teamB;
-  const losingTeam = match.winnerTeam === "A" ? match.teamB : match.teamA;
-
-  return {
-    id: match.id,
-    summary: `${shortTeamName(winningTeam)} def. ${shortTeamName(losingTeam)}`,
-    details: `${match.submittedAt} @ Downtown Rec`,
-    score: match.scores[0].replace("-", " - "),
-    format: `Best of ${match.scores.length}`,
-  };
-}
-
-function shortTeamName(players: string[]) {
-  return players.map((player) => player.split(" ")[0]).join("/");
 }

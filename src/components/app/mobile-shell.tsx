@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { Home, Plus, UserRound } from "lucide-react";
+import { Home, Plus, UsersRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { label: "Home", href: "/groups/demo", icon: Home },
-  { label: "Record", href: "/groups/demo/matches/new", icon: Plus },
-  { label: "Profile", href: "/profile", icon: UserRound },
+  { label: "Record", href: "/groups/demo/matches/new", icon: Plus, primary: true },
+  { label: "Members", href: "/groups/demo/members", icon: UsersRound },
 ];
 
 export function MobileShell({
@@ -28,10 +28,10 @@ export function MobileShell({
         )}
       >
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="flex min-h-full flex-col gap-4 px-4 py-5">{children}</div>
+          <div className="flex min-h-full flex-col gap-5 px-4 py-8 pb-6">{children}</div>
         </div>
         {showNav ? (
-          <nav className="grid shrink-0 grid-cols-3 border-t border-stroke bg-surface/95 px-2 py-2 backdrop-blur">
+          <nav className="grid h-[78px] shrink-0 grid-cols-3 items-center border-t border-stroke bg-surface/95 px-4 backdrop-blur">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = active === item.label;
@@ -40,13 +40,19 @@ export function MobileShell({
                 <Link
                   key={item.label}
                   href={item.href}
+                  aria-label={item.label}
+                  aria-current={isActive ? "page" : undefined}
                   className={cn(
-                    "flex min-h-12 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-semibold text-muted transition",
-                    isActive && "bg-selection text-ink",
+                    "mx-auto inline-flex size-12 items-center justify-center rounded-lg text-muted transition hover:text-action focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action",
+                    isActive && "text-action",
+                    item.primary &&
+                      "size-14 rounded-full border-4 border-muted bg-surface text-muted hover:border-action hover:text-action",
                   )}
                 >
-                  <Icon aria-hidden="true" className="size-5" />
-                  {item.label}
+                  <Icon
+                    aria-hidden="true"
+                    className={cn("size-9 stroke-[2.7]", item.primary && "size-8 stroke-[2.7]")}
+                  />
                 </Link>
               );
             })}

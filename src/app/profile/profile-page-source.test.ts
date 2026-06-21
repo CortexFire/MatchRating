@@ -14,6 +14,9 @@ describe("profile page content contract", () => {
     expect(source).toContain("Groups");
     expect(source).toContain("demoGroups");
     expect(source).toContain("`/groups/${group.id}/members`");
+    expect(source).toContain("signOut");
+    expect(source).toContain('variant="secondary"');
+    expect(source).toContain("Log out");
     expect(source).not.toContain("Pending review");
     expect(source).not.toContain("Rating");
     expect(source).not.toContain("Record");

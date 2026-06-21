@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createInviteToken, hashInviteToken } from "@/lib/invites/tokens";
 import {
@@ -90,6 +91,12 @@ async function getActiveMemberIds(groupId: string) {
   }
 
   return (data ?? []).map((row: { user_id: string }) => row.user_id);
+}
+
+export async function signOut(): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  await supabase.auth.signOut().catch(() => undefined);
+  redirect("/login");
 }
 
 export async function signInWithOtp(email: string): Promise<ActionResult<{ email: string }>> {

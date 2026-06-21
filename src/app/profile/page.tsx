@@ -3,6 +3,8 @@ import { ChevronRight, UsersRound } from "lucide-react";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { ScreenHeader } from "@/components/app/screen-header";
 import { AvatarInitials } from "@/components/ui/avatar";
+import { signOut } from "@/app/actions";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { demoGroups, demoUser } from "@/lib/demo-data";
 
@@ -43,6 +45,12 @@ export default function ProfilePage() {
           </Card>
         ))}
       </section>
+
+      <form action={signOut} className="mt-auto pt-4">
+        <Button type="submit" variant="secondary" className="w-full">
+          Log out
+        </Button>
+      </form>
     </MobileShell>
   );
 }
