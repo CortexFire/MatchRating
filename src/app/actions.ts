@@ -3,6 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import {
+  ensureDemoFixtures,
+  getDemoPlayerByEmail,
+  getDemoPostLoginPath,
+  isDemoLoginEnabled,
+} from "@/lib/demo-auth";
 import { createInviteToken, hashInviteToken } from "@/lib/invites/tokens";
 import {
   type HistoricalMatch,
@@ -35,6 +41,16 @@ const disputeSchema = z.object({
   note: z.string().trim().min(2).max(600),
 });
 
+const emailOtpSchema = z.object({
+  email: z.string().email(),
+  token: z
+    .string()
+    .transform((value) => value.replace(/\D/g, ""))
+    .refine((value) => /^\d{6}$/.test(value), {
+      message: "Enter the 6-digit code from your email.",
+    }),
+});
+
 const reviseSchema = z
   .object({
     matchId: z.string().uuid(),
@@ -54,6 +70,24 @@ const reviseSchema = z
       ),
     }),
   );
+
+const DEFAULT_AUTH_REDIRECT_PATH = "/groups/new";
+
+function getSiteOrigin() {
+  return (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/+$/, "");
+}
+
+function getAuthCallbackUrl(nextPath = DEFAULT_AUTH_REDIRECT_PATH) {
+  return `${getSiteOrigin()}/auth/confirm?next=${nextPath}`;
+}
+
+function getActionErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof z.ZodError) {
+    return error.issues[0]?.message ?? fallback;
+  }
+
+  return error instanceof Error ? error.message : fallback;
+}
 
 async function ensureActiveMember(groupId: string, userId: string) {
   const service = createSupabaseServiceClient();
@@ -99,14 +133,34 @@ export async function signOut(): Promise<void> {
   redirect("/login");
 }
 
-export async function signInWithOtp(email: string): Promise<ActionResult<{ email: string }>> {
+export async function signInWithOtp(email: string): Promise<ActionResult<{ email: string; redirectTo?: string }>> {
   try {
     const parsedEmail = z.string().email().parse(email);
+    const demoPlayer = getDemoPlayerByEmail(parsedEmail);
     const supabase = await createSupabaseServerClient();
+
+    if (isDemoLoginEnabled() && demoPlayer) {
+      const demoLogin = await ensureDemoFixtures(parsedEmail, getAuthCallbackUrl(getDemoPostLoginPath()));
+      const { error } = await supabase.auth.verifyOtp({
+        token_hash: demoLogin.tokenHash,
+        type: "magiclink",
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      return {
+        ok: true,
+        data: { email: demoLogin.email, redirectTo: demoLogin.redirectTo },
+        message: `Signed in as ${demoLogin.player.name}.`,
+      };
+    }
+
     const { error } = await supabase.auth.signInWithOtp({
       email: parsedEmail,
       options: {
-        emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/groups/new`,
+        emailRedirectTo: getAuthCallbackUrl(),
       },
     });
 
@@ -116,7 +170,7 @@ export async function signInWithOtp(email: string): Promise<ActionResult<{ email
 
     return { ok: true, data: { email: parsedEmail }, message: "Check your email for the sign-in code." };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Could not send sign-in code." };
+    return { ok: false, message: getActionErrorMessage(error, "Could not send sign-in code.") };
   }
 }
 
@@ -126,7 +180,7 @@ export async function signInWithGoogle(): Promise<ActionResult<{ url: string }>>
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/groups/new`,
+        redirectTo: getAuthCallbackUrl(),
       },
     });
 
@@ -134,9 +188,36 @@ export async function signInWithGoogle(): Promise<ActionResult<{ url: string }>>
       throw error;
     }
 
+    if (!data.url) {
+      throw new Error("Could not start Google sign-in.");
+    }
+
     return { ok: true, data: { url: data.url } };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Could not start Google sign-in." };
+    return { ok: false, message: getActionErrorMessage(error, "Could not start Google sign-in.") };
+  }
+}
+
+export async function verifyEmailOtp(input: {
+  email: string;
+  token: string;
+}): Promise<ActionResult<{ email: string }>> {
+  try {
+    const parsed = emailOtpSchema.parse(input);
+    const supabase = await createSupabaseServerClient();
+    const { error } = await supabase.auth.verifyOtp({
+      email: parsed.email,
+      token: parsed.token,
+      type: "email",
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    return { ok: true, data: { email: parsed.email }, message: "Signed in." };
+  } catch (error) {
+    return { ok: false, message: getActionErrorMessage(error, "Could not verify sign-in code.") };
   }
 }
 

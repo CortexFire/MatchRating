@@ -30,6 +30,7 @@ export type DemoCurrentGame = {
   groupName: string;
   startedAt: string;
   players: string[];
+  scores?: string[];
 };
 
 export const demoUser = {
@@ -226,6 +227,7 @@ export const demoCurrentGames: DemoCurrentGame[] = [
     groupName: "Wednesday Club Ladder",
     startedAt: "Today, 8:53 PM",
     players: ["Alice Tan", "Cory Shah", "Bea Rivera", "Dev Okafor"],
+    scores: ["11-8"],
   },
   {
     id: "game-205",

@@ -1,28 +1,84 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Mail } from "lucide-react";
-import { signInWithOtp } from "@/app/actions";
+import { KeyRound, Mail, RefreshCw } from "lucide-react";
+import { signInWithGoogle, signInWithOtp, verifyEmailOtp } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-export function LoginForm() {
+const POST_LOGIN_PATH = "/groups/new";
+
+function redirectTo(url: string) {
+  window.location.assign(url);
+}
+
+export function LoginForm({ onRedirect = redirectTo }: { onRedirect?: (url: string) => void }) {
   const [email, setEmail] = useState("");
-  const [message, setMessage] = useState("Use email OTP or Google OAuth once Supabase is connected.");
+  const [token, setToken] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
+  const [message, setMessage] = useState("Use Google or request a one-time email code to sign in.");
   const [isPending, startTransition] = useTransition();
 
+  function sendEmailCode(nextEmail: string) {
+    startTransition(async () => {
+      const result = await signInWithOtp(nextEmail);
+      setMessage(result.message ?? (result.ok ? "Check your email for the sign-in code." : "Could not send code."));
+
+      if (result.ok && result.data.redirectTo) {
+        onRedirect(result.data.redirectTo);
+        return;
+      }
+
+      if (result.ok) {
+        setCodeSent(true);
+        setToken("");
+      }
+    });
+  }
+
+  function handleGoogleSignIn() {
+    startTransition(async () => {
+      const result = await signInWithGoogle();
+
+      if (result.ok) {
+        onRedirect(result.data.url);
+        return;
+      }
+
+      setMessage(result.message);
+    });
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextEmail = email.trim();
+
+    if (!codeSent) {
+      sendEmailCode(nextEmail);
+      return;
+    }
+
+    const nextToken = token.replace(/\D/g, "").slice(0, 6);
+    setToken(nextToken);
+
+    if (nextToken.length !== 6) {
+      setMessage("Enter the 6-digit code from your email.");
+      return;
+    }
+
+    startTransition(async () => {
+      const result = await verifyEmailOtp({ email: nextEmail, token: nextToken });
+      setMessage(result.message ?? (result.ok ? "Signed in." : "Could not verify code."));
+
+      if (result.ok) {
+        onRedirect(POST_LOGIN_PATH);
+      }
+    });
+  }
+
   return (
-    <form
-      className="flex flex-col gap-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        startTransition(async () => {
-          const result = await signInWithOtp(email);
-          setMessage(result.message ?? (result.ok ? "Check your email." : "Could not send code."));
-        });
-      }}
-    >
-      <Button type="button" variant="secondary">
+    <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+      <Button disabled={isPending} type="button" variant="secondary" onClick={handleGoogleSignIn}>
         Continue with Google
       </Button>
       <div className="flex items-center gap-3 text-xs font-semibold uppercase text-muted">
@@ -40,20 +96,31 @@ export function LoginForm() {
           required
         />
       </label>
-      <div className="grid grid-cols-6 gap-2">
-        {Array.from({ length: 6 }).map((_, index) => (
-          <div
-            key={index}
-            className="flex h-11 items-center justify-center rounded-lg border border-stroke bg-surface text-sm font-bold text-muted"
-          >
-            {index === 0 ? "•" : ""}
-          </div>
-        ))}
-      </div>
+      {codeSent ? (
+        <label className="flex flex-col gap-2 text-sm font-semibold text-ink">
+          One-time code
+          <Input
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            value={token}
+            onChange={(event) => setToken(event.target.value.replace(/\D/g, "").slice(0, 6))}
+            placeholder="123456"
+            required
+          />
+        </label>
+      ) : null}
       <Button disabled={isPending} type="submit">
-        <Mail className="size-4" />
-        {isPending ? "Sending" : "Send one-time code"}
+        {codeSent ? <KeyRound className="size-4" /> : <Mail className="size-4" />}
+        {isPending ? (codeSent ? "Verifying" : "Sending") : codeSent ? "Verify code" : "Send one-time code"}
       </Button>
+      {codeSent ? (
+        <Button disabled={isPending} type="button" variant="ghost" onClick={() => sendEmailCode(email.trim())}>
+          <RefreshCw className="size-4" />
+          Resend code
+        </Button>
+      ) : null}
       <p className="min-h-10 text-sm leading-5 text-muted">{message}</p>
     </form>
   );

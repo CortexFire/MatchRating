@@ -1,4 +1,4 @@
-import { type DemoCurrentGame, type DemoMatch } from "./demo-data";
+import { type DemoCurrentGame, type DemoMatch, type DemoPlayer } from "./demo-data";
 
 export type HomePendingReviewSummary = {
   id: string;
@@ -43,6 +43,28 @@ export function splitCurrentGameTeams(game: DemoCurrentGame) {
   };
 }
 
+export function buildActiveMatchRecordingHref(
+  groupId: string,
+  game: DemoCurrentGame,
+  players: DemoPlayer[],
+) {
+  const teams = splitCurrentGameTeams(game);
+  const playerIdsByName = new Map(players.map((player) => [player.name, player.id]));
+  const teamAUserIds = toPlayerIds(teams.teamA, playerIdsByName);
+  const teamBUserIds = toPlayerIds(teams.teamB, playerIdsByName);
+  const params = new URLSearchParams({
+    format: teams.teamA.length === 1 && teams.teamB.length === 1 ? "singles" : "doubles",
+    teamA: teamAUserIds.join(","),
+    teamB: teamBUserIds.join(","),
+  });
+
+  if (game.scores?.length) {
+    params.set("scores", game.scores.join(","));
+  }
+
+  return `/groups/${groupId}/matches/new?${params.toString()}`;
+}
+
 export function toPendingReviewSummary(match: DemoMatch): HomePendingReviewSummary {
   const winningTeam = match.winnerTeam === "A" ? match.teamA : match.teamB;
   const losingTeam = match.winnerTeam === "A" ? match.teamB : match.teamA;
@@ -54,6 +76,12 @@ export function toPendingReviewSummary(match: DemoMatch): HomePendingReviewSumma
     score: match.scores[0].replace(/\s*-\s*/, " - "),
     format: `Best of ${match.scores.length}`,
   };
+}
+
+function toPlayerIds(players: string[], playerIdsByName: Map<string, string>) {
+  return players
+    .map((player) => playerIdsByName.get(player))
+    .filter((id): id is string => Boolean(id));
 }
 
 function shortTeamName(players: string[]) {

@@ -1,14 +1,23 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ChevronDown, Medal, Plus } from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, Medal, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  PlayerSelectView,
+  type PlayerFilter,
+  type PlayerSelection,
+} from "@/components/match/player-select-view";
 import { validateMatchSubmission, type MatchFormat, type Team } from "@/lib/matches/validation";
 import { type DemoPlayer } from "@/lib/demo-data";
 import { cn } from "@/lib/utils";
 
 type Score = { teamAScore: number; teamBScore: number };
-type TeamSlot = { initials: string; name: string; empty?: false } | { empty: true };
+type RecordedGame = Score & { winnerTeam: Team };
+type TeamSelection = PlayerSelection;
+type TeamSlot =
+  | { id: string; initials: string; name: string; fullName: string; empty?: false }
+  | { empty: true };
 
 const WIN_SCORE = 21;
 const LOSS_SCORE = 18;
@@ -37,53 +46,133 @@ export function MatchRecorder({
   initialMatch?: InitialMatchRecording;
 }) {
   const [format, setFormat] = useState<MatchFormat>(initialMatch.format);
-  const [teamA, setTeamA] = useState<string[]>(initialMatch.teamAUserIds);
-  const [teamB, setTeamB] = useState<string[]>(initialMatch.teamBUserIds);
-  const [games, setGames] = useState<Score[]>(initialMatch.games);
+  const [teamA, setTeamA] = useState<TeamSelection>(() =>
+    normalizeTeamSlots(initialMatch.teamAUserIds, initialMatch.format),
+  );
+  const [teamB, setTeamB] = useState<TeamSelection>(() =>
+    normalizeTeamSlots(initialMatch.teamBUserIds, initialMatch.format),
+  );
+  const [games, setGames] = useState<RecordedGame[]>(() =>
+    initialMatch.games.map((game) => ({ ...game, winnerTeam: winnerFromScore(game) })),
+  );
+  const [playerSelectOpen, setPlayerSelectOpen] = useState(false);
+  const [activeSelectTeam, setActiveSelectTeam] = useState<Team>("A");
+  const [draftTeamA, setDraftTeamA] = useState<TeamSelection>(() =>
+    resizeTeamSlots(initialMatch.teamAUserIds, initialMatch.format),
+  );
+  const [draftTeamB, setDraftTeamB] = useState<TeamSelection>(() =>
+    resizeTeamSlots(initialMatch.teamBUserIds, initialMatch.format),
+  );
+  const [playerFilter, setPlayerFilter] = useState<PlayerFilter>("all");
+  const [playerSearch, setPlayerSearch] = useState("");
   const [message, setMessage] = useState("");
-  const activeMemberIds = useMemo(() => players.map((player) => player.id), [players]);
+  const activeMemberIds = players.map((player) => player.id);
 
   const teamASlots = buildTeamSlots(teamA, players, format);
   const teamBSlots = buildTeamSlots(teamB, players, format);
 
   function updateFormat(value: MatchFormat) {
     setFormat(value);
-    setTeamA((ids) => ids.slice(0, value === "singles" ? 1 : 2));
-    setTeamB((ids) => ids.slice(0, value === "singles" ? 1 : 2));
+    setTeamA((ids) => resizeTeamSlots(ids, value));
+    setTeamB((ids) => resizeTeamSlots(ids, value));
+    setDraftTeamA((ids) => resizeTeamSlots(ids, value));
+    setDraftTeamB((ids) => resizeTeamSlots(ids, value));
+    setPlayerSelectOpen(false);
+    setMessage("");
+  }
+
+  function removePlayer(team: Team, slotIndex: number) {
+    updateTeamSelection(team, (slots) => replaceSlot(slots, slotIndex, null));
+    setPlayerSelectOpen(false);
+    setMessage("");
+  }
+
+  function updateTeamSelection(team: Team, updater: (slots: TeamSelection) => TeamSelection) {
+    if (team === "A") {
+      setTeamA(updater);
+    } else {
+      setTeamB(updater);
+    }
+  }
+
+  function openPlayerSelect(team: Team) {
+    setDraftTeamA(resizeTeamSlots(teamA, format));
+    setDraftTeamB(resizeTeamSlots(teamB, format));
+    setActiveSelectTeam(team);
+    setPlayerFilter("all");
+    setPlayerSearch("");
+    setPlayerSelectOpen(true);
+    setMessage("");
+  }
+
+  function updateDraftTeam(team: Team, selection: TeamSelection) {
+    const resizedSelection = resizeTeamSlots(selection, format);
+
+    if (team === "A") {
+      setDraftTeamA(resizedSelection);
+    } else {
+      setDraftTeamB(resizedSelection);
+    }
+  }
+
+  function cancelPlayerSelect() {
+    setPlayerSelectOpen(false);
+    setMessage("");
+  }
+
+  function commitPlayerSelect() {
+    setTeamA(resizeTeamSlots(draftTeamA, format));
+    setTeamB(resizeTeamSlots(draftTeamB, format));
+    setPlayerSelectOpen(false);
     setMessage("");
   }
 
   function setWinner(gameIndex: number, winner: Team) {
+    setGames((current) =>
+      current.map((game, index) =>
+        index === gameIndex ? { ...game, winnerTeam: winner } : game,
+      ),
+    );
+    setMessage("");
+  }
+
+  function updateScore(gameIndex: number, team: Team, value: string) {
+    const score = normalizeScoreValue(value);
+
     setGames((current) =>
       current.map((game, index) => {
         if (index !== gameIndex) {
           return game;
         }
 
-        return winner === "A"
-          ? { teamAScore: WIN_SCORE, teamBScore: LOSS_SCORE }
-          : { teamAScore: LOSS_SCORE, teamBScore: WIN_SCORE };
+        const updated =
+          team === "A" ? { ...game, teamAScore: score } : { ...game, teamBScore: score };
+
+        return updated.teamAScore === updated.teamBScore
+          ? updated
+          : { ...updated, winnerTeam: winnerFromScore(updated) };
       }),
     );
     setMessage("");
   }
 
   function addSet() {
-    setGames((current) => [...current, { teamAScore: WIN_SCORE, teamBScore: LOSS_SCORE }]);
+    setGames((current) => [
+      ...current,
+      { teamAScore: WIN_SCORE, teamBScore: LOSS_SCORE, winnerTeam: "A" },
+    ]);
     setMessage("");
   }
 
   function submitMatch() {
     try {
-      const normalizedTeamA = completeTeam(teamA, teamB, activeMemberIds, format);
-      const normalizedTeamB = completeTeam(teamB, normalizedTeamA, activeMemberIds, format);
       const validated = validateMatchSubmission(
         {
           groupId: "demo",
           format,
-          teamAUserIds: normalizedTeamA,
-          teamBUserIds: normalizedTeamB,
-          games,
+          teamAUserIds: compactTeam(teamA),
+          teamBUserIds: compactTeam(teamB),
+          games: games.map(({ teamAScore, teamBScore }) => ({ teamAScore, teamBScore })),
         },
         { activeMemberIds },
       );
@@ -93,25 +182,54 @@ export function MatchRecorder({
     }
   }
 
+  if (playerSelectOpen) {
+    return (
+      <PlayerSelectView
+        players={players}
+        format={format}
+        draftTeamA={draftTeamA}
+        draftTeamB={draftTeamB}
+        activeTeam={activeSelectTeam}
+        filter={playerFilter}
+        search={playerSearch}
+        onDraftTeamChange={updateDraftTeam}
+        onActiveTeamChange={setActiveSelectTeam}
+        onFilterChange={setPlayerFilter}
+        onSearchChange={setPlayerSearch}
+        onCancel={cancelPlayerSelect}
+        onCommit={commitPlayerSelect}
+      />
+    );
+  }
+
   return (
     <section className="flex min-h-full flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-[22px] font-bold leading-7 text-ink">Match Recording</h1>
-        <button
-          type="button"
-          className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-stroke bg-surface px-3 text-xs font-bold text-ink"
+        <div
+          className="inline-flex min-h-11 items-center gap-2 rounded-full bg-victory px-4 text-sm font-bold text-ink"
           aria-label="Current group Downtown Rec"
         >
           Downtown Rec
-          <ChevronDown className="size-3.5" />
-        </button>
+          <ChevronDown className="size-4 stroke-[3]" />
+        </div>
       </div>
 
       <FormatToggle value={format} onChange={updateFormat} />
 
       <div className="grid grid-cols-2 gap-6 px-3">
-        <TeamSummaryCard label="Team A" slots={teamASlots} />
-        <TeamSummaryCard label="Team B" slots={teamBSlots} />
+        <TeamSummaryCard
+          label="Team A"
+          slots={teamASlots}
+          onOpenPicker={() => openPlayerSelect("A")}
+          onRemove={(slotIndex) => removePlayer("A", slotIndex)}
+        />
+        <TeamSummaryCard
+          label="Team B"
+          slots={teamBSlots}
+          onOpenPicker={() => openPlayerSelect("B")}
+          onRemove={(slotIndex) => removePlayer("B", slotIndex)}
+        />
       </div>
 
       <div className="flex flex-col gap-3">
@@ -121,6 +239,7 @@ export function MatchRecorder({
             game={game}
             index={index}
             onWinnerChange={(winner) => setWinner(index, winner)}
+            onScoreChange={(team, value) => updateScore(index, team, value)}
           />
         ))}
         <button
@@ -147,26 +266,41 @@ export function MatchRecorder({
   );
 }
 
-function completeTeam(
-  selectedIds: string[],
-  opposingIds: string[],
-  activeMemberIds: string[],
-  format: MatchFormat,
-) {
+function normalizeTeamSlots(userIds: string[], format: MatchFormat): TeamSelection {
+  return resizeTeamSlots(userIds, format);
+}
+
+function resizeTeamSlots(userIds: Array<string | null>, format: MatchFormat): TeamSelection {
   const size = format === "singles" ? 1 : 2;
-  const completed = selectedIds.slice(0, size);
+  const slots = userIds.slice(0, size);
 
-  for (const memberId of activeMemberIds) {
-    if (completed.length >= size) {
-      break;
-    }
-
-    if (!completed.includes(memberId) && !opposingIds.includes(memberId)) {
-      completed.push(memberId);
-    }
+  while (slots.length < size) {
+    slots.push(null);
   }
 
-  return completed;
+  return slots;
+}
+
+function replaceSlot(slots: TeamSelection, slotIndex: number, playerId: string | null) {
+  return slots.map((slot, index) => (index === slotIndex ? playerId : slot));
+}
+
+function compactTeam(team: Array<string | null>): string[] {
+  return team.filter((playerId): playerId is string => Boolean(playerId));
+}
+
+function winnerFromScore(game: Score): Team {
+  return game.teamAScore >= game.teamBScore ? "A" : "B";
+}
+
+function normalizeScoreValue(value: string) {
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(99, Math.trunc(parsed)));
 }
 
 function FormatToggle({
@@ -183,9 +317,10 @@ function FormatToggle({
           key={option}
           type="button"
           onClick={() => onChange(option)}
+          aria-pressed={value === option}
           className={cn(
             "rounded-md text-sm font-semibold capitalize text-muted transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action",
-            value === option && "border border-selection-stroke bg-selection text-ink",
+            value === option && "bg-selection text-ink",
           )}
         >
           {option}
@@ -198,32 +333,46 @@ function FormatToggle({
 function TeamSummaryCard({
   label,
   slots,
+  onOpenPicker,
+  onRemove,
 }: {
   label: string;
   slots: TeamSlot[];
+  onOpenPicker: (slotIndex: number) => void;
+  onRemove: (slotIndex: number) => void;
 }) {
   return (
     <div className="flex flex-col items-center gap-2">
       <h2 className="text-sm font-bold text-muted">{label}</h2>
-      <div className="flex min-h-[74px] min-w-[116px] items-start justify-center gap-2 rounded-lg border border-stroke bg-surface px-2 py-2">
+      <div className="relative flex min-h-[74px] min-w-[116px] items-start justify-center gap-2 rounded-lg border border-stroke bg-surface px-2 py-2">
         {slots.map((slot, index) =>
           slot.empty ? (
             <button
               key={`empty-${index}`}
               type="button"
-              className="flex min-w-11 flex-col items-center gap-1"
-              aria-label={`${label} empty player slot`}
+              onClick={() => onOpenPicker(index)}
+              className="flex min-w-11 flex-col items-center gap-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+              aria-label={`${label} empty player slot ${index + 1}`}
+              aria-haspopup="dialog"
             >
-              <span className="flex size-11 items-center justify-center rounded-full border border-stroke bg-app-bg text-ink">
+              <span className="flex size-11 items-center justify-center rounded-full border border-stroke bg-app-bg text-muted transition hover:text-ink">
                 <Plus className="size-5" />
               </span>
               <span className="text-[11px] text-transparent">Empty</span>
             </button>
           ) : (
-            <div key={`${slot.name}-${index}`} className="flex min-w-0 flex-col items-center gap-1">
+            <div key={`${slot.id}-${index}`} className="relative flex min-w-0 flex-col items-center gap-1">
               <span className="flex size-11 items-center justify-center rounded-full bg-victory text-sm font-bold text-ink">
                 {slot.initials}
               </span>
+              <button
+                type="button"
+                onClick={() => onRemove(index)}
+                aria-label={`Remove ${slot.name} from ${label}`}
+                className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full border border-stroke bg-surface text-muted shadow-sm transition hover:bg-app-bg hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+              >
+                <X className="size-3" />
+              </button>
               <span className="max-w-12 truncate text-[11px] text-muted">{slot.name}</span>
             </div>
           ),
@@ -237,12 +386,14 @@ function SetScoreRow({
   game,
   index,
   onWinnerChange,
+  onScoreChange,
 }: {
-  game: Score;
+  game: RecordedGame;
   index: number;
   onWinnerChange: (winner: Team) => void;
+  onScoreChange: (team: Team, value: string) => void;
 }) {
-  const winner = game.teamAScore > game.teamBScore ? "A" : "B";
+  const winner = game.winnerTeam;
 
   return (
     <div className="flex flex-col gap-1">
@@ -253,14 +404,16 @@ function SetScoreRow({
           team="A"
           score={game.teamAScore}
           selected={winner === "A"}
-          onClick={() => onWinnerChange("A")}
+          onWinnerClick={() => onWinnerChange("A")}
+          onScoreChange={(value) => onScoreChange("A", value)}
         />
         <ScoreTile
           setNumber={index + 1}
           team="B"
           score={game.teamBScore}
           selected={winner === "B"}
-          onClick={() => onWinnerChange("B")}
+          onWinnerClick={() => onWinnerChange("B")}
+          onScoreChange={(value) => onScoreChange("B", value)}
         />
       </div>
     </div>
@@ -272,49 +425,85 @@ function ScoreTile({
   team,
   score,
   selected,
-  onClick,
+  onWinnerClick,
+  onScoreChange,
 }: {
   setNumber: number;
   team: Team;
   score: number;
   selected: boolean;
-  onClick: () => void;
+  onWinnerClick: () => void;
+  onScoreChange: (value: string) => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={selected}
+    <div
       aria-label={`Set ${setNumber} Team ${team} ${score} ${selected ? "Win" : "Loss"}`}
       className={cn(
-        "relative flex h-[74px] items-center justify-center rounded-lg border transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action",
+        "relative flex h-[86px] items-center justify-center rounded-lg border transition focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-action",
         selected ? "border-victory-stroke bg-victory" : "border-stroke bg-surface",
       )}
     >
-      {selected ? (
-        <Medal className="absolute left-2 top-2 size-4 text-ink" aria-hidden="true" />
-      ) : null}
-      <span className="flex h-[58px] w-[92px] flex-col items-center justify-center rounded-md border border-stroke bg-surface">
-        <span className="text-[32px] font-bold leading-8 text-ink">{score}</span>
-        <span className="mt-1 text-xs text-muted">{selected ? "Win" : "Loss"}</span>
-      </span>
-    </button>
+      {selected ? <Medal className="absolute left-2 top-2 size-4 text-ink" aria-hidden="true" /> : null}
+      <div
+        className={cn(
+          "relative grid h-[70px] w-[92px] grid-rows-[1fr_auto] items-center rounded-md border bg-surface px-2 pb-2 pt-1",
+          selected ? "border-victory-stroke" : "border-stroke",
+        )}
+      >
+        <button
+          type="button"
+          onClick={onWinnerClick}
+          aria-pressed={selected}
+          aria-label={`Mark Set ${setNumber} Team ${team} as winner`}
+          className="absolute inset-0 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+        />
+        <input
+          aria-label={`Set ${setNumber} Team ${team} score`}
+          type="number"
+          min={0}
+          max={99}
+          inputMode="numeric"
+          value={score}
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => onScoreChange(event.target.value)}
+          className="relative z-10 h-11 w-full self-center rounded-md border border-transparent bg-transparent p-0 text-center text-[32pt] font-bold leading-none text-ink [appearance:textfield] focus:border-selection-stroke focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+        <span
+          aria-hidden="true"
+          className={cn(
+            "relative z-0 pointer-events-none text-center text-xs font-semibold leading-3 text-muted",
+            selected && "text-ink",
+          )}
+        >
+          {selected ? "Win" : "Loss"}
+        </span>
+      </div>
+    </div>
   );
 }
 
-function buildTeamSlots(userIds: string[], players: DemoPlayer[], format: MatchFormat): TeamSlot[] {
+function buildTeamSlots(
+  userIds: TeamSelection,
+  players: DemoPlayer[],
+  format: MatchFormat,
+): TeamSlot[] {
   const maxSlots = format === "singles" ? 1 : 2;
-  const slots: TeamSlot[] = userIds.slice(0, maxSlots).map((userId) => {
+  const slots = resizeTeamSlots(userIds, format).slice(0, maxSlots);
+
+  return slots.map((userId) => {
+    if (!userId) {
+      return { empty: true };
+    }
+
     const player = players.find((candidate) => candidate.id === userId);
+    const fullName = player?.name ?? "Unknown player";
+
     return {
-      initials: player?.initials ?? "MC",
-      name: player?.name.split(" ")[0] ?? "Maya",
+      id: userId,
+      initials: player?.initials ?? "?",
+      name: player ? fullName.split(" ")[0] : "Unknown",
+      fullName,
     };
   });
-
-  while (slots.length < maxSlots) {
-    slots.push({ empty: true });
-  }
-
-  return slots;
 }
+

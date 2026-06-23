@@ -4,10 +4,12 @@ import { AvatarInitials } from "@/components/ui/avatar";
 import {
   demoCurrentGames,
   demoMatches,
+  demoPlayers,
   demoUser,
   type DemoCurrentGame,
 } from "@/lib/demo-data";
 import {
+  buildActiveMatchRecordingHref,
   getPendingReviewMatches,
   getPrimaryCurrentGame,
   splitCurrentGameTeams,
@@ -20,7 +22,7 @@ export default async function GroupPage({
 }: {
   params: Promise<{ groupId: string }>;
 }) {
-  await params;
+  const { groupId } = await params;
 
   const activeMatch = getPrimaryCurrentGame(demoCurrentGames);
   const pendingReviews = getPendingReviewMatches(demoMatches).map(toPendingReviewSummary);
@@ -28,7 +30,7 @@ export default async function GroupPage({
   return (
     <MobileShell active="Home">
       <HomeHeader />
-      <ActiveMatchCard game={activeMatch} />
+      <ActiveMatchCard groupId={groupId} game={activeMatch} />
       <PendingReviewSection matches={pendingReviews} />
     </MobileShell>
   );
@@ -55,14 +57,18 @@ function HomeHeader() {
   );
 }
 
-function ActiveMatchCard({ game }: { game?: DemoCurrentGame }) {
+function ActiveMatchCard({ groupId, game }: { groupId: string; game?: DemoCurrentGame }) {
   const teams = game ? splitCurrentGameTeams(game) : undefined;
+  const recordingHref = game ? buildActiveMatchRecordingHref(groupId, game, demoPlayers) : undefined;
 
   return (
     <section className="rounded-lg border border-stroke bg-surface p-4">
       <h2 className="text-2xl font-bold leading-7 text-ink">Active Match</h2>
-      {game && teams ? (
-        <article className="mt-5 rounded-lg border border-stroke bg-surface px-4 py-3">
+      {game && teams && recordingHref ? (
+        <Link
+          href={recordingHref}
+          className="mt-5 block rounded-lg border border-stroke bg-surface px-4 py-3 transition hover:border-action focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+        >
           <p className="text-base leading-6 text-muted">
             {game.startedAt} @ {game.groupName}
           </p>
@@ -70,7 +76,7 @@ function ActiveMatchCard({ game }: { game?: DemoCurrentGame }) {
             <ActiveTeam players={teams.teamA} />
             <ActiveTeam players={teams.teamB} />
           </div>
-        </article>
+        </Link>
       ) : (
         <p className="mt-4 rounded-lg border border-stroke bg-surface px-4 py-5 text-sm text-muted">
           No active match right now.
