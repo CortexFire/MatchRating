@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { MobileShell } from "@/components/app/mobile-shell";
 import { MatchRecorder, type InitialMatchRecording } from "@/components/match/match-recorder";
-import { listGroupPlayers } from "@/lib/app-data";
+import { getGroup, listGroupPlayers } from "@/lib/app-data";
 import { type MatchFormat } from "@/lib/matches/validation";
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
@@ -15,12 +15,12 @@ export default async function NewMatchPage({
   searchParams: SearchParams;
 }) {
   const { groupId } = await params;
-  const players = await listGroupPlayers(groupId);
+  const [group, players] = await Promise.all([getGroup(groupId), listGroupPlayers(groupId)]);
   const initialMatch = parseInitialMatch(await searchParams, players.map((player) => player.id));
 
   return (
     <MobileShell active="Record" recordHref={`/groups/${groupId}/matches/new`}>
-      <MatchRecorder groupId={groupId} players={players} initialMatch={initialMatch} />
+      <MatchRecorder groupId={groupId} groupName={group?.name ?? "Group"} players={players} initialMatch={initialMatch} />
     </MobileShell>
   );
 }

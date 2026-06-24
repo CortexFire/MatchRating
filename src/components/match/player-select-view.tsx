@@ -13,6 +13,7 @@ export type PlayerSelection = Array<string | null>;
 
 type PlayerSelectViewProps = {
   players: AppPlayer[];
+  groupName: string;
   format: MatchFormat;
   draftTeamA: PlayerSelection;
   draftTeamB: PlayerSelection;
@@ -36,6 +37,7 @@ const filters: Array<{ value: PlayerFilter; label: string }> = [
 
 export function PlayerSelectView({
   players,
+  groupName,
   format,
   draftTeamA,
   draftTeamB,
@@ -112,9 +114,9 @@ export function PlayerSelectView({
         <h1 className="text-[22px] font-bold leading-7 text-ink">Player Select</h1>
         <div
           className="inline-flex min-h-11 items-center gap-2 rounded-full bg-victory px-4 text-sm font-bold text-ink"
-          aria-label="Current group Downtown Rec"
+          aria-label={`Current group ${groupName}`}
         >
-          Downtown Rec
+          {groupName}
           <ChevronDown aria-hidden="true" className="size-4 stroke-[3]" />
         </div>
       </div>

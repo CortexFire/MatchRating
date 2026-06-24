@@ -20,6 +20,21 @@ function openPlayerSelect(slotLabel = "Team B empty player slot 2") {
 }
 
 describe("MatchRecorder", () => {
+  test("shows the provided group name while recording and selecting players", () => {
+    render(
+      <MatchRecorder
+        groupName="Wednesday Club Ladder"
+        players={demoPlayers}
+        initialMatch={editableDoublesMatch}
+      />,
+    );
+
+    expect(screen.getByLabelText("Current group Wednesday Club Ladder")).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText("Team B empty player slot 2"));
+
+    expect(screen.getByLabelText("Current group Wednesday Club Ladder")).toBeTruthy();
+  });
   test("renders a disputed match as the initial recording state", () => {
     render(
       <MatchRecorder

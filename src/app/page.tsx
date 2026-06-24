@@ -1,5 +1,11 @@
-import { redirect } from "next/navigation";
+export const dynamic = "force-dynamic";
 
-export default function Home() {
-  redirect("/groups");
+import { redirect } from "next/navigation";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+
+export default async function Home() {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.auth.getClaims();
+
+  redirect(error || !data?.claims?.sub ? "/login" : "/home");
 }

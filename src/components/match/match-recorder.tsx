@@ -37,10 +37,12 @@ export type InitialMatchRecording = {
 
 export function MatchRecorder({
   groupId = "test-group",
+  groupName = "Downtown Rec",
   players,
   initialMatch = defaultMatchRecording,
 }: {
   groupId?: string;
+  groupName?: string;
   players: AppPlayer[];
   initialMatch?: InitialMatchRecording;
 }) {
@@ -185,6 +187,7 @@ export function MatchRecorder({
     return (
       <PlayerSelectView
         players={players}
+        groupName={groupName}
         format={format}
         draftTeamA={draftTeamA}
         draftTeamB={draftTeamB}
@@ -207,9 +210,9 @@ export function MatchRecorder({
         <h1 className="text-[22px] font-bold leading-7 text-ink">Match Recording</h1>
         <div
           className="inline-flex min-h-11 items-center gap-2 rounded-full bg-victory px-4 text-sm font-bold text-ink"
-          aria-label="Current group Downtown Rec"
+          aria-label={`Current group ${groupName}`}
         >
-          Downtown Rec
+          {groupName}
           <ChevronDown className="size-4 stroke-[3]" />
         </div>
       </div>
