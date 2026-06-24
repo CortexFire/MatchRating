@@ -3,9 +3,9 @@ import { Home, Plus, UsersRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { label: "Home", href: "/groups/demo", icon: Home },
+  { label: "Home", href: "/home", icon: Home },
   { label: "Record", href: "/groups/demo/matches/new", icon: Plus, primary: true },
-  { label: "Members", href: "/groups/demo/members", icon: UsersRound },
+  { label: "Groups", href: "/groups", icon: UsersRound },
 ];
 
 export function MobileShell({
