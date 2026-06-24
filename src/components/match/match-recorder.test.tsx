@@ -246,7 +246,7 @@ describe("MatchRecorder", () => {
 
     expect(screen.getByRole("link", { name: "Home" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Record" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Members" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Groups" })).toBeTruthy();
   });
 
   test("allows scores to be changed with number inputs", () => {
@@ -290,10 +290,3 @@ describe("MatchRecorder", () => {
     expect((screen.getByLabelText("Set 1 Team B score") as HTMLInputElement).value).toBe("18");
   });
 });
-
-
-
-
-
-
-

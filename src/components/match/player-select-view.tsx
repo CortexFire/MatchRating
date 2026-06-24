@@ -4,7 +4,7 @@ import { ChevronDown, Search, UserPlus } from "lucide-react";
 import { AvatarInitials } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { type DemoPlayer } from "@/lib/demo-data";
+import { type AppPlayer } from "@/lib/app-data";
 import { type MatchFormat, type Team } from "@/lib/matches/validation";
 import { cn } from "@/lib/utils";
 
@@ -12,7 +12,7 @@ export type PlayerFilter = "selected" | "all" | "active" | "inactive";
 export type PlayerSelection = Array<string | null>;
 
 type PlayerSelectViewProps = {
-  players: DemoPlayer[];
+  players: AppPlayer[];
   format: MatchFormat;
   draftTeamA: PlayerSelection;
   draftTeamB: PlayerSelection;
@@ -236,7 +236,7 @@ function TeamPreview({
   label: "Team A" | "Team B";
   active: boolean;
   selection: PlayerSelection;
-  players: DemoPlayer[];
+  players: AppPlayer[];
   onSelect: () => void;
 }) {
   return (
@@ -284,7 +284,7 @@ function PlayerRow({
   actionLabel,
   onSelect,
 }: {
-  player: DemoPlayer;
+  player: AppPlayer;
   selected: boolean;
   inactive: boolean;
   disabled: boolean;
@@ -340,7 +340,7 @@ function normalizeSelection(selection: PlayerSelection, requiredCount: number): 
   return slots;
 }
 
-function describeSelection(selection: PlayerSelection, players: DemoPlayer[]) {
+function describeSelection(selection: PlayerSelection, players: AppPlayer[]) {
   return selection
     .map((playerId, index) => {
       const player = players.find((candidate) => candidate.id === playerId);
@@ -363,6 +363,3 @@ function shortenName(name: string) {
 
   return `${firstName} ${lastName.charAt(0)}.`;
 }
-
-
-

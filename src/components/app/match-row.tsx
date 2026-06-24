@@ -1,18 +1,29 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { type DemoMatch } from "@/lib/demo-data";
 
-function toneForStatus(status: DemoMatch["status"]) {
+type MatchRowData = {
+  id: string;
+  groupId: string;
+  format: "singles" | "doubles";
+  status: "Pending confirmation" | "Confirmed" | "Disputed";
+  submittedAt: string;
+  teamA: string[];
+  teamB: string[];
+  scores: string[];
+  ratingDelta: string;
+};
+
+function toneForStatus(status: MatchRowData["status"]) {
   if (status === "Confirmed") {
     return "victory" as const;
   }
   return "neutral" as const;
 }
 
-export function MatchRow({ match }: { match: DemoMatch }) {
+export function MatchRow({ match }: { match: MatchRowData }) {
   return (
     <Link
-      href={`/groups/demo/matches/${match.id}`}
+      href={`/groups/${match.groupId}/matches/${match.id}`}
       className="block rounded-lg border border-stroke bg-surface p-3 transition hover:border-selection-stroke"
     >
       <div className="flex items-center justify-between gap-3">

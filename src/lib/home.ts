@@ -1,4 +1,26 @@
-import { type DemoCurrentGame, type DemoMatch, type DemoPlayer } from "./demo-data";
+type DemoPlayer = {
+  id: string;
+  name: string;
+};
+
+type DemoMatch = {
+  id: string;
+  format: "singles" | "doubles";
+  status: "Pending confirmation" | "Confirmed" | "Disputed";
+  submittedAt: string;
+  teamA: string[];
+  teamB: string[];
+  scores: string[];
+  winnerTeam: "A" | "B";
+};
+
+type DemoCurrentGame = {
+  id: string;
+  status: "In progress" | "Complete";
+  groupName: string;
+  players: string[];
+  scores?: string[];
+};
 
 export type HomePendingReviewSummary = {
   id: string;

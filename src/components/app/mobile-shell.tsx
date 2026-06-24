@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   { label: "Home", href: "/home", icon: Home },
-  { label: "Record", href: "/groups/demo/matches/new", icon: Plus, primary: true },
+  { label: "Record", href: "/groups", icon: Plus, primary: true },
   { label: "Groups", href: "/groups", icon: UsersRound },
 ];
 
@@ -13,11 +13,13 @@ export function MobileShell({
   active,
   showNav = true,
   surfaceClassName,
+  recordHref,
 }: {
   children: React.ReactNode;
   active?: string;
   showNav?: boolean;
   surfaceClassName?: string;
+  recordHref?: string;
 }) {
   return (
     <main className="h-dvh overflow-hidden bg-app-bg text-ink">
@@ -35,11 +37,12 @@ export function MobileShell({
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = active === item.label;
+              const href = item.primary && recordHref ? recordHref : item.href;
 
               return (
                 <Link
                   key={item.label}
-                  href={item.href}
+                  href={href}
                   aria-label={item.label}
                   aria-current={isActive ? "page" : undefined}
                   className={cn(
