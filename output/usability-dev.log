@@ -1,0 +1,42 @@
+
+> matchrating-app@0.1.0 dev
+> next dev -H 127.0.0.1 -p 3000
+
+▲ Next.js 16.2.9 (Turbopack)
+- Local:         http://127.0.0.1:3000
+- Network:       http://127.0.0.1:3000
+✓ Ready in 424ms
+
+ GET /login 200 in 392ms (next.js: 130ms, proxy.ts: 138ms, application-code: 125ms)
+ GET /groups 500 in 417ms (next.js: 362ms, proxy.ts: 3ms, application-code: 53ms)
+ GET /groups 500 in 39ms (next.js: 3ms, proxy.ts: 3ms, application-code: 33ms)
+ GET /groups 500 in 67ms (next.js: 4ms, proxy.ts: 4ms, application-code: 58ms)
+ GET /login 200 in 68ms (next.js: 36ms, proxy.ts: 5ms, application-code: 28ms)
+ GET /login 200 in 36ms (next.js: 3ms, proxy.ts: 4ms, application-code: 28ms)
+ POST /login 200 in 31ms (next.js: 5ms, proxy.ts: 4ms, application-code: 22ms)
+  └─ ƒ signInWithOtp("alice@demo.matchrating.app") in 1ms src/app/actions.ts
+ GET /groups 500 in 39ms (next.js: 3ms, proxy.ts: 3ms, application-code: 33ms)
+  Reload env: .env.local
+✓ Compiled in 45ms
+ GET /groups 500 in 290ms (next.js: 198ms, proxy.ts: 39ms, application-code: 52ms)
+  Reload env: .env.local
+✓ Compiled in 28ms
+ GET /groups 500 in 414ms (next.js: 45ms, proxy.ts: 294ms, application-code: 75ms)
+ GET /groups 500 in 51ms (next.js: 5ms, proxy.ts: 5ms, application-code: 42ms)
+ GET /groups 500 in 38ms (next.js: 3ms, proxy.ts: 3ms, application-code: 31ms)
+ GET /login 200 in 166ms (next.js: 86ms, proxy.ts: 3ms, application-code: 78ms)
+ POST /login 200 in 1748ms (next.js: 3ms, proxy.ts: 5ms, application-code: 1740ms)
+  └─ ƒ signInWithOtp("alice@demo.matchrating.app") in 1722ms src/app/actions.ts
+ POST /login 200 in 41ms (next.js: 4ms, proxy.ts: 4ms, application-code: 33ms)
+  └─ ƒ signInWithGoogle() in 16ms src/app/actions.ts
+ GET /login 200 in 31ms (next.js: 3ms, proxy.ts: 4ms, application-code: 24ms)
+ POST /login 200 in 417ms (next.js: 4ms, proxy.ts: 3ms, application-code: 409ms)
+  └─ ƒ signInWithOtp("alice@demo.matchrating.app") in 392ms src/app/actions.ts
+ GET /groups/11111111-1111-4111-8111-111111111111 200 in 672ms (next.js: 389ms, proxy.ts: 63ms, application-code: 220ms)
+ GET /groups 200 in 165ms (next.js: 3ms, proxy.ts: 5ms, application-code: 157ms)
+ GET /home 200 in 469ms (next.js: 354ms, proxy.ts: 4ms, application-code: 112ms)
+ GET /groups/11111111-1111-4111-8111-111111111111 200 in 172ms (next.js: 9ms, proxy.ts: 4ms, application-code: 159ms)
+ GET /groups/11111111-1111-4111-8111-111111111111/members 200 in 585ms (next.js: 362ms, proxy.ts: 4ms, application-code: 219ms)
+ GET /groups/11111111-1111-4111-8111-111111111111 200 in 236ms (next.js: 9ms, proxy.ts: 5ms, application-code: 223ms)
+ GET /groups/11111111-1111-4111-8111-111111111111/matches/new 200 in 545ms (next.js: 380ms, proxy.ts: 4ms, application-code: 161ms)
+✓ Compiled in 39ms
