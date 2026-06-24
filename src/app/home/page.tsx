@@ -1,148 +1,58 @@
+export const dynamic = "force-dynamic";
+
 import Link from "next/link";
+import { ChevronRight, UsersRound } from "lucide-react";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { AvatarInitials } from "@/components/ui/avatar";
-import {
-  demoCurrentGames,
-  demoMatches,
-  demoPlayers,
-  demoUser,
-  type DemoCurrentGame,
-} from "@/lib/demo-data";
-import {
-  buildActiveMatchRecordingHref,
-  getPendingReviewMatches,
-  getPrimaryCurrentGame,
-  splitCurrentGameTeams,
-  toPendingReviewSummary,
-  type HomePendingReviewSummary,
-} from "@/lib/home";
+import { Card, CardContent } from "@/components/ui/card";
+import { getCurrentProfile, listCurrentUserGroups } from "@/lib/app-data";
 
-export default async function GroupPage({
-  params,
-}: {
-  params: Promise<{ groupId: string }>;
-}) {
-  const { groupId } = await params;
-
-  const activeMatch = getPrimaryCurrentGame(demoCurrentGames);
-  const pendingReviews = getPendingReviewMatches(demoMatches).map(toPendingReviewSummary);
+export default async function HomePage() {
+  const [profile, groups] = await Promise.all([getCurrentProfile(), listCurrentUserGroups()]);
+  const primaryGroup = groups[0];
 
   return (
-    <MobileShell active="Home">
-      <HomeHeader />
-      <ActiveMatchCard groupId={groupId} game={activeMatch} />
-      <PendingReviewSection matches={pendingReviews} />
+    <MobileShell active="Home" recordHref={primaryGroup ? `/groups/${primaryGroup.id}/matches/new` : undefined}>
+      <section className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-muted">Welcome back</p>
+          <h1 className="truncate text-3xl font-bold leading-9 text-ink">{profile.name}</h1>
+        </div>
+        <Link
+          href="/profile"
+          aria-label="Open profile"
+          className="rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+        >
+          <AvatarInitials initials={profile.initials} />
+        </Link>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-bold text-ink">Groups</h2>
+        {groups.length ? (
+          groups.map((group) => (
+            <Card key={group.id}>
+              <CardContent className="p-0">
+                <Link
+                  href={`/groups/${group.id}`}
+                  className="flex items-center gap-3 p-4 transition hover:bg-app-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+                >
+                  <span className="flex size-11 shrink-0 items-center justify-center rounded-lg border border-victory-stroke bg-victory text-ink">
+                    <UsersRound className="size-5" aria-hidden="true" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-base font-bold text-ink">{group.name}</span>
+                    <span className="mt-1 block truncate text-sm text-muted">{group.memberCount} members</span>
+                  </span>
+                  <ChevronRight className="size-5 shrink-0 text-muted" aria-hidden="true" />
+                </Link>
+              </CardContent>
+            </Card>
+          ))
+        ) : (
+          <p className="rounded-lg border border-stroke bg-surface p-4 text-sm text-muted">Create or join a group to start recording matches.</p>
+        )}
+      </section>
     </MobileShell>
   );
-}
-
-function HomeHeader() {
-  return (
-    <header className="flex items-start justify-between gap-4">
-      <div className="min-w-0 pt-1">
-        <p className="text-2xl font-bold leading-7 text-ink">Hi,</p>
-        <h1 className="truncate text-3xl font-bold leading-9 text-ink">{demoUser.name}</h1>
-      </div>
-      <Link
-        href="/profile"
-        aria-label="Open profile"
-        className="rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
-      >
-        <AvatarInitials
-          initials={demoUser.initials}
-          className="size-[68px] border-2 border-stroke bg-victory text-xl shadow-sm"
-        />
-      </Link>
-    </header>
-  );
-}
-
-function ActiveMatchCard({ groupId, game }: { groupId: string; game?: DemoCurrentGame }) {
-  const teams = game ? splitCurrentGameTeams(game) : undefined;
-  const recordingHref = game ? buildActiveMatchRecordingHref(groupId, game, demoPlayers) : undefined;
-
-  return (
-    <section className="rounded-lg border border-stroke bg-surface p-4">
-      <h2 className="text-2xl font-bold leading-7 text-ink">Active Match</h2>
-      {game && teams && recordingHref ? (
-        <Link
-          href={recordingHref}
-          className="mt-5 block rounded-lg border border-stroke bg-surface px-4 py-3 transition hover:border-action focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
-        >
-          <p className="text-base leading-6 text-muted">
-            {game.startedAt} @ {game.groupName}
-          </p>
-          <div className="mt-4 grid grid-cols-2 gap-4">
-            <ActiveTeam players={teams.teamA} />
-            <ActiveTeam players={teams.teamB} />
-          </div>
-        </Link>
-      ) : (
-        <p className="mt-4 rounded-lg border border-stroke bg-surface px-4 py-5 text-sm text-muted">
-          No active match right now.
-        </p>
-      )}
-    </section>
-  );
-}
-
-function ActiveTeam({ players }: { players: string[] }) {
-  return (
-    <div className="min-w-0">
-      <div className="flex items-center">
-        {players.map((player, index) => (
-          <AvatarInitials
-            key={player}
-            initials={getInitials(player)}
-            className={index === 0 ? "size-10 bg-victory text-sm" : "-ml-1 size-10 bg-victory text-sm"}
-          />
-        ))}
-      </div>
-      <p className="mt-2 text-sm leading-5 text-ink">{formatTeamName(players)}</p>
-    </div>
-  );
-}
-
-function PendingReviewSection({ matches }: { matches: HomePendingReviewSummary[] }) {
-  return (
-    <section className="rounded-lg border border-stroke bg-surface p-4">
-      <h2 className="text-2xl font-bold leading-7 text-ink">Pending Review</h2>
-      <div className="mt-4 flex flex-col gap-2.5">
-        {matches.map((match) => (
-          <HomePendingReviewRow key={match.id} match={match} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function HomePendingReviewRow({ match }: { match: HomePendingReviewSummary }) {
-  return (
-    <Link
-      href={`/matches/${match.id}/confirm`}
-      className="flex min-h-[74px] items-center justify-between gap-3 rounded-lg border border-stroke bg-surface px-4 py-2.5 transition hover:border-action focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
-    >
-      <div className="min-w-0">
-        <p className="truncate text-sm font-bold leading-6 text-muted">{match.summary}</p>
-        <p className="mt-1 truncate text-sm leading-5 text-muted">{match.details}</p>
-      </div>
-      <div className="grid min-h-14 min-w-[108px] shrink-0 place-items-center rounded-lg border border-stroke bg-surface px-3 py-1.5 text-center">
-        <div>
-          <p className="text-xl font-bold leading-6 tabular-nums text-action">{match.score}</p>
-          <p className="text-sm leading-5 text-muted">{match.format}</p>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-function getInitials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .join("");
-}
-
-function formatTeamName(players: string[]) {
-  return players.join(" & ");
 }

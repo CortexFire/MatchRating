@@ -1,9 +1,8 @@
-import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { AvatarInitials } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { type DemoPlayer } from "@/lib/demo-data";
+import { type AppPlayer } from "@/lib/app-data";
 
-export function PlayerRow({ player }: { player: DemoPlayer }) {
+export function PlayerRow({ player }: { player: AppPlayer }) {
   return (
     <article className="flex items-center gap-3 rounded-lg border border-stroke bg-surface p-3">
       <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-ink text-sm font-bold text-white">
@@ -13,24 +12,13 @@ export function PlayerRow({ player }: { player: DemoPlayer }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <h3 className="truncate text-sm font-semibold text-ink">{player.name}</h3>
-          {player.status === "Pending review" ? <Badge>Review</Badge> : null}
+          <Badge>{player.role}</Badge>
         </div>
         <p className="mt-0.5 text-xs text-muted">
-          {player.record} · RD {player.rd} · {player.gamesPlayed} games
+          RD {player.rd} - {player.gamesPlayed} games
         </p>
       </div>
-      <div className="text-right">
-        <p className="text-base font-bold tabular-nums text-ink">{player.rating}</p>
-        <p className="flex items-center justify-end gap-1 text-xs font-semibold text-muted">
-          {player.trend >= 0 ? (
-            <ArrowUpRight className="size-3 text-muted" />
-          ) : (
-            <ArrowDownRight className="size-3 text-muted" />
-          )}
-          {player.trend >= 0 ? "+" : ""}
-          {player.trend}
-        </p>
-      </div>
+      <p className="text-base font-bold tabular-nums text-ink">{player.rating}</p>
     </article>
   );
 }

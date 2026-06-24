@@ -1,10 +1,26 @@
-﻿import { demoGroup, demoPlayers, type DemoPlayer } from "@/lib/demo-data";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
 export const DEMO_GROUP_ID = "11111111-1111-4111-8111-111111111111";
 
 const DEFAULT_DEMO_EMAIL_DOMAIN = "demo.matchrating.app";
 const DEMO_LOGIN_FLAG = "true";
+const DEMO_GROUP = {
+  name: "Wednesday Club Ladder",
+  description: "Friendly competitive badminton ladder for weekly club nights.",
+};
+
+const demoPlayers = [
+  { id: "alice", name: "Alice Tan", role: "Owner", rating: 1684, rd: 61, rank: 1, gamesPlayed: 26 },
+  { id: "bea", name: "Bea Rivera", role: "Admin", rating: 1629, rd: 74, rank: 2, gamesPlayed: 21 },
+  { id: "cory", name: "Cory Shah", role: "Member", rating: 1588, rd: 83, rank: 3, gamesPlayed: 18 },
+  { id: "dev", name: "Dev Okafor", role: "Member", rating: 1547, rd: 92, rank: 4, gamesPlayed: 16 },
+  { id: "emi", name: "Emi Wilson", role: "Member", rating: 1502, rd: 111, rank: 5, gamesPlayed: 11 },
+  { id: "finn", name: "Finn Liu", role: "Member", rating: 1466, rd: 126, rank: 6, gamesPlayed: 9 },
+  { id: "gia", name: "Gia Patel", role: "Member", rating: 1420, rd: 148, rank: 7, gamesPlayed: 5 },
+  { id: "henry", name: "Henry Park", role: "Member", rating: 1394, rd: 170, rank: 8, gamesPlayed: 3 },
+] as const;
+
+type DemoPlayer = (typeof demoPlayers)[number];
 
 type DemoAuthUser = {
   player: DemoPlayer;
@@ -99,8 +115,8 @@ async function upsertDemoRows(
       {
         id: DEMO_GROUP_ID,
         owner_user_id: owner.userId,
-        name: demoGroup.name,
-        description: demoGroup.description,
+        name: DEMO_GROUP.name,
+        description: DEMO_GROUP.description,
         archived_at: null,
       },
       { onConflict: "id" },

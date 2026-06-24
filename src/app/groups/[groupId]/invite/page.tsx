@@ -1,7 +1,9 @@
+export const dynamic = "force-dynamic";
+
 import { MobileShell } from "@/components/app/mobile-shell";
 import { ScreenHeader } from "@/components/app/screen-header";
-import { InvitePanel } from "@/components/invite/invite-panel";
-import { demoGroup } from "@/lib/demo-data";
+import { Card, CardContent } from "@/components/ui/card";
+import { getGroup } from "@/lib/app-data";
 
 export default async function GroupInvitePage({
   params,
@@ -9,22 +11,16 @@ export default async function GroupInvitePage({
   params: Promise<{ groupId: string }>;
 }) {
   const { groupId } = await params;
+  const group = await getGroup(groupId);
 
   return (
     <MobileShell active="Home" showNav={false}>
-      <ScreenHeader
-        title="Join Group"
-        subtitle={demoGroup.name}
-        backHref={`/groups/${groupId}/members`}
-        action={
-          <span className="shrink-0 rounded-full bg-victory px-3 py-2 text-xs font-bold text-ink">
-            {demoGroup.name.split(" ").slice(0, 2).join(" ")}
-          </span>
-        }
-      />
-      <div className="flex flex-1 items-center">
-        <InvitePanel inviteUrl={demoGroup.inviteUrl} />
-      </div>
+      <ScreenHeader title="Join Group" subtitle={group?.name} backHref={`/groups/${groupId}/members`} />
+      <Card>
+        <CardContent className="p-5 text-sm leading-6 text-muted">
+          Invite link generation is connected to the backend action, but this screen no longer uses hardcoded demo group data.
+        </CardContent>
+      </Card>
     </MobileShell>
   );
 }

@@ -9,7 +9,7 @@ import {
   type PlayerSelection,
 } from "@/components/match/player-select-view";
 import { validateMatchSubmission, type MatchFormat, type Team } from "@/lib/matches/validation";
-import { type DemoPlayer } from "@/lib/demo-data";
+import { type AppPlayer } from "@/lib/app-data";
 import { cn } from "@/lib/utils";
 
 type Score = { teamAScore: number; teamBScore: number };
@@ -23,12 +23,9 @@ const WIN_SCORE = 21;
 const LOSS_SCORE = 18;
 const defaultMatchRecording = {
   format: "doubles",
-  teamAUserIds: ["alice", "cory"],
-  teamBUserIds: ["bea"],
-  games: [
-    { teamAScore: WIN_SCORE, teamBScore: LOSS_SCORE },
-    { teamAScore: WIN_SCORE, teamBScore: LOSS_SCORE },
-  ],
+  teamAUserIds: [],
+  teamBUserIds: [],
+  games: [{ teamAScore: WIN_SCORE, teamBScore: LOSS_SCORE }],
 } satisfies InitialMatchRecording;
 
 export type InitialMatchRecording = {
@@ -39,10 +36,12 @@ export type InitialMatchRecording = {
 };
 
 export function MatchRecorder({
+  groupId = "test-group",
   players,
   initialMatch = defaultMatchRecording,
 }: {
-  players: DemoPlayer[];
+  groupId?: string;
+  players: AppPlayer[];
   initialMatch?: InitialMatchRecording;
 }) {
   const [format, setFormat] = useState<MatchFormat>(initialMatch.format);
@@ -168,7 +167,7 @@ export function MatchRecorder({
     try {
       const validated = validateMatchSubmission(
         {
-          groupId: "demo",
+          groupId,
           format,
           teamAUserIds: compactTeam(teamA),
           teamBUserIds: compactTeam(teamB),
@@ -484,7 +483,7 @@ function ScoreTile({
 
 function buildTeamSlots(
   userIds: TeamSelection,
-  players: DemoPlayer[],
+  players: AppPlayer[],
   format: MatchFormat,
 ): TeamSlot[] {
   const maxSlots = format === "singles" ? 1 : 2;
@@ -506,4 +505,3 @@ function buildTeamSlots(
     };
   });
 }
-
