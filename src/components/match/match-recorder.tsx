@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDown, Medal, Plus, X } from "lucide-react";
+import { type ActionResult } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import {
   PlayerSelectView,
@@ -15,6 +16,7 @@ import { cn } from "@/lib/utils";
 type Score = { teamAScore: number; teamBScore: number };
 type RecordedGame = Score & { winnerTeam: Team };
 type TeamSelection = PlayerSelection;
+type CreateGuestPlayers = (input: { groupId: string; names: string[] }) => Promise<ActionResult<{ players: AppPlayer[] }>>;
 type TeamSlot =
   | { id: string; initials: string; name: string; fullName: string; empty?: false }
   | { empty: true };
@@ -40,11 +42,13 @@ export function MatchRecorder({
   groupName = "Downtown Rec",
   players,
   initialMatch = defaultMatchRecording,
+  createGuestPlayers,
 }: {
   groupId?: string;
   groupName?: string;
   players: AppPlayer[];
   initialMatch?: InitialMatchRecording;
+  createGuestPlayers?: CreateGuestPlayers;
 }) {
   const [format, setFormat] = useState<MatchFormat>(initialMatch.format);
   const [teamA, setTeamA] = useState<TeamSelection>(() =>
@@ -67,10 +71,13 @@ export function MatchRecorder({
   const [playerFilter, setPlayerFilter] = useState<PlayerFilter>("all");
   const [playerSearch, setPlayerSearch] = useState("");
   const [message, setMessage] = useState("");
-  const activeMemberIds = players.map((player) => player.id);
+  const [guestPlayers, setGuestPlayers] = useState<AppPlayer[]>([]);
+  const [draftGuestIds, setDraftGuestIds] = useState<string[]>([]);
+  const selectablePlayers = [...players, ...guestPlayers];
+  const activeMemberIds = selectablePlayers.map((player) => player.id);
 
-  const teamASlots = buildTeamSlots(teamA, players, format);
-  const teamBSlots = buildTeamSlots(teamB, players, format);
+  const teamASlots = buildTeamSlots(teamA, selectablePlayers, format);
+  const teamBSlots = buildTeamSlots(teamB, selectablePlayers, format);
 
   function updateFormat(value: MatchFormat) {
     setFormat(value);
@@ -79,6 +86,7 @@ export function MatchRecorder({
     setDraftTeamA((ids) => resizeTeamSlots(ids, value));
     setDraftTeamB((ids) => resizeTeamSlots(ids, value));
     setPlayerSelectOpen(false);
+    setDraftGuestIds([]);
     setMessage("");
   }
 
@@ -100,6 +108,7 @@ export function MatchRecorder({
     setDraftTeamA(resizeTeamSlots(teamA, format));
     setDraftTeamB(resizeTeamSlots(teamB, format));
     setActiveSelectTeam(team);
+    setDraftGuestIds([]);
     setPlayerFilter("all");
     setPlayerSearch("");
     setPlayerSelectOpen(true);
@@ -116,14 +125,70 @@ export function MatchRecorder({
     }
   }
 
+  function addGuestToDraft(name: string) {
+    const displayName = normalizeGuestName(name);
+    if (!displayName) {
+      return;
+    }
+
+    const activeSelection = activeSelectTeam === "A" ? draftTeamA : draftTeamB;
+    const emptyIndex = activeSelection.findIndex((slot) => !slot);
+    if (emptyIndex === -1) {
+      return;
+    }
+
+    const guest = toGuestPlayer(`guest-${Date.now()}-${draftGuestIds.length}`, displayName);
+    setGuestPlayers((current) => [...current, guest]);
+    setDraftGuestIds((current) => [...current, guest.id]);
+    updateDraftTeam(
+      activeSelectTeam,
+      activeSelection.map((slot, index) => (index === emptyIndex ? guest.id : slot)),
+    );
+  }
+
   function cancelPlayerSelect() {
+    setGuestPlayers((current) => current.filter((player) => !draftGuestIds.includes(player.id)));
+    setDraftGuestIds([]);
     setPlayerSelectOpen(false);
     setMessage("");
   }
 
-  function commitPlayerSelect() {
-    setTeamA(resizeTeamSlots(draftTeamA, format));
-    setTeamB(resizeTeamSlots(draftTeamB, format));
+  async function commitPlayerSelect() {
+    const selectedIds = [...compactTeam(draftTeamA), ...compactTeam(draftTeamB)];
+    const selectedDraftGuestIds = draftGuestIds.filter((id) => selectedIds.includes(id));
+    const selectedDraftGuests = selectedDraftGuestIds
+      .map((id) => guestPlayers.find((player) => player.id === id))
+      .filter((player): player is AppPlayer => Boolean(player));
+    let committedTeamA = resizeTeamSlots(draftTeamA, format);
+    let committedTeamB = resizeTeamSlots(draftTeamB, format);
+
+    if (selectedDraftGuests.length) {
+      const result = createGuestPlayers
+        ? await createGuestPlayers({ groupId, names: selectedDraftGuests.map((player) => player.name) })
+        : { ok: true as const, data: { players: selectedDraftGuests } };
+
+      if (!result.ok) {
+        setPlayerSelectOpen(false);
+        setMessage(result.message);
+        return;
+      }
+
+      const replacements = new Map(
+        selectedDraftGuests.map((guest, index) => [guest.id, result.data.players[index]?.id ?? guest.id]),
+      );
+      committedTeamA = committedTeamA.map((id) => (id ? replacements.get(id) ?? id : id));
+      committedTeamB = committedTeamB.map((id) => (id ? replacements.get(id) ?? id : id));
+      setGuestPlayers((current) => [
+        ...current.filter((player) => !draftGuestIds.includes(player.id)),
+        ...result.data.players,
+      ]);
+    } else {
+      setGuestPlayers((current) => current.filter((player) => !draftGuestIds.includes(player.id)));
+    }
+
+    setTeamA(committedTeamA);
+    setTeamB(committedTeamB);
+    setDraftGuestIds([]);
     setPlayerSelectOpen(false);
     setMessage("");
   }
@@ -186,7 +251,7 @@ export function MatchRecorder({
   if (playerSelectOpen) {
     return (
       <PlayerSelectView
-        players={players}
+        players={selectablePlayers}
         groupName={groupName}
         format={format}
         draftTeamA={draftTeamA}
@@ -198,6 +263,7 @@ export function MatchRecorder({
         onActiveTeamChange={setActiveSelectTeam}
         onFilterChange={setPlayerFilter}
         onSearchChange={setPlayerSearch}
+        onAddGuest={addGuestToDraft}
         onCancel={cancelPlayerSelect}
         onCommit={commitPlayerSelect}
       />
@@ -482,6 +548,34 @@ function ScoreTile({
       </div>
     </div>
   );
+}
+
+function normalizeGuestName(name: string) {
+  return name.trim().split(/\s+/).filter(Boolean).join(" ");
+}
+
+function toGuestPlayer(id: string, name: string): AppPlayer {
+  return {
+    id,
+    name,
+    initials: initialsFor(name),
+    role: "Member",
+    rating: 1500,
+    rd: 350,
+    rank: 0,
+    gamesPlayed: 0,
+    status: "Active",
+    isGuest: true,
+  };
+}
+
+function initialsFor(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("") || "?";
 }
 
 function buildTeamSlots(

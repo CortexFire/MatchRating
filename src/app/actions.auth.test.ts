@@ -1,4 +1,4 @@
-﻿import { beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import * as actions from "@/app/actions";
 
 const supabaseMocks = vi.hoisted(() => {
@@ -65,7 +65,7 @@ describe("auth actions", () => {
     expect(supabaseMocks.auth.signInWithOAuth).toHaveBeenCalledWith({
       provider: "google",
       options: {
-        redirectTo: "https://matches.example.com/auth/confirm?next=/groups/new",
+        redirectTo: "https://matches.example.com/auth/confirm?next=%2Fonboarding",
       },
     });
   });
@@ -77,7 +77,7 @@ describe("auth actions", () => {
     expect(supabaseMocks.auth.signInWithOtp).toHaveBeenCalledWith({
       email: "player@example.com",
       options: {
-        emailRedirectTo: "https://matches.example.com/auth/confirm?next=/groups/new",
+        emailRedirectTo: "https://matches.example.com/auth/confirm?next=%2Fonboarding",
       },
     });
   });
@@ -111,7 +111,24 @@ describe("auth actions", () => {
     expect(supabaseMocks.auth.signInWithOtp).toHaveBeenCalledWith({
       email: "alice@demo.matchrating.app",
       options: {
-        emailRedirectTo: "https://matches.example.com/auth/confirm?next=/groups/new",
+        emailRedirectTo: "https://matches.example.com/auth/confirm?next=%2Fonboarding",
+      },
+    });
+  });
+  test("auth actions preserve a safe onboarding invite redirect", async () => {
+    await actions.signInWithOtp("player@example.com", "/onboarding?invite=invite-token");
+    await actions.signInWithGoogle("/onboarding?invite=invite-token");
+
+    expect(supabaseMocks.auth.signInWithOtp).toHaveBeenCalledWith({
+      email: "player@example.com",
+      options: {
+        emailRedirectTo: "https://matches.example.com/auth/confirm?next=%2Fonboarding%3Finvite%3Dinvite-token",
+      },
+    });
+    expect(supabaseMocks.auth.signInWithOAuth).toHaveBeenCalledWith({
+      provider: "google",
+      options: {
+        redirectTo: "https://matches.example.com/auth/confirm?next=%2Fonboarding%3Finvite%3Dinvite-token",
       },
     });
   });

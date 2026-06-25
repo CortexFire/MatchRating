@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-const DEFAULT_AUTH_REDIRECT_PATH = "/groups/new";
+const DEFAULT_AUTH_REDIRECT_PATH = "/onboarding";
 const CALLBACK_ERROR_PATH = "/login?error=auth_callback_failed";
 
 function getSafeNextPath(value: string | null) {

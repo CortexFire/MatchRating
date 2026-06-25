@@ -1,4 +1,4 @@
-﻿import { createSupabaseServiceClient, requireUserId } from "@/lib/supabase/server";
+import { createSupabaseServiceClient, requireUserId } from "@/lib/supabase/server";
 
 export type AppGroup = {
   id: string;
@@ -23,6 +23,7 @@ export type AppPlayer = {
   rank: number;
   gamesPlayed: number;
   status: "Active" | "Pending review";
+  isGuest?: boolean;
 };
 
 type GroupRow = {
@@ -40,6 +41,7 @@ type MembershipRow = {
 type ProfileRow = {
   id: string;
   display_name: string;
+  is_guest?: boolean;
 };
 
 type RatingRow = {
@@ -166,7 +168,7 @@ export async function listGroupPlayers(groupId: string): Promise<AppPlayer[]> {
   }
 
   const [{ data: profiles, error: profilesError }, { data: ratings, error: ratingsError }] = await Promise.all([
-    service.from("profiles").select("id, display_name").in("id", userIds),
+    service.from("profiles").select("id, display_name, is_guest").in("id", userIds),
     service
       .from("group_rating_states")
       .select("user_id, rating, rd, rank, games_played")
@@ -201,6 +203,7 @@ export async function listGroupPlayers(groupId: string): Promise<AppPlayer[]> {
         rank: rating?.rank ?? index + 1,
         gamesPlayed: rating?.games_played ?? 0,
         status: "Active",
+        isGuest: profile?.is_guest ?? false,
       } satisfies AppPlayer;
     })
     .sort((a, b) => a.rank - b.rank || b.rating - a.rating || a.name.localeCompare(b.name));

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { type AppPlayer } from "@/lib/app-data";
 import {
   ensureDemoFixtures,
   getDemoPlayerByEmail,
@@ -34,6 +35,21 @@ export type ActionResult<T = unknown> =
 const groupSchema = z.object({
   name: z.string().trim().min(2).max(80),
   description: z.string().trim().max(280).optional().default(""),
+});
+
+const guestPlayersSchema = z.object({
+  groupId: z.string().min(1),
+  names: z.array(z.string().trim().min(1).max(80)).min(1).max(4),
+});
+
+const onboardingProfileSchema = z.object({
+  firstName: z.string().trim().min(1).max(80),
+  lastName: z.string().trim().min(1).max(80),
+});
+
+const claimGuestProfilesSchema = z.object({
+  groupId: z.string().min(1),
+  guestProfileIds: z.array(z.string().min(1)).min(1).max(12),
 });
 
 const disputeSchema = z.object({
@@ -71,14 +87,22 @@ const reviseSchema = z
     }),
   );
 
-const DEFAULT_AUTH_REDIRECT_PATH = "/groups/new";
+const DEFAULT_AUTH_REDIRECT_PATH = "/onboarding";
 
 function getSiteOrigin() {
   return (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/+$/, "");
 }
 
+function getSafeAuthNextPath(value = DEFAULT_AUTH_REDIRECT_PATH) {
+  if (!value.startsWith("/") || value.startsWith("//")) {
+    return DEFAULT_AUTH_REDIRECT_PATH;
+  }
+
+  return value;
+}
+
 function getAuthCallbackUrl(nextPath = DEFAULT_AUTH_REDIRECT_PATH) {
-  return `${getSiteOrigin()}/auth/confirm?next=${nextPath}`;
+  return `${getSiteOrigin()}/auth/confirm?next=${encodeURIComponent(getSafeAuthNextPath(nextPath))}`;
 }
 
 function getActionErrorMessage(error: unknown, fallback: string) {
@@ -89,8 +113,25 @@ function getActionErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-async function ensureActiveMember(groupId: string, userId: string) {
-  const service = createSupabaseServiceClient();
+function normalizeGuestName(name: string) {
+  return name.trim().split(/\s+/).filter(Boolean).join(" ");
+}
+
+function splitGuestName(name: string) {
+  const [firstName = "", ...rest] = normalizeGuestName(name).split(" ");
+  return { firstName, lastName: rest.join(" ") };
+}
+
+function initialsFor(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("") || "?";
+}
+
+async function ensureActiveMember(groupId: string, userId: string, service = createSupabaseServiceClient()) {
   const { data, error } = await service
     .from("group_memberships")
     .select("id, role")
@@ -126,6 +167,129 @@ async function getActiveMemberIds(groupId: string) {
 
   return (data ?? []).map((row: { user_id: string }) => row.user_id);
 }
+type SupabaseService = ReturnType<typeof createSupabaseServiceClient>;
+
+type InviteRow = {
+  id: string;
+  group_id: string;
+  expires_at: string | null;
+  max_uses: number | null;
+  use_count: number;
+  revoked_at: string | null;
+};
+
+async function getInviteByToken(token: string, service: SupabaseService): Promise<InviteRow> {
+  const tokenHash = hashInviteToken(token);
+  const { data: invite, error } = await service
+    .from("group_invites")
+    .select("id, group_id, expires_at, max_uses, use_count, revoked_at")
+    .eq("token_hash", tokenHash)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!invite || invite.revoked_at) {
+    throw new Error("This invite link is no longer valid.");
+  }
+
+  if (invite.expires_at && Date.parse(invite.expires_at) < Date.now()) {
+    throw new Error("This invite link has expired.");
+  }
+
+  if (invite.max_uses && invite.use_count >= invite.max_uses) {
+    throw new Error("This invite link has already been used.");
+  }
+
+  return invite as InviteRow;
+}
+
+function formatLastActive(value?: string | null) {
+  if (!value) {
+    return "No matches yet";
+  }
+
+  const days = Math.max(0, Math.floor((Date.now() - Date.parse(value)) / 86_400_000));
+  if (days === 0) {
+    return "Last active today";
+  }
+
+  return `Last active ${days} ${days === 1 ? "day" : "days"} ago`;
+}
+
+async function getClaimableGuestProfiles(groupId: string, service: SupabaseService): Promise<ClaimableGuestProfile[]> {
+  const { data: memberships, error: membershipError } = await service
+    .from("group_memberships")
+    .select("user_id")
+    .eq("group_id", groupId)
+    .eq("status", "active")
+    .is("left_at", null);
+
+  if (membershipError) {
+    throw membershipError;
+  }
+
+  const userIds = (memberships ?? []).map((row: { user_id: string }) => row.user_id);
+  if (!userIds.length) {
+    return [];
+  }
+
+  const [{ data: profiles, error: profilesError }, { data: ratings, error: ratingsError }] = await Promise.all([
+    service.from("profiles").select("id, display_name").in("id", userIds).eq("is_guest", true),
+    service.from("group_rating_states").select("user_id, rating, rank").eq("group_id", groupId).in("user_id", userIds),
+  ]);
+
+  if (profilesError) {
+    throw profilesError;
+  }
+
+  if (ratingsError) {
+    throw ratingsError;
+  }
+
+  const ratingsByUserId = new Map((ratings ?? []).map((rating: { user_id: string }) => [rating.user_id, rating]));
+  return (profiles ?? [])
+    .map((profile: { id: string; display_name: string }) => {
+      const rating = ratingsByUserId.get(profile.id) as { rating?: number | string; rank?: number | null } | undefined;
+      return {
+        id: profile.id,
+        name: profile.display_name,
+        rating: Math.round(Number(rating?.rating ?? 1500)),
+        rank: rating?.rank ?? 0,
+      };
+    })
+    .sort((a, b) => a.rank - b.rank || b.rating - a.rating || a.name.localeCompare(b.name));
+}
+
+async function assertClaimableGuests(groupId: string, guestProfileIds: string[], service: SupabaseService) {
+  const claimable = await getClaimableGuestProfiles(groupId, service);
+  const claimableIds = new Set(claimable.map((profile) => profile.id));
+
+  if (guestProfileIds.some((id) => !claimableIds.has(id))) {
+    throw new Error("Select an active guest profile from this group.");
+  }
+}
+
+async function assertClaimDoesNotDuplicateParticipants(userId: string, guestProfileIds: string[], service: SupabaseService) {
+  const { data, error } = await service
+    .from("match_participants")
+    .select("revision_id, user_id")
+    .in("user_id", [userId, ...guestProfileIds]);
+
+  if (error) {
+    throw error;
+  }
+
+  const counts = new Map<string, number>();
+  for (const row of data ?? []) {
+    const nextCount = (counts.get(row.revision_id) ?? 0) + 1;
+    if (nextCount > 1) {
+      throw new Error("Those guest profiles cannot be merged because they appear together in a match.");
+    }
+    counts.set(row.revision_id, nextCount);
+  }
+}
 
 export async function signOut(): Promise<void> {
   const supabase = await createSupabaseServerClient();
@@ -133,7 +297,7 @@ export async function signOut(): Promise<void> {
   redirect("/login");
 }
 
-export async function signInWithOtp(email: string): Promise<ActionResult<{ email: string; redirectTo?: string }>> {
+export async function signInWithOtp(email: string, nextPath = DEFAULT_AUTH_REDIRECT_PATH): Promise<ActionResult<{ email: string; redirectTo?: string }>> {
   try {
     const parsedEmail = z.string().email().parse(email);
     const demoPlayer = getDemoPlayerByEmail(parsedEmail);
@@ -160,7 +324,7 @@ export async function signInWithOtp(email: string): Promise<ActionResult<{ email
     const { error } = await supabase.auth.signInWithOtp({
       email: parsedEmail,
       options: {
-        emailRedirectTo: getAuthCallbackUrl(),
+        emailRedirectTo: getAuthCallbackUrl(nextPath),
       },
     });
 
@@ -174,13 +338,13 @@ export async function signInWithOtp(email: string): Promise<ActionResult<{ email
   }
 }
 
-export async function signInWithGoogle(): Promise<ActionResult<{ url: string }>> {
+export async function signInWithGoogle(nextPath = DEFAULT_AUTH_REDIRECT_PATH): Promise<ActionResult<{ url: string }>> {
   try {
     const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: getAuthCallbackUrl(),
+        redirectTo: getAuthCallbackUrl(nextPath),
       },
     });
 
@@ -221,6 +385,229 @@ export async function verifyEmailOtp(input: {
   }
 }
 
+
+export type InviteSummary = {
+  groupId: string;
+  groupName: string;
+  memberCount: number;
+  lastActiveText: string;
+};
+
+export type ClaimableGuestProfile = {
+  id: string;
+  name: string;
+  rating: number;
+  rank: number;
+};
+
+export async function completeOnboardingProfile(input: {
+  firstName: string;
+  lastName: string;
+}): Promise<ActionResult<{ profileId: string }>> {
+  try {
+    const userId = await requireUserId();
+    const parsed = onboardingProfileSchema.parse(input);
+    const displayName = `${parsed.firstName} ${parsed.lastName}`;
+    const service = createSupabaseServiceClient();
+    const { data, error } = await service
+      .from("profiles")
+      .upsert({
+        id: userId,
+        first_name: parsed.firstName,
+        last_name: parsed.lastName,
+        display_name: displayName,
+        is_guest: false,
+      })
+      .select("id")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    revalidatePath("/onboarding");
+    return { ok: true, data: { profileId: data.id } };
+  } catch (error) {
+    return { ok: false, message: getActionErrorMessage(error, "Could not save your profile.") };
+  }
+}
+
+export async function getInviteSummary(token: string): Promise<ActionResult<InviteSummary>> {
+  try {
+    const service = createSupabaseServiceClient();
+    const invite = await getInviteByToken(token, service);
+    const [{ data: group, error: groupError }, { data: members, error: membersError }, { data: latestMatch }] = await Promise.all([
+      service.from("groups").select("id, name").eq("id", invite.group_id).maybeSingle(),
+      service
+        .from("group_memberships")
+        .select("user_id")
+        .eq("group_id", invite.group_id)
+        .eq("status", "active")
+        .is("left_at", null),
+      service
+        .from("matches")
+        .select("submitted_at")
+        .eq("group_id", invite.group_id)
+        .order("submitted_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+    if (groupError) {
+      throw groupError;
+    }
+
+    if (membersError) {
+      throw membersError;
+    }
+
+    if (!group) {
+      throw new Error("This invite link is no longer valid.");
+    }
+
+    return {
+      ok: true,
+      data: {
+        groupId: group.id,
+        groupName: group.name,
+        memberCount: members?.length ?? 0,
+        lastActiveText: formatLastActive(latestMatch?.submitted_at),
+      },
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Could not load invite." };
+  }
+}
+
+export async function listClaimableGuestProfiles(groupId: string): Promise<ActionResult<{ profiles: ClaimableGuestProfile[] }>> {
+  try {
+    const userId = await requireUserId();
+    const service = createSupabaseServiceClient();
+    await ensureActiveMember(groupId, userId, service);
+    const profiles = await getClaimableGuestProfiles(groupId, service);
+    return { ok: true, data: { profiles } };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Could not load guest profiles." };
+  }
+}
+
+export async function claimGuestProfiles(input: {
+  groupId: string;
+  guestProfileIds: string[];
+}): Promise<ActionResult<{ groupId: string }>> {
+  try {
+    const userId = await requireUserId();
+    const parsed = claimGuestProfilesSchema.parse({
+      groupId: input.groupId,
+      guestProfileIds: [...new Set(input.guestProfileIds)],
+    });
+    const service = createSupabaseServiceClient();
+    await ensureActiveMember(parsed.groupId, userId, service);
+    await assertClaimableGuests(parsed.groupId, parsed.guestProfileIds, service);
+    await assertClaimDoesNotDuplicateParticipants(userId, parsed.guestProfileIds, service);
+
+    await service.from("match_participants").update({ user_id: userId }).in("user_id", parsed.guestProfileIds);
+    await service
+      .from("group_memberships")
+      .update({ status: "left", left_at: new Date().toISOString() })
+      .eq("group_id", parsed.groupId)
+      .in("user_id", parsed.guestProfileIds);
+    await service
+      .from("group_rating_states")
+      .delete()
+      .eq("group_id", parsed.groupId)
+      .in("user_id", parsed.guestProfileIds);
+
+    const matches = await fetchHistoricalMatches(parsed.groupId);
+    const rebuilt = rebuildGroupRatingsFromMatches(matches);
+    await persistRatingRebuild(parsed.groupId, rebuilt.ratings, rebuilt.events);
+    revalidatePath(`/groups/${parsed.groupId}`);
+    return { ok: true, data: { groupId: parsed.groupId } };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Could not claim guest profiles." };
+  }
+}
+export async function createGuestPlayers(input: {
+  groupId: string;
+  names: string[];
+}): Promise<ActionResult<{ players: AppPlayer[] }>> {
+  try {
+    const userId = await requireUserId();
+    const parsed = guestPlayersSchema.parse(input);
+    const service = createSupabaseServiceClient();
+    await ensureActiveMember(parsed.groupId, userId, service);
+
+    const names = parsed.names.map(normalizeGuestName);
+    const { data: profiles, error: profilesError } = await service
+      .from("profiles")
+      .insert(
+        names.map((name) => {
+          const { firstName, lastName } = splitGuestName(name);
+          return {
+            display_name: name,
+            first_name: firstName,
+            last_name: lastName,
+            is_guest: true,
+          };
+        }),
+      )
+      .select("id, display_name");
+
+    if (profilesError) {
+      throw profilesError;
+    }
+
+    if (!profiles || profiles.length !== names.length) {
+      throw new Error("Could not create guest players.");
+    }
+
+    const memberships = profiles.map((profile: { id: string }) => ({
+      group_id: parsed.groupId,
+      user_id: profile.id,
+      role: "member",
+      status: "active",
+    }));
+    const ratings = profiles.map((profile: { id: string }) => ({
+      group_id: parsed.groupId,
+      user_id: profile.id,
+      rating: 1500,
+      rd: 350,
+      volatility: 0.06,
+      games_played: 0,
+    }));
+
+    const membershipResult = await service.from("group_memberships").insert(memberships);
+    if (membershipResult.error) {
+      throw membershipResult.error;
+    }
+
+    const ratingResult = await service.from("group_rating_states").insert(ratings);
+    if (ratingResult.error) {
+      throw ratingResult.error;
+    }
+
+    revalidatePath(`/groups/${parsed.groupId}`);
+    return {
+      ok: true,
+      data: {
+        players: profiles.map((profile: { id: string; display_name: string }) => ({
+          id: profile.id,
+          name: profile.display_name,
+          initials: initialsFor(profile.display_name),
+          role: "Member",
+          rating: 1500,
+          rd: 350,
+          rank: 0,
+          gamesPlayed: 0,
+          status: "Active",
+          isGuest: true,
+        })),
+      },
+    };
+  } catch (error) {
+    return { ok: false, message: getActionErrorMessage(error, "Could not create guest players.") };
+  }
+}
 export async function createGroup(input: {
   name: string;
   description?: string;
@@ -289,32 +676,11 @@ export async function createInvite(groupId: string): Promise<ActionResult<{ toke
   }
 }
 
-export async function joinGroupByInvite(token: string): Promise<ActionResult<{ groupId: string }>> {
+export async function joinGroupByInvite(token: string): Promise<ActionResult<{ groupId: string; claimableProfileCount: number }>> {
   try {
     const userId = await requireUserId();
     const service = createSupabaseServiceClient();
-    const tokenHash = hashInviteToken(token);
-    const { data: invite, error } = await service
-      .from("group_invites")
-      .select("id, group_id, expires_at, max_uses, use_count, revoked_at")
-      .eq("token_hash", tokenHash)
-      .maybeSingle();
-
-    if (error) {
-      throw error;
-    }
-
-    if (!invite || invite.revoked_at) {
-      throw new Error("This invite link is no longer valid.");
-    }
-
-    if (invite.expires_at && Date.parse(invite.expires_at) < Date.now()) {
-      throw new Error("This invite link has expired.");
-    }
-
-    if (invite.max_uses && invite.use_count >= invite.max_uses) {
-      throw new Error("This invite link has already been used.");
-    }
+    const invite = await getInviteByToken(token, service);
 
     await service.from("group_memberships").upsert(
       {
@@ -346,8 +712,9 @@ export async function joinGroupByInvite(token: string): Promise<ActionResult<{ g
       { onConflict: "group_id,user_id" },
     );
 
+    const claimableProfileCount = (await getClaimableGuestProfiles(invite.group_id, service)).length;
     revalidatePath(`/groups/${invite.group_id}`);
-    return { ok: true, data: { groupId: invite.group_id } };
+    return { ok: true, data: { groupId: invite.group_id, claimableProfileCount } };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Could not join group." };
   }

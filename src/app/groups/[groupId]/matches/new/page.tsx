@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import { createGuestPlayers } from "@/app/actions";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { MatchRecorder, type InitialMatchRecording } from "@/components/match/match-recorder";
 import { getGroup, listGroupPlayers } from "@/lib/app-data";
@@ -20,7 +21,13 @@ export default async function NewMatchPage({
 
   return (
     <MobileShell active="Record" recordHref={`/groups/${groupId}/matches/new`}>
-      <MatchRecorder groupId={groupId} groupName={group?.name ?? "Group"} players={players} initialMatch={initialMatch} />
+      <MatchRecorder
+        groupId={groupId}
+        groupName={group?.name ?? "Group"}
+        players={players}
+        initialMatch={initialMatch}
+        createGuestPlayers={createGuestPlayers}
+      />
     </MobileShell>
   );
 }

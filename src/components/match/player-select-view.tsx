@@ -24,6 +24,7 @@ type PlayerSelectViewProps = {
   onActiveTeamChange: (team: Team) => void;
   onFilterChange: (filter: PlayerFilter) => void;
   onSearchChange: (search: string) => void;
+  onAddGuest: (name: string) => void;
   onCancel: () => void;
   onCommit: () => void;
 };
@@ -48,6 +49,7 @@ export function PlayerSelectView({
   onActiveTeamChange,
   onFilterChange,
   onSearchChange,
+  onAddGuest,
   onCancel,
   onCommit,
 }: PlayerSelectViewProps) {
@@ -59,9 +61,12 @@ export function PlayerSelectView({
   const selectedIds = new Set(selectedPlayerIds);
   const activeIds = new Set(compactSelection(activeSelection));
   const activeTeamFull = activeSelection.every(Boolean);
+  const guestName = search.trim();
+  const canAddGuest = guestName.length > 0 && !activeTeamFull;
+  const guestAddLabel = canAddGuest ? `Add guest player ${guestName}` : "Add player";
   const canCommit =
     teamA.every(Boolean) && teamB.every(Boolean) && selectedIds.size === selectedPlayerIds.length;
-  const searchTerm = search.trim().toLowerCase();
+  const searchTerm = guestName.toLowerCase();
 
   const visiblePlayers = players.filter((player) => {
     const selected = selectedIds.has(player.id);
@@ -174,9 +179,13 @@ export function PlayerSelectView({
           </label>
           <button
             type="button"
-            disabled
-            aria-label="Add player"
-            className="flex size-11 shrink-0 items-center justify-center rounded-lg border border-stroke bg-surface text-muted opacity-60"
+            disabled={!canAddGuest}
+            aria-label={guestAddLabel}
+            onClick={() => onAddGuest(guestName)}
+            className={cn(
+              "flex size-11 shrink-0 items-center justify-center rounded-lg border border-stroke bg-surface text-muted transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action",
+              canAddGuest ? "hover:bg-app-bg hover:text-ink" : "opacity-60",
+            )}
           >
             <UserPlus aria-hidden="true" className="size-5" />
           </button>
