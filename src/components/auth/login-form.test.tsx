@@ -1,4 +1,4 @@
-﻿// @vitest-environment jsdom
+// @vitest-environment jsdom
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
@@ -52,7 +52,7 @@ describe("LoginForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send one-time code" }));
 
     await waitFor(() => {
-      expect(actionMocks.signInWithOtp).toHaveBeenCalledWith("player@example.com");
+      expect(actionMocks.signInWithOtp).toHaveBeenCalledWith("player@example.com", "/onboarding");
       expect(screen.getByLabelText("One-time code")).toBeTruthy();
       expect(screen.getByRole("button", { name: "Verify code" })).toBeTruthy();
       expect(screen.getByRole("button", { name: "Resend code" })).toBeTruthy();
@@ -77,7 +77,7 @@ describe("LoginForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send one-time code" }));
 
     await waitFor(() => {
-      expect(actionMocks.signInWithOtp).toHaveBeenCalledWith("alice@demo.matchrating.app");
+      expect(actionMocks.signInWithOtp).toHaveBeenCalledWith("alice@demo.matchrating.app", "/onboarding");
       expect(redirects).toEqual(["/groups/11111111-1111-4111-8111-111111111111"]);
     });
     expect(screen.queryByLabelText("One-time code")).toBeNull();
@@ -103,7 +103,27 @@ describe("LoginForm", () => {
         email: "player@example.com",
         token: "123456",
       });
-      expect(redirects).toEqual(["/groups/new"]);
+      expect(redirects).toEqual(["/onboarding"]);
+    });
+  });
+  test("passes invite next paths through email code sign-in", async () => {
+    const redirects: string[] = [];
+    render(<LoginForm initialNextPath="/onboarding?invite=invite-token" onRedirect={(url) => redirects.push(url)} />);
+
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "player@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send one-time code" }));
+    await screen.findByLabelText("One-time code");
+
+    fireEvent.change(screen.getByLabelText("One-time code"), {
+      target: { value: "123456" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Verify code" }));
+
+    await waitFor(() => {
+      expect(actionMocks.signInWithOtp).toHaveBeenCalledWith("player@example.com", "/onboarding?invite=invite-token");
+      expect(redirects).toEqual(["/onboarding?invite=invite-token"]);
     });
   });
 

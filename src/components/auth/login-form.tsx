@@ -6,13 +6,13 @@ import { signInWithGoogle, signInWithOtp, verifyEmailOtp } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-const POST_LOGIN_PATH = "/groups/new";
+const POST_LOGIN_PATH = "/onboarding";
 
 function redirectTo(url: string) {
   window.location.assign(url);
 }
 
-export function LoginForm({ onRedirect = redirectTo }: { onRedirect?: (url: string) => void }) {
+export function LoginForm({ initialNextPath = POST_LOGIN_PATH, onRedirect = redirectTo }: { initialNextPath?: string; onRedirect?: (url: string) => void }) {
   const [email, setEmail] = useState("");
   const [token, setToken] = useState("");
   const [codeSent, setCodeSent] = useState(false);
@@ -21,7 +21,7 @@ export function LoginForm({ onRedirect = redirectTo }: { onRedirect?: (url: stri
 
   function sendEmailCode(nextEmail: string) {
     startTransition(async () => {
-      const result = await signInWithOtp(nextEmail);
+      const result = await signInWithOtp(nextEmail, initialNextPath);
       setMessage(result.message ?? (result.ok ? "Check your email for the sign-in code." : "Could not send code."));
 
       if (result.ok && result.data.redirectTo) {
@@ -38,7 +38,7 @@ export function LoginForm({ onRedirect = redirectTo }: { onRedirect?: (url: stri
 
   function handleGoogleSignIn() {
     startTransition(async () => {
-      const result = await signInWithGoogle();
+      const result = await signInWithGoogle(initialNextPath);
 
       if (result.ok) {
         onRedirect(result.data.url);
@@ -71,7 +71,7 @@ export function LoginForm({ onRedirect = redirectTo }: { onRedirect?: (url: stri
       setMessage(result.message ?? (result.ok ? "Signed in." : "Could not verify code."));
 
       if (result.ok) {
-        onRedirect(POST_LOGIN_PATH);
+        onRedirect(initialNextPath);
       }
     });
   }

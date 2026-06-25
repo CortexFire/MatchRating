@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, test } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { demoPlayers } from "../../lib/demo-data";
 import { MobileShell } from "../app/mobile-shell";
 import { MatchRecorder } from "./match-recorder";
@@ -224,6 +224,94 @@ describe("MatchRecorder", () => {
 
     expect(screen.queryByLabelText("Draft Team A player Dev Okafor")).toBeNull();
     expect(screen.getByRole("button", { name: "Select Dev Okafor" })).toBeTruthy();
+  });
+
+  test("creates a draft guest from the search box on the active team", () => {
+    openPlayerSelect();
+
+    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Noah Kim" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add guest player Noah Kim" }));
+
+    expect(screen.getByLabelText("Draft Team B player Noah Kim")).toBeTruthy();
+    expect(screen.getByLabelText("Remove Noah Kim from draft Team B")).toBeTruthy();
+  });
+
+  test("enables guest add only for a non-empty search and open active-team slot", () => {
+    openPlayerSelect();
+
+    const addGuest = screen.getByRole("button", { name: "Add player" }) as HTMLButtonElement;
+    expect(addGuest.disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Noah Kim" } });
+    expect(screen.getByRole("button", { name: "Add guest player Noah Kim" })).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Dev" } });
+    fireEvent.click(screen.getByRole("button", { name: "Select Dev Okafor" }));
+    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Noah Kim" } });
+
+    expect((screen.getByRole("button", { name: "Add player" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  test("discards draft guests when Player Select is canceled", () => {
+    openPlayerSelect();
+
+    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Noah Kim" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add guest player Noah Kim" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.getByRole("heading", { name: "Match Recording" })).toBeTruthy();
+    expect(screen.queryByText("Noah")).toBeNull();
+  });
+
+  test("persists only selected draft guests when Add players is clicked", async () => {
+    const createGuestPlayers = vi.fn(async () => ({
+      ok: true as const,
+      data: {
+        players: [
+          {
+            id: "guest-mina",
+            name: "Mina Ray",
+            initials: "MR",
+            role: "Member" as const,
+            rating: 1500,
+            rd: 350,
+            rank: 0,
+            gamesPlayed: 0,
+            status: "Active" as const,
+            isGuest: true,
+          },
+        ],
+      },
+    }));
+
+    render(
+      <MatchRecorder
+        players={demoPlayers}
+        initialMatch={editableDoublesMatch}
+        createGuestPlayers={createGuestPlayers}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("Team B empty player slot 2"));
+    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Noah Kim" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add guest player Noah Kim" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove Noah Kim from draft Team B" }));
+    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Mina Ray" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add guest player Mina Ray" }));
+    fireEvent.click(screen.getByRole("button", { name: /Select Team A/ }));
+    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Dev" } });
+    fireEvent.click(screen.getByRole("button", { name: "Select Dev Okafor" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add players" }));
+
+    await waitFor(() =>
+      expect(createGuestPlayers).toHaveBeenCalledWith({
+        groupId: "test-group",
+        names: ["Mina Ray"],
+      }),
+    );
+    expect(screen.getByRole("heading", { name: "Match Recording" })).toBeTruthy();
+    expect(screen.getByText("Mina")).toBeTruthy();
+    expect(screen.queryByText("Noah")).toBeNull();
   });
 
   test("enables Add players only after both draft teams are complete", () => {

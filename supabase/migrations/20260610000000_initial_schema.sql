@@ -9,8 +9,11 @@ create type public.confirmation_action as enum ('confirmed', 'disputed');
 create type public.rebuild_status as enum ('queued', 'running', 'completed', 'failed');
 
 create table public.profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
+  id uuid primary key default gen_random_uuid(),
   display_name text not null,
+  first_name text not null default '',
+  last_name text not null default '',
+  is_guest boolean not null default false,
   avatar_url text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

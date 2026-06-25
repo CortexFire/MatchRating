@@ -3,7 +3,22 @@ import { LoginForm } from "@/components/auth/login-form";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { Card, CardContent } from "@/components/ui/card";
 
-export default function LoginPage() {
+function safeNextPath(value?: string | string[]) {
+  const next = Array.isArray(value) ? value[0] : value;
+  if (!next || !next.startsWith("/") || next.startsWith("//")) {
+    return "/onboarding";
+  }
+
+  return next;
+}
+
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ next?: string | string[] }>;
+}) {
+  const params = searchParams ? await searchParams : {};
+
   return (
     <MobileShell showNav={false}>
       <section className="flex min-h-[calc(100dvh-40px)] flex-col justify-center gap-6">
@@ -20,7 +35,7 @@ export default function LoginPage() {
         </div>
         <Card>
           <CardContent className="p-4">
-            <LoginForm />
+            <LoginForm initialNextPath={safeNextPath(params.next)} />
           </CardContent>
         </Card>
       </section>
