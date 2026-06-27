@@ -1,10 +1,19 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { MobileShell } from "@/components/app/mobile-shell";
+import { listCurrentUserGroups } from "@/lib/app-data";
 
-export default function ReviewMatchesPage() {
+export const dynamic = "force-dynamic";
+
+export default async function ReviewMatchesPage() {
+  const groups = await listCurrentUserGroups();
+  const primaryGroup = groups[0];
+
   return (
-    <MobileShell surfaceClassName="max-w-[488px]">
+    <MobileShell
+      recordHref={primaryGroup ? `/groups/${primaryGroup.id}/matches/new` : undefined}
+      surfaceClassName="max-w-[488px]"
+    >
       <header className="relative flex min-h-14 items-center justify-center">
         <Link
           href="/groups"

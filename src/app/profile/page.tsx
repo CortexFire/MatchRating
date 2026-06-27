@@ -12,9 +12,10 @@ import { getCurrentProfile, listCurrentUserGroups } from "@/lib/app-data";
 
 export default async function ProfilePage() {
   const [profile, groups] = await Promise.all([getCurrentProfile(), listCurrentUserGroups()]);
+  const primaryGroup = groups[0];
 
   return (
-    <MobileShell active="Profile">
+    <MobileShell active="Profile" recordHref={primaryGroup ? `/groups/${primaryGroup.id}/matches/new` : undefined}>
       <section className="flex items-center gap-4">
         <AvatarInitials initials={profile.initials} className="size-16 text-lg" />
         <div className="min-w-0">

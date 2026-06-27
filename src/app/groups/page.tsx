@@ -9,9 +9,10 @@ import { listCurrentUserGroups } from "@/lib/app-data";
 
 export default async function GroupsPage() {
   const groups = await listCurrentUserGroups();
+  const primaryGroup = groups[0];
 
   return (
-    <MobileShell active="Groups">
+    <MobileShell active="Groups" recordHref={primaryGroup ? `/groups/${primaryGroup.id}/matches/new` : undefined}>
       <ScreenHeader title="Groups" />
       {groups.length ? (
         <section className="flex flex-col gap-3">
