@@ -2,6 +2,9 @@ import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 import { getSupabasePublicEnv } from "./env";
 
+const protectedRoutePrefixes = ["/groups/"];
+const protectedRoutes = new Set(["/groups", "/home", "/profile"]);
+
 export async function updateSession(request: NextRequest) {
   const env = getSupabasePublicEnv();
   let response = NextResponse.next({ request });
@@ -25,6 +28,16 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  await supabase.auth.getClaims();
+  const { data, error } = await supabase.auth.getClaims();
+  if (isProtectedRoute(request.nextUrl.pathname) && (error || !data?.claims?.sub)) {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("next", `${request.nextUrl.pathname}${request.nextUrl.search}`);
+    return NextResponse.redirect(loginUrl);
+  }
+
   return response;
+}
+
+function isProtectedRoute(pathname: string) {
+  return protectedRoutes.has(pathname) || protectedRoutePrefixes.some((prefix) => pathname.startsWith(prefix));
 }
