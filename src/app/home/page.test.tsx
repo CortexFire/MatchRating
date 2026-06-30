@@ -22,4 +22,13 @@ describe("HomePage", () => {
     expect(html).toContain('href="/groups/11111111-1111-4111-8111-111111111111"');
     expect(html).toContain('href="/groups/11111111-1111-4111-8111-111111111111/matches/new"');
   });
+
+  test("renders active match and pending review sections", async () => {
+    const html = renderToStaticMarkup(await HomePage());
+
+    expect(html).toContain("Active match");
+    expect(html).toContain("Pending review");
+    expect(html).toContain("Resume recording");
+    expect(html).toContain('href="/matches/match-104/confirm"');
+  });
 });

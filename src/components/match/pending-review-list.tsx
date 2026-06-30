@@ -19,7 +19,7 @@ export function PendingReviewList({
         <Link
           key={match.id}
           href={`/matches/${match.id}/confirm`}
-          className="flex min-h-[70px] items-center justify-between gap-3 rounded-lg border border-muted/70 bg-app-bg px-3.5 py-2 transition hover:border-action focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+          className="flex w-full min-h-[70px] items-center justify-between gap-3 rounded-lg border border-muted/70 bg-app-bg px-3.5 py-2 transition hover:border-action focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
         >
           <div className="min-w-0">
             <p className="truncate text-base font-bold leading-6 text-muted">
