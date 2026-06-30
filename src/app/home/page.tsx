@@ -133,9 +133,9 @@ export default async function HomePage() {
         {pendingReviewMatches.length ? (
           <PendingReviewList matches={pendingReviewMatches} />
         ) : (
-          <p className="rounded-lg border border-stroke bg-surface p-4 text-sm text-muted">
-            No pending reviews yet.
-          </p>
+          <span className="flex flex-col items-center p-6">
+            <p className="text-sm text-muted">No matches pending review</p>
+          </span>
         )}
       </section>
     </MobileShell>
