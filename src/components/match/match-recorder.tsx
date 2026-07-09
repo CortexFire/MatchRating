@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, Medal, Plus, X } from "lucide-react";
 import { type ActionResult } from "@/app/actions";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import {
   type PlayerFilter,
   type PlayerSelection,
 } from "@/components/match/player-select-view";
-import { validateMatchSubmission, type MatchFormat, type Team } from "@/lib/matches/validation";
+import { validateMatchSubmission, type MatchFormat, type MatchSubmissionInput, type Team } from "@/lib/matches/validation";
 import { type AppPlayer } from "@/lib/app-data";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +17,8 @@ type Score = { teamAScore: number; teamBScore: number };
 type RecordedGame = Score & { winnerTeam: Team };
 type TeamSelection = PlayerSelection;
 type CreateGuestPlayers = (input: { groupId: string; names: string[] }) => Promise<ActionResult<{ players: AppPlayer[] }>>;
+type SaveActiveMatchDraft = (input: MatchSubmissionInput & { draftId?: string }) => Promise<ActionResult<{ draftId: string }>>;
+type SubmitMatchAction = (input: MatchSubmissionInput & { draftId?: string }) => Promise<ActionResult<{ matchId: string }>>;
 type TeamSlot =
   | { id: string; initials: string; name: string; fullName: string; empty?: false }
   | { empty: true };
@@ -42,13 +44,21 @@ export function MatchRecorder({
   groupName = "Downtown Rec",
   players,
   initialMatch = defaultMatchRecording,
+  draftId,
+  canEdit = true,
   createGuestPlayers,
+  saveActiveMatchDraft,
+  submitMatchAction,
 }: {
   groupId?: string;
   groupName?: string;
   players: AppPlayer[];
   initialMatch?: InitialMatchRecording;
+  draftId?: string;
+  canEdit?: boolean;
   createGuestPlayers?: CreateGuestPlayers;
+  saveActiveMatchDraft?: SaveActiveMatchDraft;
+  submitMatchAction?: SubmitMatchAction;
 }) {
   const [format, setFormat] = useState<MatchFormat>(initialMatch.format);
   const [teamA, setTeamA] = useState<TeamSelection>(() =>
@@ -71,6 +81,7 @@ export function MatchRecorder({
   const [playerFilter, setPlayerFilter] = useState<PlayerFilter>("all");
   const [playerSearch, setPlayerSearch] = useState("");
   const [message, setMessage] = useState("");
+  const [activeDraftId, setActiveDraftId] = useState(draftId);
   const [guestPlayers, setGuestPlayers] = useState<AppPlayer[]>([]);
   const [draftGuestIds, setDraftGuestIds] = useState<string[]>([]);
   const selectablePlayers = [...players, ...guestPlayers];
@@ -78,6 +89,38 @@ export function MatchRecorder({
 
   const teamASlots = buildTeamSlots(teamA, selectablePlayers, format);
   const teamBSlots = buildTeamSlots(teamB, selectablePlayers, format);
+
+  useEffect(() => {
+    if (!canEdit || !saveActiveMatchDraft) {
+      return;
+    }
+
+    const teamAUserIds = compactTeam(teamA);
+    const teamBUserIds = compactTeam(teamB);
+    if (!teamsComplete(format, teamAUserIds, teamBUserIds)) {
+      return;
+    }
+
+    const payload = {
+      groupId,
+      draftId: activeDraftId,
+      format,
+      teamAUserIds,
+      teamBUserIds,
+      games: games.map(({ teamAScore, teamBScore }) => ({ teamAScore, teamBScore })),
+    };
+    const timeout = window.setTimeout(async () => {
+      const result = await saveActiveMatchDraft(payload);
+      if (result.ok) {
+        setActiveDraftId(result.data.draftId);
+        setMessage("Draft saved.");
+      } else {
+        setMessage(result.message);
+      }
+    }, 400);
+
+    return () => window.clearTimeout(timeout);
+  }, [activeDraftId, canEdit, format, games, groupId, saveActiveMatchDraft, teamA, teamB]);
 
   function updateFormat(value: MatchFormat) {
     setFormat(value);
@@ -105,6 +148,9 @@ export function MatchRecorder({
   }
 
   function openPlayerSelect(team: Team) {
+    if (!canEdit) {
+      return;
+    }
     setDraftTeamA(resizeTeamSlots(teamA, format));
     setDraftTeamB(resizeTeamSlots(teamB, format));
     setActiveSelectTeam(team);
@@ -230,18 +276,27 @@ export function MatchRecorder({
     setMessage("");
   }
 
-  function submitMatch() {
+  async function submitMatch() {
+    if (!canEdit) {
+      return;
+    }
+
     try {
-      const validated = validateMatchSubmission(
-        {
-          groupId,
-          format,
-          teamAUserIds: compactTeam(teamA),
-          teamBUserIds: compactTeam(teamB),
-          games: games.map(({ teamAScore, teamBScore }) => ({ teamAScore, teamBScore })),
-        },
-        { activeMemberIds },
-      );
+      const input = {
+        groupId,
+        draftId: activeDraftId,
+        format,
+        teamAUserIds: compactTeam(teamA),
+        teamBUserIds: compactTeam(teamB),
+        games: games.map(({ teamAScore, teamBScore }) => ({ teamAScore, teamBScore })),
+      };
+      const validated = validateMatchSubmission(input, { activeMemberIds });
+      if (submitMatchAction) {
+        const result = await submitMatchAction(input);
+        setMessage(result.ok ? "Submitted. Ratings update immediately." : result.message);
+        return;
+      }
+
       setMessage(`Submitted. Team ${validated.matchWinnerTeam} wins; ratings update immediately.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Invalid match.");
@@ -283,7 +338,7 @@ export function MatchRecorder({
         </div>
       </div>
 
-      <FormatToggle value={format} onChange={updateFormat} />
+      <FormatToggle value={format} onChange={updateFormat} disabled={!canEdit} />
 
       <div className="grid grid-cols-2 gap-6 px-3">
         <TeamSummaryCard
@@ -291,12 +346,14 @@ export function MatchRecorder({
           slots={teamASlots}
           onOpenPicker={() => openPlayerSelect("A")}
           onRemove={(slotIndex) => removePlayer("A", slotIndex)}
+          editable={canEdit}
         />
         <TeamSummaryCard
           label="Team B"
           slots={teamBSlots}
           onOpenPicker={() => openPlayerSelect("B")}
           onRemove={(slotIndex) => removePlayer("B", slotIndex)}
+          editable={canEdit}
         />
       </div>
 
@@ -308,16 +365,19 @@ export function MatchRecorder({
             index={index}
             onWinnerChange={(winner) => setWinner(index, winner)}
             onScoreChange={(team, value) => updateScore(index, team, value)}
+            editable={canEdit}
           />
         ))}
-        <button
-          type="button"
-          onClick={addSet}
-          className="flex min-h-11 w-full items-center justify-center gap-1 rounded-lg border border-stroke bg-surface text-sm font-bold text-ink transition hover:bg-app-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
-        >
-          <Plus className="size-4" />
-          Add set
-        </button>
+        {canEdit ? (
+          <button
+            type="button"
+            onClick={addSet}
+            className="flex min-h-11 w-full items-center justify-center gap-1 rounded-lg border border-stroke bg-surface text-sm font-bold text-ink transition hover:bg-app-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+          >
+            <Plus className="size-4" />
+            Add set
+          </button>
+        ) : null}
       </div>
 
       <div className="mt-auto flex flex-col gap-3 pt-2">
@@ -326,9 +386,11 @@ export function MatchRecorder({
             {message}
           </p>
         ) : null}
-        <Button type="button" onClick={submitMatch} className="w-full">
-          Submit
-        </Button>
+        {canEdit ? (
+          <Button type="button" onClick={submitMatch} className="w-full">
+            Submit
+          </Button>
+        ) : null}
       </div>
     </section>
   );
@@ -357,6 +419,11 @@ function compactTeam(team: Array<string | null>): string[] {
   return team.filter((playerId): playerId is string => Boolean(playerId));
 }
 
+function teamsComplete(format: MatchFormat, teamAUserIds: string[], teamBUserIds: string[]) {
+  const size = format === "singles" ? 1 : 2;
+  return teamAUserIds.length === size && teamBUserIds.length === size;
+}
+
 function winnerFromScore(game: Score): Team {
   return game.teamAScore >= game.teamBScore ? "A" : "B";
 }
@@ -374,9 +441,11 @@ function normalizeScoreValue(value: string) {
 function FormatToggle({
   value,
   onChange,
+  disabled = false,
 }: {
   value: MatchFormat;
   onChange: (value: MatchFormat) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="grid min-h-11 grid-cols-2 rounded-lg border border-stroke bg-surface p-1">
@@ -385,9 +454,10 @@ function FormatToggle({
           key={option}
           type="button"
           onClick={() => onChange(option)}
+          disabled={disabled}
           aria-pressed={value === option}
           className={cn(
-            "rounded-md text-sm font-semibold capitalize text-muted transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action",
+            "rounded-md text-sm font-semibold capitalize text-muted transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action disabled:cursor-default",
             value === option && "bg-selection text-ink",
           )}
         >
@@ -403,11 +473,13 @@ function TeamSummaryCard({
   slots,
   onOpenPicker,
   onRemove,
+  editable,
 }: {
   label: string;
   slots: TeamSlot[];
   onOpenPicker: (slotIndex: number) => void;
   onRemove: (slotIndex: number) => void;
+  editable: boolean;
 }) {
   return (
     <div className="flex flex-col items-center gap-2">
@@ -415,32 +487,43 @@ function TeamSummaryCard({
       <div className="relative flex min-h-[74px] min-w-[116px] items-start justify-center gap-2 rounded-lg border border-stroke bg-surface px-2 py-2">
         {slots.map((slot, index) =>
           slot.empty ? (
-            <button
-              key={`empty-${index}`}
-              type="button"
-              onClick={() => onOpenPicker(index)}
-              className="flex min-w-11 flex-col items-center gap-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
-              aria-label={`${label} empty player slot ${index + 1}`}
-              aria-haspopup="dialog"
-            >
-              <span className="flex size-11 items-center justify-center rounded-full border border-stroke bg-app-bg text-muted transition hover:text-ink">
-                <Plus className="size-5" />
-              </span>
-              <span className="text-[11px] text-transparent">Empty</span>
-            </button>
+            editable ? (
+              <button
+                key={`empty-${index}`}
+                type="button"
+                onClick={() => onOpenPicker(index)}
+                className="flex min-w-11 flex-col items-center gap-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+                aria-label={`${label} empty player slot ${index + 1}`}
+                aria-haspopup="dialog"
+              >
+                <span className="flex size-11 items-center justify-center rounded-full border border-stroke bg-app-bg text-muted transition hover:text-ink">
+                  <Plus className="size-5" />
+                </span>
+                <span className="text-[11px] text-transparent">Empty</span>
+              </button>
+            ) : (
+              <div key={`empty-${index}`} className="flex min-w-11 flex-col items-center gap-1" aria-label={`${label} empty player slot ${index + 1}`}>
+                <span className="flex size-11 items-center justify-center rounded-full border border-stroke bg-app-bg text-muted">
+                  <Plus className="size-5" />
+                </span>
+                <span className="text-[11px] text-transparent">Empty</span>
+              </div>
+            )
           ) : (
             <div key={`${slot.id}-${index}`} className="relative flex min-w-0 flex-col items-center gap-1">
               <span className="flex size-11 items-center justify-center rounded-full bg-victory text-sm font-bold text-ink">
                 {slot.initials}
               </span>
-              <button
-                type="button"
-                onClick={() => onRemove(index)}
-                aria-label={`Remove ${slot.name} from ${label}`}
-                className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full border border-stroke bg-surface text-muted shadow-sm transition hover:bg-app-bg hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
-              >
-                <X className="size-3" />
-              </button>
+              {editable ? (
+                <button
+                  type="button"
+                  onClick={() => onRemove(index)}
+                  aria-label={`Remove ${slot.name} from ${label}`}
+                  className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full border border-stroke bg-surface text-muted shadow-sm transition hover:bg-app-bg hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+                >
+                  <X className="size-3" />
+                </button>
+              ) : null}
               <span className="max-w-12 truncate text-[11px] text-muted">{slot.name}</span>
             </div>
           ),
@@ -455,11 +538,13 @@ function SetScoreRow({
   index,
   onWinnerChange,
   onScoreChange,
+  editable,
 }: {
   game: RecordedGame;
   index: number;
   onWinnerChange: (winner: Team) => void;
   onScoreChange: (team: Team, value: string) => void;
+  editable: boolean;
 }) {
   const winner = game.winnerTeam;
 
@@ -474,6 +559,7 @@ function SetScoreRow({
           selected={winner === "A"}
           onWinnerClick={() => onWinnerChange("A")}
           onScoreChange={(value) => onScoreChange("A", value)}
+          editable={editable}
         />
         <ScoreTile
           setNumber={index + 1}
@@ -482,6 +568,7 @@ function SetScoreRow({
           selected={winner === "B"}
           onWinnerClick={() => onWinnerChange("B")}
           onScoreChange={(value) => onScoreChange("B", value)}
+          editable={editable}
         />
       </div>
     </div>
@@ -495,6 +582,7 @@ function ScoreTile({
   selected,
   onWinnerClick,
   onScoreChange,
+  editable,
 }: {
   setNumber: number;
   team: Team;
@@ -502,6 +590,7 @@ function ScoreTile({
   selected: boolean;
   onWinnerClick: () => void;
   onScoreChange: (value: string) => void;
+  editable: boolean;
 }) {
   return (
     <div
@@ -521,9 +610,10 @@ function ScoreTile({
         <button
           type="button"
           onClick={onWinnerClick}
+          disabled={!editable}
           aria-pressed={selected}
           aria-label={`Mark Set ${setNumber} Team ${team} as winner`}
-          className="absolute inset-0 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+          className="absolute inset-0 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action disabled:cursor-default"
         />
         <input
           aria-label={`Set ${setNumber} Team ${team} score`}
@@ -534,7 +624,8 @@ function ScoreTile({
           value={score}
           onClick={(event) => event.stopPropagation()}
           onChange={(event) => onScoreChange(event.target.value)}
-          className="relative z-10 h-11 w-full self-center rounded-md border border-transparent bg-transparent p-0 text-center text-[32pt] font-bold leading-none text-ink [appearance:textfield] focus:border-selection-stroke focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          disabled={!editable}
+          className="relative z-10 h-11 w-full self-center rounded-md border border-transparent bg-transparent p-0 text-center text-[32pt] font-bold leading-none text-ink [appearance:textfield] focus:border-selection-stroke focus:outline-none disabled:cursor-default [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
         <span
           aria-hidden="true"

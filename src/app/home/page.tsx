@@ -5,10 +5,15 @@ import { ChevronRight, UsersRound } from "lucide-react";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { AvatarInitials } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
-import { getCurrentProfile, listCurrentUserGroups } from "@/lib/app-data";
+import { ActiveMatchDraftList } from "@/components/match/active-match-draft-list";
+import { getCurrentProfile, listCurrentUserActiveMatchDrafts, listCurrentUserGroups } from "@/lib/app-data";
 
 export default async function HomePage() {
-  const [profile, groups] = await Promise.all([getCurrentProfile(), listCurrentUserGroups()]);
+  const [profile, groups, activeDrafts] = await Promise.all([
+    getCurrentProfile(),
+    listCurrentUserGroups(),
+    listCurrentUserActiveMatchDrafts(),
+  ]);
   const primaryGroup = groups[0];
 
   return (
@@ -26,6 +31,8 @@ export default async function HomePage() {
           <AvatarInitials initials={profile.initials} />
         </Link>
       </section>
+
+      <ActiveMatchDraftList drafts={activeDrafts} />
 
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-bold text-ink">Groups</h2>

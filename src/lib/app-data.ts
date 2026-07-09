@@ -1,4 +1,5 @@
 import { createSupabaseServiceClient, requireUserId } from "@/lib/supabase/server";
+import { type MatchFormat, type MatchGameInput } from "@/lib/matches/validation";
 
 export type AppGroup = {
   id: string;
@@ -11,6 +12,27 @@ export type AppProfile = {
   id: string;
   name: string;
   initials: string;
+};
+
+export type AppActiveMatchDraft = {
+  id: string;
+  groupId: string;
+  groupName: string;
+  format: MatchFormat;
+  teamA: string[];
+  teamB: string[];
+  scores: string[];
+  role: "Creator" | "Viewer";
+};
+
+export type AppActiveMatchDraftDetail = AppActiveMatchDraft & {
+  canEdit: boolean;
+  initialMatch: {
+    format: MatchFormat;
+    teamAUserIds: string[];
+    teamBUserIds: string[];
+    games: MatchGameInput[];
+  };
 };
 
 export type AppPlayer = {
@@ -54,6 +76,17 @@ type RatingRow = {
 
 type MatchGroupRow = {
   group_id: string;
+};
+
+type ActiveMatchDraftRow = {
+  id: string;
+  group_id: string;
+  created_by_user_id: string;
+  format: MatchFormat;
+  team_a_user_ids: string[];
+  team_b_user_ids: string[];
+  games: unknown;
+  expires_at: string;
 };
 
 export async function getCurrentProfile(): Promise<AppProfile> {
@@ -164,6 +197,152 @@ export async function getMatchGroupId(matchId: string): Promise<string | null> {
   }
 
   return (data as MatchGroupRow | null)?.group_id ?? null;
+}
+
+
+export async function listCurrentUserActiveMatchDrafts(): Promise<AppActiveMatchDraft[]> {
+  const userId = await requireUserId();
+  const service = createSupabaseServiceClient();
+  const drafts = await listVisibleDraftRows(userId, undefined, service);
+  return hydrateDraftSummaries(drafts, userId, service);
+}
+
+export async function listGroupActiveMatchDrafts(groupId: string): Promise<AppActiveMatchDraft[]> {
+  const userId = await requireUserId();
+  await ensureCurrentUserCanReadGroup(groupId);
+  const service = createSupabaseServiceClient();
+  const drafts = await listVisibleDraftRows(userId, groupId, service);
+  return hydrateDraftSummaries(drafts, userId, service);
+}
+
+export async function getActiveMatchDraft(draftId: string): Promise<AppActiveMatchDraftDetail | null> {
+  const userId = await requireUserId();
+  const service = createSupabaseServiceClient();
+  await deleteExpiredDrafts(service);
+  const { data, error } = await service
+    .from("active_match_drafts")
+    .select("id, group_id, created_by_user_id, format, team_a_user_ids, team_b_user_ids, games, expires_at")
+    .eq("id", draftId)
+    .is("submitted_match_id", null)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const draft = data as ActiveMatchDraftRow | null;
+  if (!draft || !isVisibleDraft(draft, userId)) {
+    return null;
+  }
+
+  const [summary] = await hydrateDraftSummaries([draft], userId, service);
+  if (!summary) {
+    return null;
+  }
+
+  return {
+    ...summary,
+    canEdit: draft.created_by_user_id === userId,
+    initialMatch: {
+      format: draft.format,
+      teamAUserIds: draft.team_a_user_ids,
+      teamBUserIds: draft.team_b_user_ids,
+      games: parseDraftGames(draft.games),
+    },
+  };
+}
+
+async function listVisibleDraftRows(userId: string, groupId: string | undefined, service: ReturnType<typeof createSupabaseServiceClient>) {
+  await deleteExpiredDrafts(service);
+  let query = service
+    .from("active_match_drafts")
+    .select("id, group_id, created_by_user_id, format, team_a_user_ids, team_b_user_ids, games, expires_at")
+    .is("submitted_match_id", null)
+    .gt("expires_at", new Date().toISOString())
+    .or(`created_by_user_id.eq.${userId},team_a_user_ids.cs.{${userId}},team_b_user_ids.cs.{${userId}}`);
+
+  if (groupId) {
+    query = query.eq("group_id", groupId);
+  }
+
+  const { data, error } = await query.order("updated_at", { ascending: false });
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as ActiveMatchDraftRow[];
+}
+
+async function deleteExpiredDrafts(service: ReturnType<typeof createSupabaseServiceClient>) {
+  const { error } = await service
+    .from("active_match_drafts")
+    .delete()
+    .lt("expires_at", new Date().toISOString())
+    .is("submitted_match_id", null);
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function hydrateDraftSummaries(
+  drafts: ActiveMatchDraftRow[],
+  userId: string,
+  service: ReturnType<typeof createSupabaseServiceClient>,
+): Promise<AppActiveMatchDraft[]> {
+  if (!drafts.length) {
+    return [];
+  }
+
+  const groupIds = [...new Set(drafts.map((draft) => draft.group_id))];
+  const playerIds = [...new Set(drafts.flatMap((draft) => [...draft.team_a_user_ids, ...draft.team_b_user_ids]))];
+  const [{ data: groups, error: groupsError }, { data: profiles, error: profilesError }] = await Promise.all([
+    service.from("groups").select("id, name").in("id", groupIds),
+    service.from("profiles").select("id, display_name").in("id", playerIds),
+  ]);
+
+  if (groupsError) {
+    throw groupsError;
+  }
+
+  if (profilesError) {
+    throw profilesError;
+  }
+
+  const groupsById = new Map((groups ?? []).map((group: { id: string; name: string }) => [group.id, group.name]));
+  const profilesById = new Map((profiles ?? []).map((profile: ProfileRow) => [profile.id, profile.display_name]));
+
+  return drafts.map((draft) => ({
+    id: draft.id,
+    groupId: draft.group_id,
+    groupName: groupsById.get(draft.group_id) ?? "Group",
+    format: draft.format,
+    teamA: draft.team_a_user_ids.map((id: string) => profilesById.get(id) ?? "Unknown player"),
+    teamB: draft.team_b_user_ids.map((id: string) => profilesById.get(id) ?? "Unknown player"),
+    scores: parseDraftGames(draft.games).map((game) => `${game.teamAScore}-${game.teamBScore}`),
+    role: draft.created_by_user_id === userId ? "Creator" : "Viewer",
+  }));
+}
+
+function isVisibleDraft(draft: ActiveMatchDraftRow, userId: string) {
+  return (
+    draft.created_by_user_id === userId ||
+    draft.team_a_user_ids.includes(userId) ||
+    draft.team_b_user_ids.includes(userId)
+  );
+}
+
+function parseDraftGames(value: unknown): MatchGameInput[] {
+  if (!Array.isArray(value)) {
+    return [{ teamAScore: 0, teamBScore: 0 }];
+  }
+
+  return value
+    .map((game) => ({
+      teamAScore: Number((game as { teamAScore?: unknown }).teamAScore ?? 0),
+      teamBScore: Number((game as { teamBScore?: unknown }).teamBScore ?? 0),
+    }))
+    .filter((game) => Number.isFinite(game.teamAScore) && Number.isFinite(game.teamBScore));
 }
 
 export async function listGroupPlayers(groupId: string): Promise<AppPlayer[]> {

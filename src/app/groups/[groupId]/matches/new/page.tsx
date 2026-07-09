@@ -1,9 +1,10 @@
 export const dynamic = "force-dynamic";
 
-import { createGuestPlayers } from "@/app/actions";
+import Link from "next/link";
+import { createGuestPlayers, saveActiveMatchDraft, submitMatch } from "@/app/actions";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { MatchRecorder, type InitialMatchRecording } from "@/components/match/match-recorder";
-import { getGroup, listGroupPlayers } from "@/lib/app-data";
+import { getActiveMatchDraft, getGroup, listGroupPlayers } from "@/lib/app-data";
 import { type MatchFormat } from "@/lib/matches/validation";
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
@@ -16,18 +17,38 @@ export default async function NewMatchPage({
   searchParams: SearchParams;
 }) {
   const { groupId } = await params;
-  const [group, players] = await Promise.all([getGroup(groupId), listGroupPlayers(groupId)]);
-  const initialMatch = parseInitialMatch(await searchParams, players.map((player) => player.id));
+  const resolvedSearchParams = await searchParams;
+  const draftId = firstValue(resolvedSearchParams.draftId);
+  const [group, players, activeDraft] = await Promise.all([
+    getGroup(groupId),
+    listGroupPlayers(groupId),
+    draftId ? getActiveMatchDraft(draftId) : Promise.resolve(null),
+  ]);
+  const initialMatch = activeDraft?.initialMatch ?? parseInitialMatch(resolvedSearchParams, players.map((player) => player.id));
 
   return (
     <MobileShell active="Record" recordHref={`/groups/${groupId}/matches/new`}>
-      <MatchRecorder
-        groupId={groupId}
-        groupName={group?.name ?? "Group"}
-        players={players}
-        initialMatch={initialMatch}
-        createGuestPlayers={createGuestPlayers}
-      />
+      {draftId && !activeDraft ? (
+        <section className="flex min-h-full flex-col gap-4">
+          <h1 className="text-[22px] font-bold leading-7 text-ink">Active match expired</h1>
+          <p className="rounded-lg border border-stroke bg-surface p-4 text-sm text-muted">This active match expired. Start a new match.</p>
+          <Link className="inline-flex min-h-11 items-center justify-center rounded-lg bg-action px-4 text-sm font-semibold text-white" href={`/groups/${groupId}/matches/new`}>
+            Start a new match
+          </Link>
+        </section>
+      ) : (
+        <MatchRecorder
+          groupId={groupId}
+          groupName={group?.name ?? "Group"}
+          players={players}
+          initialMatch={initialMatch}
+          draftId={activeDraft?.id}
+          canEdit={activeDraft?.canEdit ?? true}
+          createGuestPlayers={createGuestPlayers}
+          saveActiveMatchDraft={saveActiveMatchDraft}
+          submitMatchAction={submitMatch}
+        />
+      )}
     </MobileShell>
   );
 }

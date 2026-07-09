@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -10,7 +11,7 @@ import {
   getDemoPostLoginPath,
   isDemoLoginEnabled,
 } from "@/lib/demo-auth";
-import { createInviteToken, hashInviteToken } from "@/lib/invites/tokens";
+import { hashInviteToken } from "@/lib/invites/tokens";
 import {
   type HistoricalMatch,
   rebuildGroupRatingsFromMatches,
@@ -22,6 +23,7 @@ import {
   type MatchSubmissionInput,
   type ValidatedMatchSubmission,
 } from "@/lib/matches/validation";
+import { draftExpiresAt, validateActiveMatchDraft } from "@/lib/matches/drafts";
 import {
   createSupabaseServerClient,
   createSupabaseServiceClient,
@@ -41,6 +43,8 @@ const guestPlayersSchema = z.object({
   groupId: z.string().min(1),
   names: z.array(z.string().trim().min(1).max(80)).min(1).max(4),
 });
+
+const inviteTokenSchema = z.string().uuid();
 
 const onboardingProfileSchema = z.object({
   firstName: z.string().trim().min(1).max(80),
@@ -65,6 +69,20 @@ const emailOtpSchema = z.object({
     .refine((value) => /^\d{6}$/.test(value), {
       message: "Enter the 6-digit code from your email.",
     }),
+});
+
+const activeDraftSchema = z.object({
+  draftId: z.string().uuid().optional(),
+  groupId: z.string().uuid(),
+  format: z.enum(["singles", "doubles"]),
+  teamAUserIds: z.array(z.string().uuid()),
+  teamBUserIds: z.array(z.string().uuid()),
+  games: z.array(
+    z.object({
+      teamAScore: z.number().int().min(0).max(99),
+      teamBScore: z.number().int().min(0).max(99),
+    }),
+  ),
 });
 
 const reviseSchema = z
@@ -172,18 +190,20 @@ type SupabaseService = ReturnType<typeof createSupabaseServiceClient>;
 type InviteRow = {
   id: string;
   group_id: string;
-  expires_at: string | null;
-  max_uses: number | null;
   use_count: number;
   revoked_at: string | null;
 };
 
 async function getInviteByToken(token: string, service: SupabaseService): Promise<InviteRow> {
-  const tokenHash = hashInviteToken(token);
+  const parsedToken = inviteTokenSchema.safeParse(token);
+  if (!parsedToken.success) {
+    throw new Error("This invite link is no longer valid.");
+  }
+
   const { data: invite, error } = await service
     .from("group_invites")
-    .select("id, group_id, expires_at, max_uses, use_count, revoked_at")
-    .eq("token_hash", tokenHash)
+    .select("id, group_id, use_count, revoked_at")
+    .eq("id", parsedToken.data)
     .maybeSingle();
 
   if (error) {
@@ -192,14 +212,6 @@ async function getInviteByToken(token: string, service: SupabaseService): Promis
 
   if (!invite || invite.revoked_at) {
     throw new Error("This invite link is no longer valid.");
-  }
-
-  if (invite.expires_at && Date.parse(invite.expires_at) < Date.now()) {
-    throw new Error("This invite link has expired.");
-  }
-
-  if (invite.max_uses && invite.use_count >= invite.max_uses) {
-    throw new Error("This invite link has already been used.");
   }
 
   return invite as InviteRow;
@@ -655,25 +667,57 @@ export async function createGroup(input: {
   }
 }
 
-export async function createInvite(groupId: string): Promise<ActionResult<{ token: string; url: string }>> {
+export async function getOrCreateInvite(groupId: string): Promise<ActionResult<{ token: string; url: string }>> {
   try {
     const userId = await requireUserId();
-    await ensureActiveMember(groupId, userId);
-
-    const token = createInviteToken();
     const service = createSupabaseServiceClient();
-    await service.from("group_invites").insert({
-      group_id: groupId,
-      token_hash: hashInviteToken(token),
-      created_by_user_id: userId,
-      expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString(),
-    });
+    await ensureActiveMember(groupId, userId, service);
 
-    const origin = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
-    return { ok: true, data: { token, url: `${origin}/join/${token}` } };
+    const { data: existingInvite, error: existingError } = await service
+      .from("group_invites")
+      .select("id")
+      .eq("group_id", groupId)
+      .is("revoked_at", null)
+      .maybeSingle();
+
+    if (existingError) {
+      throw existingError;
+    }
+
+    const origin = getSiteOrigin();
+    if (existingInvite?.id) {
+      return { ok: true, data: { token: existingInvite.id, url: `${origin}/join/${existingInvite.id}` } };
+    }
+
+    const inviteId = randomUUID();
+    const { data: invite, error: insertError } = await service
+      .from("group_invites")
+      .insert({
+        id: inviteId,
+        group_id: groupId,
+        token_hash: hashInviteToken(inviteId),
+        created_by_user_id: userId,
+      })
+      .select("id")
+      .single();
+
+    if (insertError) {
+      throw insertError;
+    }
+
+    if (!invite) {
+      throw new Error("Could not load invite.");
+    }
+
+    revalidatePath(`/groups/${groupId}/invite`);
+    return { ok: true, data: { token: invite.id, url: `${origin}/join/${invite.id}` } };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Could not create invite." };
+    return { ok: false, message: error instanceof Error ? error.message : "Could not load invite." };
   }
+}
+
+export async function createInvite(groupId: string): Promise<ActionResult<{ token: string; url: string }>> {
+  return getOrCreateInvite(groupId);
 }
 
 export async function joinGroupByInvite(token: string): Promise<ActionResult<{ groupId: string; claimableProfileCount: number }>> {
@@ -682,7 +726,7 @@ export async function joinGroupByInvite(token: string): Promise<ActionResult<{ g
     const service = createSupabaseServiceClient();
     const invite = await getInviteByToken(token, service);
 
-    await service.from("group_memberships").upsert(
+    const membershipResult = await service.from("group_memberships").upsert(
       {
         group_id: invite.group_id,
         user_id: userId,
@@ -692,15 +736,30 @@ export async function joinGroupByInvite(token: string): Promise<ActionResult<{ g
       },
       { onConflict: "group_id,user_id" },
     );
-    await service.from("group_invite_redemptions").insert({
+
+    if (membershipResult.error) {
+      throw membershipResult.error;
+    }
+
+    const redemptionResult = await service.from("group_invite_redemptions").insert({
       invite_id: invite.id,
       user_id: userId,
     });
-    await service
+
+    if (redemptionResult.error) {
+      throw redemptionResult.error;
+    }
+
+    const useCountResult = await service
       .from("group_invites")
       .update({ use_count: invite.use_count + 1 })
       .eq("id", invite.id);
-    await service.from("group_rating_states").upsert(
+
+    if (useCountResult.error) {
+      throw useCountResult.error;
+    }
+
+    const ratingResult = await service.from("group_rating_states").upsert(
       {
         group_id: invite.group_id,
         user_id: userId,
@@ -711,6 +770,10 @@ export async function joinGroupByInvite(token: string): Promise<ActionResult<{ g
       },
       { onConflict: "group_id,user_id" },
     );
+
+    if (ratingResult.error) {
+      throw ratingResult.error;
+    }
 
     const claimableProfileCount = (await getClaimableGuestProfiles(invite.group_id, service)).length;
     revalidatePath(`/groups/${invite.group_id}`);
@@ -738,18 +801,114 @@ export async function leaveGroup(groupId: string): Promise<ActionResult<{ groupI
   }
 }
 
-export async function submitMatch(input: MatchSubmissionInput): Promise<ActionResult<{ matchId: string }>> {
+
+type ActiveDraftInput = MatchSubmissionInput & { draftId?: string };
+type EditableDraftRow = {
+  id: string;
+  group_id: string;
+  created_by_user_id: string;
+  expires_at: string;
+  submitted_match_id: string | null;
+};
+
+export async function saveActiveMatchDraft(input: ActiveDraftInput): Promise<ActionResult<{ draftId: string }>> {
   try {
     const userId = await requireUserId();
-    await ensureActiveMember(input.groupId, userId);
+    const parsed = activeDraftSchema.parse(input);
+    const service = createSupabaseServiceClient();
+    await ensureActiveMember(parsed.groupId, userId, service);
+    const activeMemberIds = await getActiveMemberIds(parsed.groupId);
+    const draft = validateActiveMatchDraft(parsed, { activeMemberIds });
+    const expires_at = draftExpiresAt();
+    const values = {
+      group_id: draft.groupId,
+      created_by_user_id: userId,
+      format: draft.format,
+      team_a_user_ids: draft.teamAUserIds,
+      team_b_user_ids: draft.teamBUserIds,
+      games: draft.games,
+      expires_at,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (parsed.draftId) {
+      const existing = await getEditableDraft(parsed.draftId, userId, service);
+      if (existing.group_id !== parsed.groupId) {
+        throw new Error("This active match belongs to another group.");
+      }
+
+      const { data, error } = await service
+        .from("active_match_drafts")
+        .update(values)
+        .eq("id", parsed.draftId)
+        .select("id")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      revalidateDraftPaths(parsed.groupId);
+      return { ok: true, data: { draftId: data.id } };
+    }
+
+    const { data, error } = await service.from("active_match_drafts").insert(values).select("id").single();
+    if (error) {
+      throw error;
+    }
+
+    revalidateDraftPaths(parsed.groupId);
+    return { ok: true, data: { draftId: data.id } };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Could not save active match." };
+  }
+}
+
+async function getEditableDraft(draftId: string, userId: string, service: SupabaseService): Promise<EditableDraftRow> {
+  const { data, error } = await service
+    .from("active_match_drafts")
+    .select("id, group_id, created_by_user_id, expires_at, submitted_match_id")
+    .eq("id", draftId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const draft = data as EditableDraftRow | null;
+  if (!draft || draft.submitted_match_id || Date.parse(draft.expires_at) <= Date.now()) {
+    await service.from("active_match_drafts").delete().eq("id", draftId);
+    throw new Error("This active match expired. Start a new match.");
+  }
+
+  if (draft.created_by_user_id !== userId) {
+    throw new Error("Only the match creator can edit this active match.");
+  }
+
+  return draft;
+}
+
+function revalidateDraftPaths(groupId: string) {
+  revalidatePath("/home");
+  revalidatePath(`/groups/${groupId}`);
+  revalidatePath(`/groups/${groupId}/matches/new`);
+}
+
+export async function submitMatch(input: ActiveDraftInput): Promise<ActionResult<{ matchId: string }>> {
+  try {
+    const userId = await requireUserId();
+    const service = createSupabaseServiceClient();
+    await ensureActiveMember(input.groupId, userId, service);
     const activeMemberIds = await getActiveMemberIds(input.groupId);
     const validated = validateMatchSubmission(input, { activeMemberIds });
+    const draftId = input.draftId;
 
-    if (![...validated.teamAUserIds, ...validated.teamBUserIds].includes(userId)) {
+    if (draftId) {
+      await getEditableDraft(draftId, userId, service);
+    } else if (![...validated.teamAUserIds, ...validated.teamBUserIds].includes(userId)) {
       throw new Error("The submitting user must be one of the match players.");
     }
 
-    const service = createSupabaseServiceClient();
     const { data: match, error: matchError } = await service
       .from("matches")
       .insert({
@@ -784,9 +943,12 @@ export async function submitMatch(input: MatchSubmissionInput): Promise<ActionRe
 
     await persistRevisionDetails(revision.id, validated);
     await service.from("matches").update({ active_revision_id: revision.id }).eq("id", match.id);
+    if (draftId) {
+      await service.from("active_match_drafts").update({ submitted_match_id: match.id }).eq("id", draftId);
+    }
     await rebuildGroupRatings(validated.groupId);
 
-    revalidatePath(`/groups/${validated.groupId}`);
+    revalidateDraftPaths(validated.groupId);
     return { ok: true, data: { matchId: match.id } };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Could not submit match." };

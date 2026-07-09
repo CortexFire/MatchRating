@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, test, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { demoPlayers } from "../../lib/demo-data";
 import { MobileShell } from "../app/mobile-shell";
 import { MatchRecorder } from "./match-recorder";
@@ -20,6 +20,9 @@ function openPlayerSelect(slotLabel = "Team B empty player slot 2") {
 }
 
 describe("MatchRecorder", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
   test("shows the provided group name while recording and selecting players", () => {
     render(
       <MatchRecorder
@@ -391,5 +394,60 @@ describe("MatchRecorder", () => {
 
     expect((screen.getByLabelText("Set 1 Team A score") as HTMLInputElement).value).toBe("21");
     expect((screen.getByLabelText("Set 1 Team B score") as HTMLInputElement).value).toBe("18");
+  });
+  test("autosaves a complete draft after scores change", async () => {
+    vi.useFakeTimers();
+    const saveActiveMatchDraft = vi.fn(async () => ({
+      ok: true as const,
+      data: { draftId: "draft-1" },
+    }));
+
+    render(
+      <MatchRecorder
+        groupId="11111111-1111-4111-8111-111111111111"
+        players={demoPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 18 }],
+        }}
+        saveActiveMatchDraft={saveActiveMatchDraft}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "20" } });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(450);
+    });
+
+    expect(saveActiveMatchDraft).toHaveBeenLastCalledWith({
+      groupId: "11111111-1111-4111-8111-111111111111",
+      draftId: undefined,
+      format: "singles",
+      teamAUserIds: ["alice"],
+      teamBUserIds: ["bea"],
+      games: [{ teamAScore: 21, teamBScore: 20 }],
+    });
+  });
+
+  test("renders selected-player drafts as read-only", () => {
+    render(
+      <MatchRecorder
+        canEdit={false}
+        players={demoPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 12, teamBScore: 12 }],
+        }}
+      />,
+    );
+
+    expect((screen.getByLabelText("Set 1 Team A score") as HTMLInputElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
+    expect(screen.queryByLabelText("Remove Alice from Team A")).toBeNull();
   });
 });
