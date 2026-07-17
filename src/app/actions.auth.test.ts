@@ -4,7 +4,6 @@ import * as actions from "@/app/actions";
 const supabaseMocks = vi.hoisted(() => {
   const auth = {
     signInWithOtp: vi.fn(),
-    signInWithOAuth: vi.fn(),
     verifyOtp: vi.fn(),
     admin: {
       generateLink: vi.fn(),
@@ -35,10 +34,6 @@ describe("auth actions", () => {
     delete process.env.DEMO_LOGIN_ENABLED;
     delete process.env.DEMO_EMAIL_DOMAIN;
     supabaseMocks.auth.signInWithOtp.mockResolvedValue({ error: null });
-    supabaseMocks.auth.signInWithOAuth.mockResolvedValue({
-      data: { url: "https://supabase.example.com/oauth" },
-      error: null,
-    });
     supabaseMocks.auth.verifyOtp.mockResolvedValue({ error: null });
     supabaseMocks.auth.admin.generateLink.mockImplementation(({ email }: { email: string }) =>
       Promise.resolve({
@@ -55,20 +50,6 @@ describe("auth actions", () => {
     supabaseMocks.table.upsert.mockResolvedValue({ error: null });
   });
 
-  test("signInWithGoogle starts Google OAuth with the auth callback redirect", async () => {
-    const result = await actions.signInWithGoogle();
-
-    expect(result).toEqual({
-      ok: true,
-      data: { url: "https://supabase.example.com/oauth" },
-    });
-    expect(supabaseMocks.auth.signInWithOAuth).toHaveBeenCalledWith({
-      provider: "google",
-      options: {
-        redirectTo: "https://matches.example.com/auth/confirm?next=%2Fonboarding",
-      },
-    });
-  });
 
   test("signInWithOtp sends the email code with the auth callback redirect", async () => {
     const result = await actions.signInWithOtp("player@example.com");
@@ -115,20 +96,13 @@ describe("auth actions", () => {
       },
     });
   });
-  test("auth actions preserve a safe onboarding invite redirect", async () => {
+  test("email auth preserves a safe onboarding invite redirect", async () => {
     await actions.signInWithOtp("player@example.com", "/onboarding?invite=invite-token");
-    await actions.signInWithGoogle("/onboarding?invite=invite-token");
 
     expect(supabaseMocks.auth.signInWithOtp).toHaveBeenCalledWith({
       email: "player@example.com",
       options: {
         emailRedirectTo: "https://matches.example.com/auth/confirm?next=%2Fonboarding%3Finvite%3Dinvite-token",
-      },
-    });
-    expect(supabaseMocks.auth.signInWithOAuth).toHaveBeenCalledWith({
-      provider: "google",
-      options: {
-        redirectTo: "https://matches.example.com/auth/confirm?next=%2Fonboarding%3Finvite%3Dinvite-token",
       },
     });
   });
@@ -173,16 +147,15 @@ describe("auth actions", () => {
   });
 
   test("auth action errors are returned as user-safe messages", async () => {
-    supabaseMocks.auth.signInWithOAuth.mockResolvedValue({
-      data: { url: null },
-      error: new Error("Provider is not enabled"),
+    supabaseMocks.auth.signInWithOtp.mockResolvedValue({
+      error: new Error("Email provider is unavailable"),
     });
 
-    const result = await actions.signInWithGoogle();
+    const result = await actions.signInWithOtp("player@example.com");
 
     expect(result).toEqual({
       ok: false,
-      message: "Provider is not enabled",
+      message: "Email provider is unavailable",
     });
   });
 });

@@ -350,29 +350,6 @@ export async function signInWithOtp(email: string, nextPath = DEFAULT_AUTH_REDIR
   }
 }
 
-export async function signInWithGoogle(nextPath = DEFAULT_AUTH_REDIRECT_PATH): Promise<ActionResult<{ url: string }>> {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: getAuthCallbackUrl(nextPath),
-      },
-    });
-
-    if (error) {
-      throw error;
-    }
-
-    if (!data.url) {
-      throw new Error("Could not start Google sign-in.");
-    }
-
-    return { ok: true, data: { url: data.url } };
-  } catch (error) {
-    return { ok: false, message: getActionErrorMessage(error, "Could not start Google sign-in.") };
-  }
-}
 
 export async function verifyEmailOtp(input: {
   email: string;
@@ -709,7 +686,6 @@ export async function getOrCreateInvite(groupId: string): Promise<ActionResult<{
       throw new Error("Could not load invite.");
     }
 
-    revalidatePath(`/groups/${groupId}/invite`);
     return { ok: true, data: { token: invite.id, url: `${origin}/join/${invite.id}` } };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Could not load invite." };
