@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(33);
+select plan(38);
 
 insert into public.profiles (id, display_name, first_name, last_name)
 values
@@ -36,7 +36,22 @@ select ok(
     'authenticated',
     'public.command_submit_match(uuid,uuid,uuid,public.match_format,uuid[],uuid[],jsonb)',
     'EXECUTE'
-  ),
+  )
+    and has_function_privilege(
+      'authenticated',
+      'public.command_revise_match(uuid,uuid,uuid,public.match_format,uuid[],uuid[],jsonb)',
+      'EXECUTE'
+    )
+    and has_function_privilege(
+      'authenticated',
+      'public.command_review_match(uuid,uuid,public.confirmation_action)',
+      'EXECUTE'
+    )
+    and has_function_privilege(
+      'authenticated',
+      'public.command_dispute_and_revise_match(uuid,uuid,uuid,public.match_format,uuid[],uuid[],jsonb)',
+      'EXECUTE'
+    ),
   'authenticated callers can execute match command RPCs'
 );
 select ok(
@@ -182,18 +197,36 @@ select set_config(
   '{"sub":"22222222-2222-4222-8222-222222222222","role":"authenticated"}',
   true
 );
-insert into match_command_test_state (name, value)
-select 'revision', public.command_revise_match(
-  '04040404-0404-4404-8404-040404040404',
-  (select (value->>'matchId')::uuid from match_command_test_state where name = 'first-submit'),
-  (select (value->>'revisionId')::uuid from match_command_test_state where name = 'first-submit'),
-  'Corrected score',
-  'singles',
-  array['22222222-2222-4222-8222-222222222222']::uuid[],
-  array['33333333-3333-4333-8333-333333333333']::uuid[],
-  '[{"teamAScore":21,"teamBScore":19}]'::jsonb
+select throws_ok(
+  format(
+    'select public.command_revise_match(%L, %L, %L, %L, %L::uuid[], %L::uuid[], %L::jsonb)',
+    '14141414-1414-4414-8414-141414141414',
+    (select value->>'matchId' from match_command_test_state where name = 'first-submit'),
+    (select value->>'revisionId' from match_command_test_state where name = 'first-submit'),
+    'singles',
+    '{22222222-2222-4222-8222-222222222222}',
+    '{33333333-3333-4333-8333-333333333333}',
+    '[{"teamAScore":21,"teamBScore":19}]'
+  ),
+  'MR409',
+  'Match is not disputed',
+  'a pending match cannot be revised without a dispute'
 );
-select is((select count(*) from public.match_revisions), 2::bigint, 'an ordinary member can atomically revise a match');
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"33333333-3333-4333-8333-333333333333","role":"authenticated"}',
+  true
+);
+select lives_ok(
+  format(
+    'select public.command_review_match(%L, %L, %L)',
+    '15151515-1515-4515-8515-151515151515',
+    (select value->>'revisionId' from match_command_test_state where name = 'first-submit'),
+    'disputed'
+  ),
+  'an opposing participant can dispute a pending revision'
+);
 
 select set_config(
   'request.jwt.claims',
@@ -202,21 +235,37 @@ select set_config(
 );
 select throws_ok(
   format(
-    'select public.command_revise_match(%L, %L, %L, %L, %L, %L::uuid[], %L::uuid[], %L::jsonb)',
+    'select public.command_revise_match(%L, %L, %L, %L, %L::uuid[], %L::uuid[], %L::jsonb)',
     '13131313-1313-4313-8313-131313131313',
     (select value->>'matchId' from match_command_test_state where name = 'first-submit'),
-    (select value->>'revisionId' from match_command_test_state where name = 'revision'),
-    'Neutral correction',
+    (select value->>'revisionId' from match_command_test_state where name = 'first-submit'),
     'singles',
-    '{22222222-2222-4222-8222-222222222222}',
+    '{11111111-1111-4111-8111-111111111111}',
     '{33333333-3333-4333-8333-333333333333}',
     '[{"teamAScore":21,"teamBScore":17}]'
   ),
-  'MRVAL',
-  'Submitter must play in the match',
-  'a neutral reviser cannot create an unreviewable revision'
+  'MR403',
+  'Only current match participants can revise',
+  'a non-participant cannot add themselves to a disputed revision'
 );
-select is((select count(*) from public.match_revisions), 2::bigint, 'neutral revision rejection leaves history unchanged');
+select is((select count(*) from public.match_revisions), 1::bigint, 'unauthorized revision rejection leaves history unchanged');
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"22222222-2222-4222-8222-222222222222","role":"authenticated"}',
+  true
+);
+insert into match_command_test_state (name, value)
+select 'revision', public.command_revise_match(
+  '04040404-0404-4404-8404-040404040404',
+  (select (value->>'matchId')::uuid from match_command_test_state where name = 'first-submit'),
+  (select (value->>'revisionId')::uuid from match_command_test_state where name = 'first-submit'),
+  'singles',
+  array['22222222-2222-4222-8222-222222222222']::uuid[],
+  array['33333333-3333-4333-8333-333333333333']::uuid[],
+  '[{"teamAScore":21,"teamBScore":19}]'::jsonb
+);
+select is((select count(*) from public.match_revisions), 2::bigint, 'a current participant can revise a disputed match');
 
 select set_config(
   'request.jwt.claims',
@@ -225,11 +274,10 @@ select set_config(
 );
 select throws_ok(
   format(
-    'select public.command_revise_match(%L, %L, %L, %L, %L, %L::uuid[], %L::uuid[], %L::jsonb)',
+    'select public.command_revise_match(%L, %L, %L, %L, %L::uuid[], %L::uuid[], %L::jsonb)',
     '05050505-0505-4505-8505-050505050505',
     (select value->>'matchId' from match_command_test_state where name = 'first-submit'),
     (select value->>'revisionId' from match_command_test_state where name = 'first-submit'),
-    'Stale correction',
     'singles',
     '{22222222-2222-4222-8222-222222222222}',
     '{33333333-3333-4333-8333-333333333333}',
@@ -248,7 +296,7 @@ select set_config(
 );
 select throws_ok(
   format(
-    'select public.command_review_match(%L, %L, %L, null)',
+    'select public.command_review_match(%L, %L, %L)',
     '06060606-0606-4606-8606-060606060606',
     (select value->>'revisionId' from match_command_test_state where name = 'first-submit'),
     'confirmed'
@@ -258,19 +306,48 @@ select throws_ok(
   'an obsolete revision cannot be confirmed'
 );
 
-select lives_ok(
-  format(
-    'select public.command_review_match(%L, %L, %L, null)',
-    '07070707-0707-4707-8707-070707070707',
-    (select value->>'revisionId' from match_command_test_state where name = 'revision'),
-    'confirmed'
-  ),
-  'an opposing participant can confirm the active pending revision'
+insert into match_command_test_state (name, value)
+select 'atomic-revision', public.command_dispute_and_revise_match(
+  '11111111-1111-4111-8111-111111111112',
+  (select (value->>'matchId')::uuid from match_command_test_state where name = 'first-submit'),
+  (select (value->>'revisionId')::uuid from match_command_test_state where name = 'revision'),
+  'singles',
+  array['22222222-2222-4222-8222-222222222222']::uuid[],
+  array['33333333-3333-4333-8333-333333333333']::uuid[],
+  '[{"teamAScore":21,"teamBScore":16}]'::jsonb
 );
 select is(
   (select status::text from public.matches where id = (select (value->>'matchId')::uuid from match_command_test_state where name = 'first-submit')),
-  'confirmed',
-  'confirmation and match status update commit together'
+  'pending_confirmation',
+  'atomic correction leaves the replacement revision pending confirmation'
+);
+select is(
+  (select action::text from public.match_confirmations where revision_id = (select (value->>'revisionId')::uuid from match_command_test_state where name = 'revision')),
+  'disputed',
+  'atomic correction records the review decision on the replaced revision'
+);
+select is(
+  (select active_revision_id from public.matches where id = (select (value->>'matchId')::uuid from match_command_test_state where name = 'first-submit')),
+  (select (value->>'revisionId')::uuid from match_command_test_state where name = 'atomic-revision'),
+  'atomic correction installs the returned revision as active'
+);
+select is(
+  public.command_dispute_and_revise_match(
+    '11111111-1111-4111-8111-111111111112',
+    (select (value->>'matchId')::uuid from match_command_test_state where name = 'first-submit'),
+    (select (value->>'revisionId')::uuid from match_command_test_state where name = 'revision'),
+    'singles',
+    array['22222222-2222-4222-8222-222222222222']::uuid[],
+    array['33333333-3333-4333-8333-333333333333']::uuid[],
+    '[{"teamAScore":21,"teamBScore":16}]'::jsonb
+  ),
+  (select value from match_command_test_state where name = 'atomic-revision'),
+  'an identical atomic correction retry replays the original result'
+);
+select is(
+  (select count(*) from public.match_revisions),
+  3::bigint,
+  'an identical atomic correction retry does not duplicate the revision'
 );
 
 select set_config(
@@ -278,42 +355,34 @@ select set_config(
   '{"sub":"22222222-2222-4222-8222-222222222222","role":"authenticated"}',
   true
 );
-insert into match_command_test_state (name, value)
-select 'disputed-revision', public.command_revise_match(
-  '10101010-1010-4010-8010-101010101010',
-  (select (value->>'matchId')::uuid from match_command_test_state where name = 'first-submit'),
-  (select (value->>'revisionId')::uuid from match_command_test_state where name = 'revision'),
-  'Second correction',
-  'singles',
-  array['22222222-2222-4222-8222-222222222222']::uuid[],
-  array['33333333-3333-4333-8333-333333333333']::uuid[],
-  '[{"teamAScore":21,"teamBScore":17}]'::jsonb
-);
-
-select set_config(
-  'request.jwt.claims',
-  '{"sub":"33333333-3333-4333-8333-333333333333","role":"authenticated"}',
-  true
-);
 select lives_ok(
   format(
-    'select public.command_review_match(%L, %L, %L, %L)',
-    '11111111-1111-4111-8111-111111111112',
-    (select value->>'revisionId' from match_command_test_state where name = 'disputed-revision'),
-    'disputed',
-    'Score does not match the recorded game'
+    'select public.command_review_match(%L, %L, %L)',
+    '07070707-0707-4707-8707-070707070707',
+    (select value->>'revisionId' from match_command_test_state where name = 'atomic-revision'),
+    'confirmed'
   ),
-  'an opposing participant can dispute the active pending revision'
+  'an opposing participant can confirm the corrected pending revision'
 );
 select is(
   (select status::text from public.matches where id = (select (value->>'matchId')::uuid from match_command_test_state where name = 'first-submit')),
-  'disputed',
-  'dispute and match status update commit together'
+  'confirmed',
+  'confirmation and match status update commit together'
 );
-select is(
-  (select note from public.match_confirmations where revision_id = (select (value->>'revisionId')::uuid from match_command_test_state where name = 'disputed-revision')),
-  'Score does not match the recorded game',
-  'the dispute note commits in the same review command'
+select throws_ok(
+  format(
+    'select public.command_revise_match(%L, %L, %L, %L, %L::uuid[], %L::uuid[], %L::jsonb)',
+    '16161616-1616-4616-8616-161616161616',
+    (select value->>'matchId' from match_command_test_state where name = 'first-submit'),
+    (select value->>'revisionId' from match_command_test_state where name = 'atomic-revision'),
+    'singles',
+    '{22222222-2222-4222-8222-222222222222}',
+    '{33333333-3333-4333-8333-333333333333}',
+    '[{"teamAScore":21,"teamBScore":15}]'
+  ),
+  'MR409',
+  'Match is not disputed',
+  'a confirmed match cannot be revised'
 );
 
 update public.groups
@@ -322,8 +391,8 @@ where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 select is(
   (
     public.apply_rating_rebuild(
-      (select (value->>'ratingJobId')::uuid from match_command_test_state where name = 'disputed-revision'),
-      (select target_version from public.rating_rebuild_jobs where id = (select (value->>'ratingJobId')::uuid from match_command_test_state where name = 'disputed-revision')),
+      (select (value->>'ratingJobId')::uuid from match_command_test_state where name = 'atomic-revision'),
+      (select target_version from public.rating_rebuild_jobs where id = (select (value->>'ratingJobId')::uuid from match_command_test_state where name = 'atomic-revision')),
       '[]'::jsonb,
       '[]'::jsonb
     )->>'status'
@@ -339,7 +408,7 @@ select is(
 
 update public.rating_rebuild_jobs
 set status = 'failed', error = 'forced test failure'
-where id = (select (value->>'ratingJobId')::uuid from match_command_test_state where name = 'disputed-revision');
+where id = (select (value->>'ratingJobId')::uuid from match_command_test_state where name = 'atomic-revision');
 select set_config(
   'request.jwt.claims',
   '{"sub":"22222222-2222-4222-8222-222222222222","role":"authenticated"}',
@@ -349,7 +418,7 @@ select throws_ok(
   format(
     'select public.retry_rating_rebuild(%L, %L)',
     '08080808-0808-4808-8808-080808080808',
-    (select value->>'ratingJobId' from match_command_test_state where name = 'disputed-revision')
+    (select value->>'ratingJobId' from match_command_test_state where name = 'atomic-revision')
   ),
   'MRADM',
   'Admin role required',
@@ -365,7 +434,7 @@ select lives_ok(
   format(
     'select public.retry_rating_rebuild(%L, %L)',
     '09090909-0909-4909-8909-090909090909',
-    (select value->>'ratingJobId' from match_command_test_state where name = 'disputed-revision')
+    (select value->>'ratingJobId' from match_command_test_state where name = 'atomic-revision')
   ),
   'a group owner can retry failed ratings'
 );

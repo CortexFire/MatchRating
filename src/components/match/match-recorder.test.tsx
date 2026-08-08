@@ -432,6 +432,50 @@ describe("MatchRecorder", () => {
     });
   });
 
+  test("does not restart autosave when a server refresh replaces the action reference", async () => {
+    vi.useFakeTimers();
+    const firstSave = vi.fn().mockResolvedValue({
+      ok: true as const,
+      data: { draftId: "draft-1" },
+    });
+    const replacementSave = vi.fn().mockResolvedValue({
+      ok: true as const,
+      data: { draftId: "draft-1" },
+    });
+    const initialMatch = {
+      format: "singles" as const,
+      teamAUserIds: ["alice"],
+      teamBUserIds: ["bea"],
+      games: [{ teamAScore: 21, teamBScore: 18 }],
+    };
+
+    const { rerender } = render(
+      <MatchRecorder
+        players={demoPlayers}
+        initialMatch={initialMatch}
+        saveActiveMatchDraft={firstSave}
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(450);
+    });
+    expect(firstSave).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <MatchRecorder
+        players={demoPlayers}
+        initialMatch={initialMatch}
+        saveActiveMatchDraft={replacementSave}
+      />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(450);
+    });
+
+    expect(replacementSave).not.toHaveBeenCalled();
+  });
+
   test("preserves one client command ID across a submission retry", async () => {
     const submitMatchAction = vi.fn()
       .mockResolvedValueOnce({ ok: false as const, message: "Temporary network failure" })

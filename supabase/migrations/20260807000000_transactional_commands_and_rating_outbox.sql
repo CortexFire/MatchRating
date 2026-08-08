@@ -232,7 +232,7 @@ begin
   if p_draft_id is null and not (v_actor = any(p_team_a || p_team_b)) then raise exception using errcode = 'MRVAL', message = 'Submitter must play in the match'; end if;
   if p_draft_id is not null and not exists (select 1 from public.active_match_drafts d where d.id = p_draft_id and d.group_id = p_group_id and d.created_by_user_id = v_actor and d.submitted_match_id is null and d.expires_at > now() for update) then raise exception using errcode = 'MRVAL', message = 'Active match is unavailable'; end if;
   insert into public.matches (group_id, created_by_user_id, status) values (p_group_id, v_actor, 'pending_confirmation') returning id into v_match_id;
-  insert into public.match_revisions (match_id, version, submitted_by_user_id, format, reason, status) values (v_match_id, 1, v_actor, p_format, 'Initial submission', 'active') returning id into v_revision_id;
+  insert into public.match_revisions (match_id, version, submitted_by_user_id, format, status) values (v_match_id, 1, v_actor, p_format, 'active') returning id into v_revision_id;
   insert into public.match_participants (revision_id, user_id, team, slot) select v_revision_id, id, 'A'::public.team_code, ordinality::integer from unnest(p_team_a) with ordinality as t(id, ordinality) union all select v_revision_id, id, 'B'::public.team_code, ordinality::integer from unnest(p_team_b) with ordinality as t(id, ordinality);
   insert into public.match_games (revision_id, game_number, team_a_score, team_b_score, winner_team) select v_revision_id, ordinality, (value->>'teamAScore')::integer, (value->>'teamBScore')::integer, case when (value->>'teamAScore')::integer > (value->>'teamBScore')::integer then 'A'::public.team_code else 'B'::public.team_code end from jsonb_array_elements(p_games) with ordinality;
   update public.matches set active_revision_id = v_revision_id where id = v_match_id;
@@ -241,7 +241,7 @@ begin
   v_result := jsonb_build_object('matchId', v_match_id, 'revisionId', v_revision_id, 'ratingJobId', v_job_id, 'ratingStatus', 'queued'); perform public.complete_command(p_command_id, v_result); return v_result;
 end; $$;
 
-create or replace function public.command_revise_match(p_command_id uuid, p_match_id uuid, p_expected_revision_id uuid, p_reason text, p_format public.match_format, p_team_a uuid[], p_team_b uuid[], p_games jsonb)
+create or replace function public.command_revise_match(p_command_id uuid, p_match_id uuid, p_expected_revision_id uuid, p_format public.match_format, p_team_a uuid[], p_team_b uuid[], p_games jsonb)
 returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -252,7 +252,6 @@ begin
   if not found or v_match.active_revision_id <> p_expected_revision_id then raise exception using errcode = 'MR409', message = 'Stale match revision'; end if;
   perform public.require_active_member(v_match.group_id); perform 1 from public.groups where id = v_match.group_id for update;
   -- Use the validated submit command shape by creating a revision directly after team/game checks.
-  if char_length(btrim(p_reason)) not between 2 and 600 then raise exception using errcode = 'MRVAL', message = 'Invalid revision reason'; end if;
   if cardinality(p_team_a) <> (case when p_format = 'singles' then 1 else 2 end) or cardinality(p_team_b) <> (case when p_format = 'singles' then 1 else 2 end) or (select count(distinct player_id) from unnest(p_team_a || p_team_b) as players(player_id)) <> cardinality(p_team_a) + cardinality(p_team_b) or jsonb_typeof(p_games) <> 'array' or jsonb_array_length(p_games) not between 1 and 7 then raise exception using errcode = 'MRVAL', message = 'Invalid revision'; end if;
   if exists (select 1 from unnest(p_team_a || p_team_b) as players(player_id) where not exists (select 1 from public.group_memberships gm where gm.group_id = v_match.group_id and gm.user_id = players.player_id and gm.status = 'active' and gm.left_at is null)) then raise exception using errcode = 'MRVAL', message = 'Match player is not active'; end if;
   for v_game in select value from jsonb_array_elements(p_games) loop
@@ -260,7 +259,7 @@ begin
     if (v_game->>'teamAScore')::integer > (v_game->>'teamBScore')::integer then v_a_wins := v_a_wins + 1; else v_b_wins := v_b_wins + 1; end if;
   end loop;
   if v_a_wins = v_b_wins then raise exception using errcode = 'MRVAL', message = 'Match requires a winner'; end if;
-  insert into public.match_revisions (match_id, version, submitted_by_user_id, format, reason, status) select v_match.id, coalesce(max(version), 0) + 1, auth.uid(), p_format, btrim(p_reason), 'active' from public.match_revisions where match_id = v_match.id returning id into v_revision_id;
+  insert into public.match_revisions (match_id, version, submitted_by_user_id, format, status) select v_match.id, coalesce(max(version), 0) + 1, auth.uid(), p_format, 'active' from public.match_revisions where match_id = v_match.id returning id into v_revision_id;
   insert into public.match_participants (revision_id, user_id, team, slot) select v_revision_id, id, 'A'::public.team_code, ordinality::integer from unnest(p_team_a) with ordinality as t(id, ordinality) union all select v_revision_id, id, 'B'::public.team_code, ordinality::integer from unnest(p_team_b) with ordinality as t(id, ordinality);
   insert into public.match_games (revision_id, game_number, team_a_score, team_b_score, winner_team) select v_revision_id, ordinality, (value->>'teamAScore')::integer, (value->>'teamBScore')::integer, case when (value->>'teamAScore')::integer > (value->>'teamBScore')::integer then 'A'::public.team_code else 'B'::public.team_code end from jsonb_array_elements(p_games) with ordinality;
   update public.matches set active_revision_id = v_revision_id, status = 'pending_confirmation' where id = v_match.id;
@@ -268,7 +267,7 @@ begin
   v_result := jsonb_build_object('matchId', v_match.id, 'revisionId', v_revision_id, 'ratingJobId', v_job_id, 'ratingStatus', 'queued'); perform public.complete_command(p_command_id, v_result); return v_result;
 end; $$;
 
-create or replace function public.command_review_match(p_command_id uuid, p_revision_id uuid, p_action public.confirmation_action, p_note text default null)
+create or replace function public.command_review_match(p_command_id uuid, p_revision_id uuid, p_action public.confirmation_action)
 returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare v_existing jsonb; v_revision public.match_revisions%rowtype; v_group_id uuid; v_submitter_team public.team_code; v_reviewer_team public.team_code; v_result jsonb;
@@ -280,7 +279,7 @@ begin
   select team into v_submitter_team from public.match_participants where revision_id = p_revision_id and user_id = v_revision.submitted_by_user_id;
   select team into v_reviewer_team from public.match_participants where revision_id = p_revision_id and user_id = auth.uid();
   if v_submitter_team is null or v_reviewer_team is null or v_submitter_team = v_reviewer_team then raise exception using errcode = 'MRREV', message = 'Opposing participant required'; end if;
-  insert into public.match_confirmations (revision_id, user_id, action, note) values (p_revision_id, auth.uid(), p_action, nullif(btrim(p_note), ''));
+  insert into public.match_confirmations (revision_id, user_id, action) values (p_revision_id, auth.uid(), p_action);
   update public.matches set status = case when p_action = 'confirmed' then 'confirmed'::public.match_status else 'disputed'::public.match_status end where id = v_revision.match_id;
   v_result := jsonb_build_object('revisionId', p_revision_id); perform public.complete_command(p_command_id, v_result); return v_result;
 end; $$;
@@ -361,6 +360,6 @@ revoke all on function public.begin_rating_rebuild(uuid, uuid) from public, anon
 revoke all on function public.apply_rating_rebuild(uuid, bigint, jsonb, jsonb) from public, anon, authenticated;
 revoke all on function public.fail_rating_rebuild(uuid, text) from public, anon, authenticated;
 revoke all on function public.get_rating_rebuild_status(uuid) from public, anon;
-grant execute on function public.command_create_group(uuid, text, text), public.command_create_guest_players(uuid, uuid, jsonb), public.command_join_group_by_invite(uuid, uuid), public.command_claim_guest_profiles(uuid, uuid, uuid[]), public.command_submit_match(uuid, uuid, uuid, public.match_format, uuid[], uuid[], jsonb), public.command_revise_match(uuid, uuid, uuid, text, public.match_format, uuid[], uuid[], jsonb), public.command_review_match(uuid, uuid, public.confirmation_action, text), public.retry_rating_rebuild(uuid, uuid) to authenticated;
+grant execute on function public.command_create_group(uuid, text, text), public.command_create_guest_players(uuid, uuid, jsonb), public.command_join_group_by_invite(uuid, uuid), public.command_claim_guest_profiles(uuid, uuid, uuid[]), public.command_submit_match(uuid, uuid, uuid, public.match_format, uuid[], uuid[], jsonb), public.command_revise_match(uuid, uuid, uuid, public.match_format, uuid[], uuid[], jsonb), public.command_review_match(uuid, uuid, public.confirmation_action), public.retry_rating_rebuild(uuid, uuid) to authenticated;
 grant execute on function public.get_rating_rebuild_status(uuid) to authenticated;
 grant execute on function public.claim_rating_rebuild_dispatch(uuid, uuid), public.begin_rating_rebuild(uuid, uuid), public.apply_rating_rebuild(uuid, bigint, jsonb, jsonb), public.fail_rating_rebuild(uuid, text) to service_role;

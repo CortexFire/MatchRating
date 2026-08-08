@@ -15,6 +15,7 @@ const appDataMocks = vi.hoisted(() => ({
     memberCount: 8,
   })),
   getMatchGroupId: vi.fn(async () => "11111111-1111-4111-8111-111111111111"),
+  listPendingReviewsForCurrentUser: vi.fn(async () => []),
   listCurrentUserGroups: vi.fn(async () => [
     {
       id: "11111111-1111-4111-8111-111111111111",

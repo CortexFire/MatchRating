@@ -107,7 +107,6 @@ const claimGuestProfilesSchema = z.object({
 
 const disputeSchema = z.object({
   revisionId: z.string().uuid(),
-  note: z.string().trim().min(2).max(600),
   commandId: z.string().uuid(),
 });
 
@@ -150,7 +149,6 @@ const reviseSchema = z
     matchId: z.string().uuid(),
     expectedRevisionId: z.string().uuid(),
     commandId: z.string().uuid(),
-    reason: z.string().trim().min(2).max(600),
   })
   .and(
     z.object({
@@ -788,7 +786,6 @@ export async function confirmMatchRevision(input: z.infer<typeof confirmSchema>)
 
 export async function disputeMatchRevision(input: {
   revisionId: string;
-  note: string;
   commandId: string;
 }): Promise<ActionResult<{ revisionId: string }>> {
   const parsed = disputeSchema.safeParse(input);
@@ -796,19 +793,21 @@ export async function disputeMatchRevision(input: {
     return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid dispute." };
   }
 
-  return reviewMatchRevision(parsed.data.revisionId, parsed.data.commandId, "disputed", parsed.data.note);
+  return reviewMatchRevision(parsed.data.revisionId, parsed.data.commandId, "disputed");
 }
 
 async function reviewMatchRevision(
   revisionId: string,
   commandId: string,
   action: "confirmed" | "disputed",
-  note?: string,
 ): Promise<ActionResult<{ revisionId: string }>> {
   const result = await executeCommand<{ revisionId: string }>("command_review_match", {
-    p_command_id: commandId, p_revision_id: revisionId, p_action: action, p_note: note ?? null,
+    p_command_id: commandId, p_revision_id: revisionId, p_action: action,
   }, "Could not review match.");
-  if (result.ok) revalidatePath("/groups");
+  if (result.ok) {
+    revalidatePath("/groups");
+    revalidatePath("/matches/review");
+  }
   return result;
 }
 export async function reviseMatch(input: z.infer<typeof reviseSchema>): Promise<ActionResult<MatchCommandResult>> {
@@ -817,12 +816,34 @@ export async function reviseMatch(input: z.infer<typeof reviseSchema>): Promise<
   const validated = validateMatchSubmission(parsed.data);
   const result = await executeCommand<MatchCommandResult>("command_revise_match", {
     p_command_id: parsed.data.commandId, p_match_id: parsed.data.matchId, p_expected_revision_id: parsed.data.expectedRevisionId,
-    p_reason: parsed.data.reason, p_format: validated.format, p_team_a: validated.teamAUserIds,
+    p_format: validated.format, p_team_a: validated.teamAUserIds,
     p_team_b: validated.teamBUserIds, p_games: validated.games.map(({ teamAScore, teamBScore }) => ({ teamAScore, teamBScore })),
   }, "Could not revise match.");
   scheduleReturnedRatingJob(result);
-  if (result.ok) revalidatePath(`/groups/${parsed.data.groupId}`);
+  if (result.ok) revalidateMatchPaths(parsed.data.groupId, parsed.data.matchId);
   return result;
+}
+
+export async function disputeAndReviseMatch(input: z.infer<typeof reviseSchema>): Promise<ActionResult<MatchCommandResult>> {
+  const parsed = reviseSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Could not correct match." };
+  const validated = validateMatchSubmission(parsed.data);
+  const result = await executeCommand<MatchCommandResult>("command_dispute_and_revise_match", {
+    p_command_id: parsed.data.commandId, p_match_id: parsed.data.matchId, p_expected_revision_id: parsed.data.expectedRevisionId,
+    p_format: validated.format, p_team_a: validated.teamAUserIds, p_team_b: validated.teamBUserIds,
+    p_games: validated.games.map(({ teamAScore, teamBScore }) => ({ teamAScore, teamBScore })),
+  }, "Could not correct match.");
+  scheduleReturnedRatingJob(result);
+  if (result.ok) revalidateMatchPaths(parsed.data.groupId, parsed.data.matchId);
+  return result;
+}
+
+function revalidateMatchPaths(groupId: string, matchId: string) {
+  revalidatePath("/matches/review");
+  revalidatePath(`/groups/${groupId}`);
+  revalidatePath(`/groups/${groupId}/history`);
+  revalidatePath(`/groups/${groupId}/matches/${matchId}`);
+  revalidatePath(`/groups/${groupId}/matches/${matchId}/revise`);
 }
 
 export async function retryRatingRebuild(

@@ -1,6 +1,8 @@
 import { ArrowLeft, ArrowRight, ChevronDown, Medal } from "lucide-react";
 import Link from "next/link";
 import { cn } from "../../lib/utils";
+import { MatchReviewActions } from "./match-review-actions";
+import { Badge } from "@/components/ui/badge";
 
 type TeamKey = "A" | "B";
 
@@ -23,6 +25,10 @@ type SetScore = {
 };
 
 export type MatchResultConfirmationData = {
+  id: string;
+  revisionId: string;
+  status: "pending_confirmation" | "confirmed" | "disputed";
+  winnerTeam: TeamKey;
   clubName: string;
   submittedAt: string;
   teamA: Team;
@@ -34,15 +40,17 @@ export function MatchResultConfirmation({
   groupId,
   groupName,
   reviewCount,
+  canReview,
+  canRevise,
   match,
 }: {
   groupId: string;
   groupName: string;
   reviewCount: number;
+  canReview: boolean;
+  canRevise: boolean;
   match: MatchResultConfirmationData;
 }) {
-  const disputeHref = buildDisputeHref(groupId, match);
-
   return (
     <section className="flex min-h-full flex-col gap-5">
       <div className="flex items-start justify-between gap-3">
@@ -71,8 +79,8 @@ export function MatchResultConfirmation({
         </div>
 
         <div className="mt-8 grid grid-cols-2 gap-7 px-1">
-          <TeamSummary team={match.teamA} winner={true} />
-          <TeamSummary team={match.teamB} winner={false} />
+          <TeamSummary team={match.teamA} winner={match.winnerTeam === "A"} />
+          <TeamSummary team={match.teamB} winner={match.winnerTeam === "B"} />
         </div>
 
         <div className="mt-9 flex flex-col gap-4">
@@ -81,34 +89,30 @@ export function MatchResultConfirmation({
           ))}
         </div>
 
-        <div className="mt-12 grid grid-cols-2 gap-4">
-          <button
-            type="button"
-            className="inline-flex min-h-14 min-w-11 items-center justify-center rounded-lg bg-action px-4 text-base font-semibold text-white transition hover:bg-selection-stroke focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
-          >
-            Confirm
-          </button>
-          <Link
-            href={disputeHref}
-            className="inline-flex min-h-14 min-w-11 items-center justify-center rounded-lg border border-stroke bg-surface px-4 text-base font-semibold text-ink transition hover:bg-app-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
-          >
-            Dispute
-          </Link>
-        </div>
+        {canReview ? (
+          <MatchReviewActions groupId={groupId} matchId={match.id} revisionId={match.revisionId} />
+        ) : (
+          <div className="mt-12 flex items-center justify-between gap-3">
+            <Badge tone={match.status === "confirmed" ? "victory" : "neutral"}>{displayStatus(match.status)}</Badge>
+            {match.status === "disputed" && canRevise ? (
+              <Link
+                href={`/groups/${groupId}/matches/${match.id}/revise`}
+                className="inline-flex min-h-11 items-center justify-center rounded-lg border border-stroke bg-surface px-4 text-sm font-semibold text-ink"
+              >
+                Revise result
+              </Link>
+            ) : null}
+          </div>
+        )}
       </article>
     </section>
   );
 }
 
-function buildDisputeHref(groupId: string, match: MatchResultConfirmationData) {
-  const params = new URLSearchParams({
-    format: match.teamA.players.length === 1 ? "singles" : "doubles",
-    teamA: match.teamA.players.map((player) => player.id).join(","),
-    teamB: match.teamB.players.map((player) => player.id).join(","),
-    scores: match.sets.map((set) => `${set.teamAScore}-${set.teamBScore}`).join(","),
-  });
-
-  return `/groups/${groupId}/matches/new?${params.toString()}`;
+function displayStatus(status: MatchResultConfirmationData["status"]) {
+  if (status === "confirmed") return "Confirmed";
+  if (status === "disputed") return "Disputed";
+  return "Pending confirmation";
 }
 
 function TeamSummary({ team, winner }: { team: Team; winner: boolean }) {

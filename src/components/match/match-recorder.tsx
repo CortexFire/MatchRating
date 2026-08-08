@@ -81,7 +81,8 @@ export function MatchRecorder({
   const [playerFilter, setPlayerFilter] = useState<PlayerFilter>("all");
   const [playerSearch, setPlayerSearch] = useState("");
   const [message, setMessage] = useState("");
-  const [activeDraftId, setActiveDraftId] = useState(draftId);
+  const activeDraftId = useRef(draftId);
+  const saveActiveMatchDraftRef = useRef(saveActiveMatchDraft);
   const [guestPlayers, setGuestPlayers] = useState<AppPlayer[]>([]);
   const [draftGuestIds, setDraftGuestIds] = useState<string[]>([]);
   const submitCommandId = useRef<string | null>(null);
@@ -92,7 +93,15 @@ export function MatchRecorder({
   const teamBSlots = buildTeamSlots(teamB, selectablePlayers, format);
 
   useEffect(() => {
-    if (!canEdit || !saveActiveMatchDraft) {
+    saveActiveMatchDraftRef.current = saveActiveMatchDraft;
+  }, [saveActiveMatchDraft]);
+
+  useEffect(() => {
+    activeDraftId.current = draftId;
+  }, [draftId]);
+
+  useEffect(() => {
+    if (!canEdit || !saveActiveMatchDraftRef.current) {
       return;
     }
 
@@ -104,16 +113,19 @@ export function MatchRecorder({
 
     const payload = {
       groupId,
-      draftId: activeDraftId,
+      draftId: activeDraftId.current,
       format,
       teamAUserIds,
       teamBUserIds,
       games: games.map(({ teamAScore, teamBScore }) => ({ teamAScore, teamBScore })),
     };
     const timeout = window.setTimeout(async () => {
-      const result = await saveActiveMatchDraft(payload);
+      const result = await saveActiveMatchDraftRef.current?.(payload);
+      if (!result) {
+        return;
+      }
       if (result.ok) {
-        setActiveDraftId(result.data.draftId);
+        activeDraftId.current = result.data.draftId;
         setMessage("Draft saved.");
       } else {
         setMessage(result.message);
@@ -121,7 +133,7 @@ export function MatchRecorder({
     }, 400);
 
     return () => window.clearTimeout(timeout);
-  }, [activeDraftId, canEdit, format, games, groupId, saveActiveMatchDraft, teamA, teamB]);
+  }, [canEdit, format, games, groupId, teamA, teamB]);
 
   function updateFormat(value: MatchFormat) {
     setFormat(value);
@@ -286,7 +298,7 @@ export function MatchRecorder({
       submitCommandId.current ??= crypto.randomUUID();
       const input = {
         groupId,
-        draftId: activeDraftId,
+        draftId: activeDraftId.current,
         commandId: submitCommandId.current,
         format,
         teamAUserIds: compactTeam(teamA),

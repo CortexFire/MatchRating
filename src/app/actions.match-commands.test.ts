@@ -132,7 +132,49 @@ describe("transactional match actions", () => {
       p_command_id: "88888888-8888-4888-8888-888888888888",
       p_revision_id: "33333333-3333-4333-8333-333333333333",
       p_action: "confirmed",
-      p_note: null,
+    });
+  });
+
+  test("disputes a revision without sending free-text metadata", async () => {
+    supabaseMocks.rpc.mockResolvedValue({
+      data: { revisionId: "33333333-3333-4333-8333-333333333333" },
+      error: null,
+    });
+
+    const result = await actions.disputeMatchRevision({
+      revisionId: "33333333-3333-4333-8333-333333333333",
+      commandId: "88888888-8888-4888-8888-888888888888",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(supabaseMocks.rpc).toHaveBeenCalledWith("command_review_match", {
+      p_command_id: "88888888-8888-4888-8888-888888888888",
+      p_revision_id: "33333333-3333-4333-8333-333333333333",
+      p_action: "disputed",
+    });
+  });
+
+  test("atomically disputes and revises without free-text metadata", async () => {
+    const result = await actions.disputeAndReviseMatch({
+      commandId: "88888888-8888-4888-8888-888888888888",
+      groupId: "66666666-6666-4666-8666-666666666666",
+      matchId: "22222222-2222-4222-8222-222222222222",
+      expectedRevisionId: "33333333-3333-4333-8333-333333333333",
+      format: "singles",
+      teamAUserIds: ["11111111-1111-4111-8111-111111111111"],
+      teamBUserIds: ["77777777-7777-4777-8777-777777777777"],
+      games: [{ teamAScore: 21, teamBScore: 18 }],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(supabaseMocks.rpc).toHaveBeenCalledWith("command_dispute_and_revise_match", {
+      p_command_id: "88888888-8888-4888-8888-888888888888",
+      p_match_id: "22222222-2222-4222-8222-222222222222",
+      p_expected_revision_id: "33333333-3333-4333-8333-333333333333",
+      p_format: "singles",
+      p_team_a: ["11111111-1111-4111-8111-111111111111"],
+      p_team_b: ["77777777-7777-4777-8777-777777777777"],
+      p_games: [{ teamAScore: 21, teamBScore: 18 }],
     });
   });
 

@@ -1,8 +1,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { MatchResultConfirmation } from "./match-result-confirmation";
 
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+
 const match = {
+  id: "match-1",
+  revisionId: "revision-1",
+  status: "pending_confirmation" as const,
+  winnerTeam: "A" as const,
   clubName: "Downtown Rec Club",
   submittedAt: "Aug 2nd, 2026 @ 8:53pm",
   teamA: {
@@ -33,6 +39,8 @@ describe("MatchResultConfirmation", () => {
         groupId="demo"
         groupName="Downtown Rec"
         reviewCount={3}
+        canReview={true}
+        canRevise={true}
         match={match}
       />,
     );
@@ -57,12 +65,14 @@ describe("MatchResultConfirmation", () => {
         groupId="demo"
         groupName="Downtown Rec"
         reviewCount={3}
+        canReview={true}
+        canRevise={true}
         match={match}
       />,
     );
 
     expect(html).toContain(
-      'href="/groups/demo/matches/new?format=doubles&amp;teamA=alice%2Ccory&amp;teamB=bea%2Cdev&amp;scores=21-18%2C13-21%2C21-18"',
+      'href="/groups/demo/matches/match-1/revise"',
     );
   });
 });

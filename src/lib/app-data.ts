@@ -1,5 +1,10 @@
 import { createSupabaseServerClient, createSupabaseServiceClient, requireUserId } from "@/lib/supabase/server";
 import { type MatchFormat, type MatchGameInput } from "@/lib/matches/validation";
+import {
+  buildMatchViews,
+  type MatchReadRows,
+  type MatchView,
+} from "@/lib/matches/read-model";
 
 export type AppGroup = {
   id: string;
@@ -77,6 +82,10 @@ type RatingRow = {
 type MatchGroupRow = {
   group_id: string;
 };
+
+export type AppMatchSummary = MatchView;
+export type AppPendingReview = MatchView;
+export type AppMatchDetail = MatchView;
 
 export type AppRatingRebuildStatusValue = "queued" | "running" | "completed" | "failed" | null;
 export type AppRatingRebuildStatus = {
@@ -216,6 +225,131 @@ export async function getMatchGroupId(matchId: string): Promise<string | null> {
   }
 
   return (data as MatchGroupRow | null)?.group_id ?? null;
+}
+
+export async function listGroupMatches(groupId: string): Promise<AppMatchSummary[]> {
+  const userId = await requireUserId();
+  const service = createSupabaseServiceClient();
+  if (!isUuid(groupId) || !(await canReadGroup(groupId, userId, service))) return [];
+
+  const { data, error } = await service
+    .from("matches")
+    .select("id, group_id, active_revision_id, status, submitted_at")
+    .eq("group_id", groupId)
+    .not("active_revision_id", "is", null)
+    .order("submitted_at", { ascending: false })
+    .order("id", { ascending: false });
+  if (error) throw error;
+  return loadMatchViews((data ?? []) as MatchReadRows["matches"], userId, service);
+}
+
+export async function listPendingReviewsForCurrentUser(): Promise<AppPendingReview[]> {
+  const userId = await requireUserId();
+  const service = createSupabaseServiceClient();
+  const { data: memberships, error: membershipError } = await service
+    .from("group_memberships")
+    .select("group_id")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .is("left_at", null);
+  if (membershipError) throw membershipError;
+  const groupIds = [...new Set((memberships ?? []).map((row: { group_id: string }) => row.group_id))];
+  if (!groupIds.length) return [];
+
+  const { data, error } = await service
+    .from("matches")
+    .select("id, group_id, active_revision_id, status, submitted_at")
+    .in("group_id", groupIds)
+    .eq("status", "pending_confirmation")
+    .not("active_revision_id", "is", null)
+    .order("submitted_at", { ascending: false })
+    .order("id", { ascending: false });
+  if (error) throw error;
+  const matches = await loadMatchViews((data ?? []) as MatchReadRows["matches"], userId, service);
+  return matches.filter((match) => match.canReview);
+}
+
+export async function getGroupMatchDetail(groupId: string, matchId: string): Promise<AppMatchDetail | null> {
+  const userId = await requireUserId();
+  const service = createSupabaseServiceClient();
+  if (!isUuid(groupId) || !isUuid(matchId) || !(await canReadGroup(groupId, userId, service))) return null;
+
+  const { data, error } = await service
+    .from("matches")
+    .select("id, group_id, active_revision_id, status, submitted_at")
+    .eq("group_id", groupId)
+    .eq("id", matchId)
+    .not("active_revision_id", "is", null)
+    .maybeSingle();
+  if (error) throw error;
+  const row = data as MatchReadRows["matches"][number] | null;
+  if (!row || row.id !== matchId || row.group_id !== groupId) return null;
+  return (await loadMatchViews([row], userId, service))[0] ?? null;
+}
+
+export async function canCurrentUserReadGroup(groupId: string): Promise<boolean> {
+  const userId = await requireUserId();
+  if (!isUuid(groupId)) return false;
+  return canReadGroup(groupId, userId, createSupabaseServiceClient());
+}
+
+async function canReadGroup(
+  groupId: string,
+  userId: string,
+  service: ReturnType<typeof createSupabaseServiceClient>,
+) {
+  const { data, error } = await service
+    .from("group_memberships")
+    .select("id")
+    .eq("group_id", groupId)
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .is("left_at", null)
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+async function loadMatchViews(
+  matches: MatchReadRows["matches"],
+  currentUserId: string,
+  service: ReturnType<typeof createSupabaseServiceClient>,
+) {
+  if (!matches.length) return [];
+  const groupIds = [...new Set(matches.map((match) => match.group_id))];
+  const revisionIds = [...new Set(matches.map((match) => match.active_revision_id))];
+  const [groupsResult, revisionsResult, participantsResult, gamesResult, confirmationsResult, ratingEventsResult] = await Promise.all([
+    service.from("groups").select("id, name").in("id", groupIds),
+    service.from("match_revisions").select("id, match_id, submitted_by_user_id, format").in("id", revisionIds),
+    service.from("match_participants").select("revision_id, user_id, team, slot").in("revision_id", revisionIds),
+    service.from("match_games").select("revision_id, game_number, team_a_score, team_b_score, winner_team").in("revision_id", revisionIds),
+    service.from("match_confirmations").select("revision_id, user_id, action, created_at").in("revision_id", revisionIds),
+    service.from("rating_events").select("revision_id, user_id, before_rating, after_rating").in("revision_id", revisionIds),
+  ]);
+  const firstError = [groupsResult, revisionsResult, participantsResult, gamesResult, confirmationsResult, ratingEventsResult]
+    .find((result) => result.error)?.error;
+  if (firstError) throw firstError;
+
+  const participants = (participantsResult.data ?? []) as MatchReadRows["participants"];
+  const playerIds = [...new Set(participants.map((participant) => participant.user_id))];
+  const profilesResult = await service.from("profiles").select("id, display_name").in("id", playerIds);
+  if (profilesResult.error) throw profilesResult.error;
+
+  return buildMatchViews({
+    currentUserId,
+    matches,
+    groups: (groupsResult.data ?? []) as MatchReadRows["groups"],
+    revisions: (revisionsResult.data ?? []) as MatchReadRows["revisions"],
+    participants,
+    games: (gamesResult.data ?? []) as MatchReadRows["games"],
+    confirmations: (confirmationsResult.data ?? []) as MatchReadRows["confirmations"],
+    ratingEvents: (ratingEventsResult.data ?? []) as MatchReadRows["ratingEvents"],
+    profiles: (profilesResult.data ?? []) as MatchReadRows["profiles"],
+  });
 }
 
 
