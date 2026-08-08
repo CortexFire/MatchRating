@@ -601,20 +601,20 @@ function ScoreTile({
       )}
     >
       {selected ? <Medal className="absolute left-2 top-2 size-4 text-ink" aria-hidden="true" /> : null}
+      <button
+        type="button"
+        onClick={onWinnerClick}
+        disabled={!editable}
+        aria-pressed={selected}
+        aria-label={`Mark Set ${setNumber} Team ${team} as winner`}
+        className="absolute inset-0 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action disabled:cursor-default"
+      />
       <div
         className={cn(
-          "relative grid h-[70px] w-[92px] grid-rows-[1fr_auto] items-center rounded-md border bg-surface px-2 pb-2 pt-1",
+          "pointer-events-none relative grid h-[70px] w-[92px] grid-rows-[1fr_auto] items-center rounded-md border bg-surface px-2 pb-2 pt-1",
           selected ? "border-victory-stroke" : "border-stroke",
         )}
       >
-        <button
-          type="button"
-          onClick={onWinnerClick}
-          disabled={!editable}
-          aria-pressed={selected}
-          aria-label={`Mark Set ${setNumber} Team ${team} as winner`}
-          className="absolute inset-0 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action disabled:cursor-default"
-        />
         <input
           aria-label={`Set ${setNumber} Team ${team} score`}
           type="number"
@@ -625,7 +625,7 @@ function ScoreTile({
           onClick={(event) => event.stopPropagation()}
           onChange={(event) => onScoreChange(event.target.value)}
           disabled={!editable}
-          className="relative z-10 h-11 w-full self-center rounded-md border border-transparent bg-transparent p-0 text-center text-[32pt] font-bold leading-none text-ink [appearance:textfield] focus:border-selection-stroke focus:outline-none disabled:cursor-default [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          className="pointer-events-auto relative z-10 h-11 w-full self-center rounded-md border border-transparent bg-transparent p-0 text-center text-[32pt] font-bold leading-none text-ink [appearance:textfield] focus:border-selection-stroke focus:outline-none disabled:cursor-default [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
         <span
           aria-hidden="true"

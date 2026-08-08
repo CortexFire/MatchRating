@@ -369,6 +369,15 @@ describe("MatchRecorder", () => {
 
     const teamAButton = screen.getByRole("button", { name: "Mark Set 1 Team A as winner" });
     const teamBButton = screen.getByRole("button", { name: "Mark Set 1 Team B as winner" });
+    const teamBTile = screen.getByLabelText("Set 1 Team B 18 Loss");
+    const teamBScore = screen.getByLabelText("Set 1 Team B score");
+
+    expect(teamBButton.parentElement).toBe(teamBTile);
+    fireEvent.click(teamBScore);
+    fireEvent.focus(teamBScore);
+    expect(teamAButton.getAttribute("aria-pressed")).toBe("true");
+    expect(teamBButton.getAttribute("aria-pressed")).toBe("false");
+
     fireEvent.click(teamBButton);
 
     expect((screen.getByLabelText("Set 1 Team A score") as HTMLInputElement).value).toBe("21");
