@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Medal, Plus, X } from "lucide-react";
+import { ChevronDown, Medal, Plus, Trash2, X } from "lucide-react";
 import { type ActionResult, type MatchCommandResult } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,12 +9,23 @@ import {
   type PlayerFilter,
   type PlayerSelection,
 } from "@/components/match/player-select-view";
-import { validateMatchSubmission, type MatchFormat, type MatchSubmissionInput, type Team } from "@/lib/matches/validation";
+import {
+  validateMatchSubmission,
+  type MatchFormat,
+  type MatchGameInput,
+  type MatchSubmissionInput,
+  type Team,
+} from "@/lib/matches/validation";
 import { type AppPlayer } from "@/lib/app-data";
 import { cn } from "@/lib/utils";
 
 type Score = { teamAScore: number; teamBScore: number };
-type RecordedGame = Score & { winnerTeam: Team };
+type EditableScore = number | "";
+type RecordedGame = {
+  teamAScore: EditableScore;
+  teamBScore: EditableScore;
+  winnerTeam: Team;
+};
 type TeamSelection = PlayerSelection;
 type CreateGuestPlayers = (input: { groupId: string; names: string[] }) => Promise<ActionResult<{ players: AppPlayer[] }>>;
 type SaveActiveMatchDraft = (input: MatchSubmissionInput & { draftId?: string }) => Promise<ActionResult<{ draftId: string }>>;
@@ -23,14 +34,11 @@ type TeamSlot =
   | { id: string; initials: string; name: string; fullName: string; empty?: false }
   | { empty: true };
 
-const WIN_SCORE = 21;
-const LOSS_SCORE = 18;
-const defaultMatchRecording = {
+const defaultMatchRecording: Omit<InitialMatchRecording, "games"> = {
   format: "doubles",
   teamAUserIds: [],
   teamBUserIds: [],
-  games: [{ teamAScore: WIN_SCORE, teamBScore: LOSS_SCORE }],
-} satisfies InitialMatchRecording;
+};
 
 export type InitialMatchRecording = {
   format: MatchFormat;
@@ -43,7 +51,7 @@ export function MatchRecorder({
   groupId = "test-group",
   groupName = "Downtown Rec",
   players,
-  initialMatch = defaultMatchRecording,
+  initialMatch,
   draftId,
   canEdit = true,
   createGuestPlayers,
@@ -60,23 +68,26 @@ export function MatchRecorder({
   saveActiveMatchDraft?: SaveActiveMatchDraft;
   submitMatchAction?: SubmitMatchAction;
 }) {
-  const [format, setFormat] = useState<MatchFormat>(initialMatch.format);
+  const startingMatch = initialMatch ?? defaultMatchRecording;
+  const [format, setFormat] = useState<MatchFormat>(startingMatch.format);
   const [teamA, setTeamA] = useState<TeamSelection>(() =>
-    normalizeTeamSlots(initialMatch.teamAUserIds, initialMatch.format),
+    normalizeTeamSlots(startingMatch.teamAUserIds, startingMatch.format),
   );
   const [teamB, setTeamB] = useState<TeamSelection>(() =>
-    normalizeTeamSlots(initialMatch.teamBUserIds, initialMatch.format),
+    normalizeTeamSlots(startingMatch.teamBUserIds, startingMatch.format),
   );
   const [games, setGames] = useState<RecordedGame[]>(() =>
-    initialMatch.games.map((game) => ({ ...game, winnerTeam: winnerFromScore(game) })),
+    initialMatch
+      ? initialMatch.games.map((game) => ({ ...game, winnerTeam: winnerFromScore(game) }))
+      : [newBlankGame()],
   );
   const [playerSelectOpen, setPlayerSelectOpen] = useState(false);
   const [activeSelectTeam, setActiveSelectTeam] = useState<Team>("A");
   const [draftTeamA, setDraftTeamA] = useState<TeamSelection>(() =>
-    resizeTeamSlots(initialMatch.teamAUserIds, initialMatch.format),
+    resizeTeamSlots(startingMatch.teamAUserIds, startingMatch.format),
   );
   const [draftTeamB, setDraftTeamB] = useState<TeamSelection>(() =>
-    resizeTeamSlots(initialMatch.teamBUserIds, initialMatch.format),
+    resizeTeamSlots(startingMatch.teamBUserIds, startingMatch.format),
   );
   const [playerFilter, setPlayerFilter] = useState<PlayerFilter>("all");
   const [playerSearch, setPlayerSearch] = useState("");
@@ -107,7 +118,8 @@ export function MatchRecorder({
 
     const teamAUserIds = compactTeam(teamA);
     const teamBUserIds = compactTeam(teamB);
-    if (!teamsComplete(format, teamAUserIds, teamBUserIds)) {
+    const completeGames = toCompleteGames(games);
+    if (!teamsComplete(format, teamAUserIds, teamBUserIds) || !completeGames) {
       return;
     }
 
@@ -117,7 +129,7 @@ export function MatchRecorder({
       format,
       teamAUserIds,
       teamBUserIds,
-      games: games.map(({ teamAScore, teamBScore }) => ({ teamAScore, teamBScore })),
+      games: completeGames,
     };
     const timeout = window.setTimeout(async () => {
       const result = await saveActiveMatchDraftRef.current?.(payload);
@@ -273,19 +285,35 @@ export function MatchRecorder({
         const updated =
           team === "A" ? { ...game, teamAScore: score } : { ...game, teamBScore: score };
 
-        return updated.teamAScore === updated.teamBScore
-          ? updated
-          : { ...updated, winnerTeam: winnerFromScore(updated) };
+        if (
+          updated.teamAScore === "" ||
+          updated.teamBScore === "" ||
+          updated.teamAScore === updated.teamBScore
+        ) {
+          return updated;
+        }
+
+        return {
+          ...updated,
+          winnerTeam: winnerFromScore({
+            teamAScore: updated.teamAScore,
+            teamBScore: updated.teamBScore,
+          }),
+        };
       }),
     );
     setMessage("");
   }
 
   function addSet() {
-    setGames((current) => [
-      ...current,
-      { teamAScore: WIN_SCORE, teamBScore: LOSS_SCORE, winnerTeam: "A" },
-    ]);
+    setGames((current) => [...current, newBlankGame()]);
+    setMessage("");
+  }
+
+  function removeSet(gameIndex: number) {
+    setGames((current) =>
+      current.length > 1 ? current.filter((_, index) => index !== gameIndex) : current,
+    );
     setMessage("");
   }
 
@@ -295,6 +323,12 @@ export function MatchRecorder({
     }
 
     try {
+      const completeGames = toCompleteGames(games);
+      if (!completeGames) {
+        setMessage("Enter both scores for every set.");
+        return;
+      }
+
       submitCommandId.current ??= crypto.randomUUID();
       const input = {
         groupId,
@@ -303,7 +337,7 @@ export function MatchRecorder({
         format,
         teamAUserIds: compactTeam(teamA),
         teamBUserIds: compactTeam(teamB),
-        games: games.map(({ teamAScore, teamBScore }) => ({ teamAScore, teamBScore })),
+        games: completeGames,
       };
       const validated = validateMatchSubmission(input, { activeMemberIds });
       if (submitMatchAction) {
@@ -380,6 +414,7 @@ export function MatchRecorder({
             index={index}
             onWinnerChange={(winner) => setWinner(index, winner)}
             onScoreChange={(team, value) => updateScore(index, team, value)}
+            onRemove={canEdit && games.length > 1 ? () => removeSet(index) : undefined}
             editable={canEdit}
           />
         ))}
@@ -443,7 +478,32 @@ function winnerFromScore(game: Score): Team {
   return game.teamAScore >= game.teamBScore ? "A" : "B";
 }
 
-function normalizeScoreValue(value: string) {
+function newBlankGame(): RecordedGame {
+  return { teamAScore: "", teamBScore: "", winnerTeam: "A" };
+}
+
+function toCompleteGames(games: RecordedGame[]): MatchGameInput[] | null {
+  const completeGames: MatchGameInput[] = [];
+
+  for (const game of games) {
+    if (game.teamAScore === "" || game.teamBScore === "") {
+      return null;
+    }
+
+    completeGames.push({
+      teamAScore: game.teamAScore,
+      teamBScore: game.teamBScore,
+    });
+  }
+
+  return completeGames;
+}
+
+function normalizeScoreValue(value: string): EditableScore {
+  if (value === "") {
+    return "";
+  }
+
   const parsed = Number(value);
 
   if (!Number.isFinite(parsed)) {
@@ -553,19 +613,33 @@ function SetScoreRow({
   index,
   onWinnerChange,
   onScoreChange,
+  onRemove,
   editable,
 }: {
   game: RecordedGame;
   index: number;
   onWinnerChange: (winner: Team) => void;
   onScoreChange: (team: Team, value: string) => void;
+  onRemove?: () => void;
   editable: boolean;
 }) {
   const winner = game.winnerTeam;
 
   return (
     <div className="flex flex-col gap-1">
-      <h3 className="text-sm font-bold text-muted">Set {index + 1}</h3>
+      <div className="flex items-center gap-1">
+        <h3 className="text-sm font-bold text-muted">Set {index + 1}</h3>
+        {onRemove ? (
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label={`Remove Set ${index + 1}`}
+            className="flex size-7 items-center justify-center rounded-md text-muted transition hover:bg-app-bg hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+          >
+            <Trash2 className="size-4" aria-hidden="true" />
+          </button>
+        ) : null}
+      </div>
       <div className="grid grid-cols-2 gap-4">
         <ScoreTile
           setNumber={index + 1}
@@ -601,7 +675,7 @@ function ScoreTile({
 }: {
   setNumber: number;
   team: Team;
-  score: number;
+  score: EditableScore;
   selected: boolean;
   onWinnerClick: () => void;
   onScoreChange: (value: string) => void;
@@ -609,7 +683,7 @@ function ScoreTile({
 }) {
   return (
     <div
-      aria-label={`Set ${setNumber} Team ${team} ${score} ${selected ? "Win" : "Loss"}`}
+      aria-label={`Set ${setNumber} Team ${team} ${score === "" ? "not entered" : score} ${selected ? "Win" : "Loss"}`}
       className={cn(
         "relative flex h-[86px] items-center justify-center rounded-lg border transition focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-action",
         selected ? "border-victory-stroke bg-victory" : "border-stroke bg-surface",
@@ -637,6 +711,7 @@ function ScoreTile({
           max={99}
           inputMode="numeric"
           value={score}
+          placeholder="-"
           onClick={(event) => event.stopPropagation()}
           onChange={(event) => onScoreChange(event.target.value)}
           disabled={!editable}
