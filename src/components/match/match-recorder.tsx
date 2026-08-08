@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Medal, Plus, X } from "lucide-react";
-import { type ActionResult } from "@/app/actions";
+import { type ActionResult, type MatchCommandResult } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import {
   PlayerSelectView,
@@ -18,7 +18,7 @@ type RecordedGame = Score & { winnerTeam: Team };
 type TeamSelection = PlayerSelection;
 type CreateGuestPlayers = (input: { groupId: string; names: string[] }) => Promise<ActionResult<{ players: AppPlayer[] }>>;
 type SaveActiveMatchDraft = (input: MatchSubmissionInput & { draftId?: string }) => Promise<ActionResult<{ draftId: string }>>;
-type SubmitMatchAction = (input: MatchSubmissionInput & { draftId?: string }) => Promise<ActionResult<{ matchId: string }>>;
+type SubmitMatchAction = (input: MatchSubmissionInput & { draftId?: string; commandId: string }) => Promise<ActionResult<MatchCommandResult>>;
 type TeamSlot =
   | { id: string; initials: string; name: string; fullName: string; empty?: false }
   | { empty: true };
@@ -84,6 +84,7 @@ export function MatchRecorder({
   const [activeDraftId, setActiveDraftId] = useState(draftId);
   const [guestPlayers, setGuestPlayers] = useState<AppPlayer[]>([]);
   const [draftGuestIds, setDraftGuestIds] = useState<string[]>([]);
+  const submitCommandId = useRef<string | null>(null);
   const selectablePlayers = [...players, ...guestPlayers];
   const activeMemberIds = selectablePlayers.map((player) => player.id);
 
@@ -282,9 +283,11 @@ export function MatchRecorder({
     }
 
     try {
+      submitCommandId.current ??= crypto.randomUUID();
       const input = {
         groupId,
         draftId: activeDraftId,
+        commandId: submitCommandId.current,
         format,
         teamAUserIds: compactTeam(teamA),
         teamBUserIds: compactTeam(teamB),
@@ -293,7 +296,7 @@ export function MatchRecorder({
       const validated = validateMatchSubmission(input, { activeMemberIds });
       if (submitMatchAction) {
         const result = await submitMatchAction(input);
-        setMessage(result.ok ? "Submitted. Ratings update immediately." : result.message);
+        setMessage(result.ok ? "Match saved. Ratings updating…" : result.message);
         return;
       }
 

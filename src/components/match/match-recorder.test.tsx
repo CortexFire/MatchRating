@@ -432,6 +432,34 @@ describe("MatchRecorder", () => {
     });
   });
 
+  test("preserves one client command ID across a submission retry", async () => {
+    const submitMatchAction = vi.fn()
+      .mockResolvedValueOnce({ ok: false as const, message: "Temporary network failure" })
+      .mockResolvedValueOnce({
+        ok: true as const,
+        data: { matchId: "match-1", revisionId: "revision-1", ratingJobId: "job-1", ratingStatus: "queued" as const },
+      });
+
+    render(
+      <MatchRecorder
+        players={demoPlayers}
+        initialMatch={{ format: "singles", teamAUserIds: ["alice"], teamBUserIds: ["bea"], games: [{ teamAScore: 21, teamBScore: 18 }] }}
+        submitMatchAction={submitMatchAction}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    await screen.findByText("Temporary network failure");
+    const firstCommandId = submitMatchAction.mock.calls[0][0].commandId;
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    await waitFor(() => expect(submitMatchAction).toHaveBeenCalledTimes(2));
+    expect(submitMatchAction.mock.calls[1][0].commandId).toBe(firstCommandId);
+    expect(screen.getByText("Match saved. Ratings updating…")).toBeTruthy();
+  });
+
   test("renders selected-player drafts as read-only", () => {
     render(
       <MatchRecorder

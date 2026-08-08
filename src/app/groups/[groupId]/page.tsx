@@ -6,7 +6,8 @@ import { MobileShell } from "@/components/app/mobile-shell";
 import { ScreenHeader } from "@/components/app/screen-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { ActiveMatchDraftList } from "@/components/match/active-match-draft-list";
-import { getGroup, listGroupActiveMatchDrafts } from "@/lib/app-data";
+import { RatingRebuildStatus } from "@/components/match/rating-rebuild-status";
+import { getGroup, getGroupRatingRebuildStatus, listGroupActiveMatchDrafts } from "@/lib/app-data";
 
 export default async function GroupPage({
   params,
@@ -14,7 +15,7 @@ export default async function GroupPage({
   params: Promise<{ groupId: string }>;
 }) {
   const { groupId } = await params;
-  const [group, activeDrafts] = await Promise.all([getGroup(groupId), listGroupActiveMatchDrafts(groupId)]);
+  const [group, activeDrafts, ratingStatus] = await Promise.all([getGroup(groupId), listGroupActiveMatchDrafts(groupId), getGroupRatingRebuildStatus(groupId)]);
   const recordHref = `/groups/${groupId}/matches/new`;
 
   const links = [
@@ -28,6 +29,12 @@ export default async function GroupPage({
       {group ? (
         <>
           <ActiveMatchDraftList drafts={activeDrafts} />
+          <RatingRebuildStatus
+            groupId={groupId}
+            jobId={ratingStatus.id}
+            status={ratingStatus.status}
+            canRetry={ratingStatus.canRetry}
+          />
           <section className="flex flex-col gap-2">
             {links.map((link) => (
               <Card key={link.label}>

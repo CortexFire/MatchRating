@@ -1,4 +1,4 @@
-import { createSupabaseServiceClient, requireUserId } from "@/lib/supabase/server";
+import { createSupabaseServerClient, createSupabaseServiceClient, requireUserId } from "@/lib/supabase/server";
 import { type MatchFormat, type MatchGameInput } from "@/lib/matches/validation";
 
 export type AppGroup = {
@@ -77,6 +77,25 @@ type RatingRow = {
 type MatchGroupRow = {
   group_id: string;
 };
+
+export type AppRatingRebuildStatusValue = "queued" | "running" | "completed" | "failed" | null;
+export type AppRatingRebuildStatus = {
+  id: string | null;
+  status: AppRatingRebuildStatusValue;
+  canRetry: boolean;
+};
+
+export async function getGroupRatingRebuildStatus(groupId: string): Promise<AppRatingRebuildStatus> {
+  const client = await createSupabaseServerClient();
+  const { data, error } = await client.rpc("get_rating_rebuild_status", { p_group_id: groupId });
+  if (error) throw error;
+  const status = data as Partial<AppRatingRebuildStatus> | null;
+  return {
+    id: status?.id ?? null,
+    status: status?.status ?? null,
+    canRetry: status?.canRetry === true,
+  };
+}
 
 type ActiveMatchDraftRow = {
   id: string;

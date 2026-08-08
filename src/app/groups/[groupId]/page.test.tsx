@@ -21,6 +21,7 @@ vi.mock("@/lib/app-data", () => ({
       role: "Viewer",
     },
   ]),
+  getGroupRatingRebuildStatus: vi.fn(async () => ({ id: null, status: null, canRetry: false })),
 }));
 
 describe("GroupPage", () => {
