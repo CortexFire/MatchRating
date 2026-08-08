@@ -45,3 +45,6 @@ next-env.d.ts
 # local Supabase CLI state
 /supabase/.branches/
 /supabase/.temp/
+
+# local git worktrees
+/.worktrees/
