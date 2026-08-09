@@ -51,10 +51,12 @@ const baseRows: Record<string, unknown[]> = {
 
 let rowsByTable: Record<string, unknown[]>;
 let from: ReturnType<typeof vi.fn>;
+let queriesByTable: Record<string, Array<ReturnType<typeof makeQuery>>>;
 
 function makeQuery(table: string) {
   let rows = rowsByTable[table] ?? [];
   const orders: Array<{ column: string; ascending: boolean }> = [];
+  let rowLimit: number | undefined;
   const query = {
     select: vi.fn(() => query),
     eq: vi.fn((column: string, value: unknown) => {
@@ -77,12 +79,16 @@ function makeQuery(table: string) {
       orders.push({ column, ascending: options.ascending });
       return query;
     }),
+    limit: vi.fn((value: number) => {
+      rowLimit = value;
+      return query;
+    }),
     maybeSingle: vi.fn(async () => ({ data: materialize()[0] ?? null, error: null })),
     then: (resolve: (value: { data: unknown[]; error: null }) => unknown) => resolve({ data: materialize(), error: null }),
   };
 
   function materialize() {
-    return [...rows].sort((left, right) => {
+    const sorted = [...rows].sort((left, right) => {
       for (const order of orders) {
         const leftValue = String((left as Record<string, unknown>)[order.column] ?? "");
         const rightValue = String((right as Record<string, unknown>)[order.column] ?? "");
@@ -91,6 +97,7 @@ function makeQuery(table: string) {
       }
       return 0;
     });
+    return rowLimit === undefined ? sorted : sorted.slice(0, rowLimit);
   }
 
   return query;
@@ -100,7 +107,12 @@ describe("stored match reads", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     rowsByTable = structuredClone(baseRows);
-    from = vi.fn((table: string) => makeQuery(table));
+    queriesByTable = {};
+    from = vi.fn((table: string) => {
+      const query = makeQuery(table);
+      (queriesByTable[table] ??= []).push(query);
+      return query;
+    });
     supabaseMocks.requireUserId.mockResolvedValue(OPPONENT);
     supabaseMocks.createSupabaseServiceClient.mockReturnValue({ from });
   });
@@ -110,6 +122,36 @@ describe("stored match reads", () => {
 
     expect(matches.map((match) => match.id)).toEqual([MATCH_NEW, MATCH_OLD]);
     expect(matches.every((match) => match.groupId === GROUP_ONE)).toBe(true);
+  });
+
+  test("limits the constrained newest-first match rows before hydration", async () => {
+    rowsByTable.matches = [
+      { id: "99999999-9999-4999-8999-999999999999", group_id: GROUP_ONE, active_revision_id: null, status: "confirmed", submitted_at: "2026-08-09T20:00:00.000Z" },
+      ...rowsByTable.matches,
+    ];
+
+    await listGroupMatches(GROUP_ONE, { limit: 5 });
+
+    const matchesQuery = queriesByTable.matches[0];
+    expect(matchesQuery.eq).toHaveBeenCalledWith("group_id", GROUP_ONE);
+    expect(matchesQuery.not).toHaveBeenCalledWith("active_revision_id", "is", null);
+    expect(matchesQuery.order.mock.calls).toEqual([
+      ["submitted_at", { ascending: false }],
+      ["id", { ascending: false }],
+    ]);
+    expect(matchesQuery.limit).toHaveBeenCalledWith(5);
+    expect(matchesQuery.limit.mock.invocationCallOrder[0]).toBeGreaterThan(matchesQuery.order.mock.invocationCallOrder[1]);
+  });
+
+  test("includes every stored match status", async () => {
+    rowsByTable.matches = (rowsByTable.matches as Array<Record<string, unknown>>).map((match, index) => ({
+      ...match,
+      status: ["confirmed", "disputed", "pending_confirmation"][index],
+    }));
+
+    const matches = await listGroupMatches(GROUP_ONE);
+
+    expect(matches.map((match) => match.status)).toEqual(["pending_confirmation", "confirmed"]);
   });
 
   test("lists only pending matches the current user can still review", async () => {

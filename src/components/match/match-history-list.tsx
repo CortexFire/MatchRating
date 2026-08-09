@@ -40,20 +40,7 @@ export function MatchHistoryList({ matches }: { matches: AppMatchSummary[] }) {
       {visibleMatches.length ? (
         <div className="flex flex-col gap-3">
           {visibleMatches.map((match) => (
-            <MatchRow
-              key={match.id}
-              match={{
-                id: match.id,
-                groupId: match.groupId,
-                format: match.format,
-                status: displayStatus(match.status),
-                submittedAt: formatSubmittedAt(match.submittedAt),
-                teamA: match.teamA.map((player) => player.name),
-                teamB: match.teamB.map((player) => player.name),
-                scores: match.games.map((game) => `${game.teamAScore}-${game.teamBScore}`),
-                ratingDelta: match.ratingSummary,
-              }}
-            />
+            <MatchRow key={match.id} match={match} />
           ))}
         </div>
       ) : (
@@ -85,12 +72,4 @@ function displayStatus(status: AppMatchSummary["status"]) {
   if (status === "pending_confirmation") return "Pending confirmation" as const;
   if (status === "confirmed") return "Confirmed" as const;
   return "Disputed" as const;
-}
-
-function formatSubmittedAt(value: string) {
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "America/Los_Angeles",
-  }).format(new Date(value));
 }

@@ -227,18 +227,22 @@ export async function getMatchGroupId(matchId: string): Promise<string | null> {
   return (data as MatchGroupRow | null)?.group_id ?? null;
 }
 
-export async function listGroupMatches(groupId: string): Promise<AppMatchSummary[]> {
+export async function listGroupMatches(groupId: string, options?: { limit?: number }): Promise<AppMatchSummary[]> {
   const userId = await requireUserId();
   const service = createSupabaseServiceClient();
   if (!isUuid(groupId) || !(await canReadGroup(groupId, userId, service))) return [];
 
-  const { data, error } = await service
+  let query = service
     .from("matches")
     .select("id, group_id, active_revision_id, status, submitted_at")
     .eq("group_id", groupId)
     .not("active_revision_id", "is", null)
     .order("submitted_at", { ascending: false })
     .order("id", { ascending: false });
+  if (options?.limit !== undefined) {
+    query = query.limit(options.limit);
+  }
+  const { data, error } = await query;
   if (error) throw error;
   return loadMatchViews((data ?? []) as MatchReadRows["matches"], userId, service);
 }
