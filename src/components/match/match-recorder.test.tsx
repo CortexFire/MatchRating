@@ -6,6 +6,10 @@ import { demoPlayers } from "../../lib/demo-data";
 import { MobileShell } from "../app/mobile-shell";
 import { MatchRecorder } from "./match-recorder";
 
+const navigationMocks = vi.hoisted(() => ({ push: vi.fn() }));
+
+vi.mock("next/navigation", () => ({ useRouter: () => navigationMocks }));
+
 const editableDoublesMatch = {
   format: "doubles" as const,
   teamAUserIds: ["alice"],
@@ -23,16 +27,23 @@ describe("MatchRecorder", () => {
   afterEach(() => {
     vi.useRealTimers();
   });
-  test("shows the provided group name while recording and selecting players", () => {
+  test("offers the provided groups in a native group selector while recording", () => {
     render(
       <MatchRecorder
+        groupId="wednesday"
         groupName="Wednesday Club Ladder"
+        groupOptions={[
+          { id: "downtown", name: "Downtown Rec" },
+          { id: "wednesday", name: "Wednesday Club Ladder" },
+        ]}
         players={demoPlayers}
         initialMatch={editableDoublesMatch}
       />,
     );
 
-    expect(screen.getByLabelText("Current group Wednesday Club Ladder")).toBeTruthy();
+    const select = screen.getByRole("combobox", { name: "Current group Wednesday Club Ladder" }) as HTMLSelectElement;
+    expect(select.value).toBe("wednesday");
+    expect(screen.getByRole("option", { name: "Downtown Rec" })).toBeTruthy();
 
     fireEvent.click(screen.getByLabelText("Team B empty player slot 2"));
 

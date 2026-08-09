@@ -766,6 +766,17 @@ export async function submitMatch(input: ActiveDraftInput & RequiredCommandMetad
   const parsed = activeDraftSchema.safeParse(input);
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Could not submit match." };
   const validated = validateMatchSubmission(parsed.data);
+  if (parsed.data.draftId) {
+    try {
+      const userId = await requireUserId();
+      const existing = await getEditableDraft(parsed.data.draftId, userId, createSupabaseServiceClient());
+      if (existing.group_id !== validated.groupId) {
+        throw new Error("This active match belongs to another group.");
+      }
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : "Could not submit match." };
+    }
+  }
   const result = await executeCommand<MatchCommandResult>("command_submit_match", {
     p_command_id: input.commandId, p_group_id: validated.groupId, p_draft_id: parsed.data.draftId ?? null,
     p_format: validated.format, p_team_a: validated.teamAUserIds, p_team_b: validated.teamBUserIds,

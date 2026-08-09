@@ -109,6 +109,40 @@ describe("transactional match actions", () => {
     expect(supabaseMocks.rpc).not.toHaveBeenCalled();
   });
 
+  test("rejects a submission when its editable draft belongs to another group", async () => {
+    const editableDraft = {
+      select: vi.fn(),
+      eq: vi.fn(),
+      maybeSingle: vi.fn(),
+    };
+    editableDraft.select.mockReturnValue(editableDraft);
+    editableDraft.eq.mockReturnValue(editableDraft);
+    editableDraft.maybeSingle.mockResolvedValue({
+      data: {
+        id: "33333333-3333-4333-8333-333333333333",
+        group_id: "77777777-7777-4777-8777-777777777777",
+        created_by_user_id: "11111111-1111-4111-8111-111111111111",
+        expires_at: "2099-01-01T00:00:00.000Z",
+        submitted_match_id: null,
+      },
+      error: null,
+    });
+    supabaseMocks.createSupabaseServiceClient.mockReturnValue({ from: vi.fn(() => editableDraft) });
+
+    const result = await actions.submitMatch({
+      commandId: "55555555-5555-4555-8555-555555555555",
+      draftId: "33333333-3333-4333-8333-333333333333",
+      groupId: "66666666-6666-4666-8666-666666666666",
+      format: "singles",
+      teamAUserIds: ["11111111-1111-4111-8111-111111111111"],
+      teamBUserIds: ["77777777-7777-4777-8777-777777777777"],
+      games: [{ teamAScore: 21, teamBScore: 18 }],
+    });
+
+    expect(result).toEqual({ ok: false, message: "This active match belongs to another group." });
+    expect(supabaseMocks.rpc).not.toHaveBeenCalled();
+  });
+
   test("forwards the client command ID when confirming a revision", async () => {
     supabaseMocks.rpc.mockResolvedValue({
       data: { revisionId: "33333333-3333-4333-8333-333333333333" },

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Medal, Plus, X } from "lucide-react";
+import { Medal, Plus, X } from "lucide-react";
 import { type ActionResult, type MatchCommandResult } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,6 +9,7 @@ import {
   type PlayerFilter,
   type PlayerSelection,
 } from "@/components/match/player-select-view";
+import { GroupSwitcher, type GroupOption } from "@/components/match/group-switcher";
 import { validateMatchSubmission, type MatchFormat, type MatchSubmissionInput, type Team } from "@/lib/matches/validation";
 import { type AppPlayer } from "@/lib/app-data";
 import { cn } from "@/lib/utils";
@@ -42,6 +43,7 @@ export type InitialMatchRecording = {
 export function MatchRecorder({
   groupId = "test-group",
   groupName = "Downtown Rec",
+  groupOptions = [{ id: groupId, name: groupName }],
   players,
   initialMatch = defaultMatchRecording,
   draftId,
@@ -52,6 +54,7 @@ export function MatchRecorder({
 }: {
   groupId?: string;
   groupName?: string;
+  groupOptions?: GroupOption[];
   players: AppPlayer[];
   initialMatch?: InitialMatchRecording;
   draftId?: string;
@@ -344,13 +347,7 @@ export function MatchRecorder({
     <section className="flex min-h-full flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-[22px] font-bold leading-7 text-ink">Match Recording</h1>
-        <div
-          className="inline-flex min-h-11 items-center gap-2 rounded-full bg-victory px-4 text-sm font-bold text-ink"
-          aria-label={`Current group ${groupName}`}
-        >
-          {groupName}
-          <ChevronDown className="size-4 stroke-[3]" />
-        </div>
+        <GroupSwitcher groups={groupOptions} currentGroupId={groupId} />
       </div>
 
       <FormatToggle value={format} onChange={updateFormat} disabled={!canEdit} />

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { createGuestPlayers, saveActiveMatchDraft, submitMatch } from "@/app/actions";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { MatchRecorder, type InitialMatchRecording } from "@/components/match/match-recorder";
-import { getActiveMatchDraft, getGroup, listGroupPlayers } from "@/lib/app-data";
+import { getActiveMatchDraft, getGroup, listCurrentUserGroups, listGroupPlayers } from "@/lib/app-data";
 import { type MatchFormat } from "@/lib/matches/validation";
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
@@ -19,16 +19,18 @@ export default async function NewMatchPage({
   const { groupId } = await params;
   const resolvedSearchParams = await searchParams;
   const draftId = firstValue(resolvedSearchParams.draftId);
-  const [group, players, activeDraft] = await Promise.all([
+  const [group, groups, players, activeDraft] = await Promise.all([
     getGroup(groupId),
+    listCurrentUserGroups(),
     listGroupPlayers(groupId),
     draftId ? getActiveMatchDraft(draftId) : Promise.resolve(null),
   ]);
-  const initialMatch = activeDraft?.initialMatch ?? parseInitialMatch(resolvedSearchParams, players.map((player) => player.id));
+  const matchingDraft = activeDraft?.groupId === groupId ? activeDraft : null;
+  const initialMatch = matchingDraft?.initialMatch ?? parseInitialMatch(resolvedSearchParams, players.map((player) => player.id));
 
   return (
     <MobileShell active="Record" recordHref={`/groups/${groupId}/matches/new`}>
-      {draftId && !activeDraft ? (
+      {draftId && !matchingDraft ? (
         <section className="flex min-h-full flex-col gap-4">
           <h1 className="text-[22px] font-bold leading-7 text-ink">Active match expired</h1>
           <p className="rounded-lg border border-stroke bg-surface p-4 text-sm text-muted">This active match expired. Start a new match.</p>
@@ -38,12 +40,14 @@ export default async function NewMatchPage({
         </section>
       ) : (
         <MatchRecorder
+          key={groupId}
           groupId={groupId}
           groupName={group?.name ?? "Group"}
+          groupOptions={groups.map(({ id, name }) => ({ id, name }))}
           players={players}
           initialMatch={initialMatch}
-          draftId={activeDraft?.id}
-          canEdit={activeDraft?.canEdit ?? true}
+          draftId={matchingDraft?.id}
+          canEdit={matchingDraft?.canEdit ?? true}
           createGuestPlayers={createGuestPlayers}
           saveActiveMatchDraft={saveActiveMatchDraft}
           submitMatchAction={submitMatch}
