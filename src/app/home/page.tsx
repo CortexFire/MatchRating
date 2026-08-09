@@ -1,9 +1,10 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { ChevronRight, UsersRound } from "lucide-react";
+import { ChevronRight, Plus, UsersRound } from "lucide-react";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { AvatarInitials } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ActiveMatchDraftList } from "@/components/match/active-match-draft-list";
 import { getCurrentProfile, listCurrentUserActiveMatchDrafts, listCurrentUserGroups } from "@/lib/app-data";
@@ -57,7 +58,17 @@ export default async function HomePage() {
             </Card>
           ))
         ) : (
-          <p className="rounded-lg border border-stroke bg-surface p-4 text-sm text-muted">Create or join a group to start recording matches.</p>
+          <Card>
+            <CardContent className="flex flex-col gap-3 p-4">
+              <p className="text-sm text-muted">Create or join a group to start recording matches.</p>
+              <Button asChild className="w-full">
+                <Link href="/groups/new">
+                  <Plus className="size-4" aria-hidden="true" />
+                  Create group
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
         )}
       </section>
     </MobileShell>
