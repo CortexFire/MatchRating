@@ -325,7 +325,8 @@ export function MatchRecorder({
     return (
       <PlayerSelectView
         players={selectablePlayers}
-        groupName={groupName}
+        groups={groupOptions}
+        currentGroupId={groupId}
         format={format}
         draftTeamA={draftTeamA}
         draftTeamB={draftTeamB}
