@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 
 const productionFiles = [
   "src/app/page.tsx",
+  "src/app/home/page.tsx",
   "src/app/profile/page.tsx",
   "src/app/groups/page.tsx",
   "src/app/groups/[groupId]/page.tsx",
@@ -13,7 +14,6 @@ const productionFiles = [
   "src/components/app/mobile-shell.tsx",
   "src/components/app/player-row.tsx",
   "src/lib/demo-auth.ts",
-  "src/lib/home.ts",
 ];
 
 function source(path: string) {

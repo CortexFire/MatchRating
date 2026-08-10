@@ -37,7 +37,7 @@ const draft = {
   teamA: ["Alice Tan"],
   teamB: ["Bea Chen"],
   scores: ["12-12"],
-  role: "Viewer" as const,
+  role: "Participant" as const,
 };
 const players = [
   { id: "alice", name: "Alice Tan", initials: "AT", role: "Owner" as const, rating: 1640, rd: 72, rank: 1, gamesPlayed: 18, status: "Active" as const },

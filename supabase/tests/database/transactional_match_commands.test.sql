@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(38);
+select plan(45);
 
 insert into public.profiles (id, display_name, first_name, last_name)
 values
@@ -20,6 +20,14 @@ values
   ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111', 'owner', 'active'),
   ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '22222222-2222-4222-8222-222222222222', 'member', 'active'),
   ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '33333333-3333-4333-8333-333333333333', 'member', 'active');
+
+create temporary view test_group_matches as
+select id from public.matches where group_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+create temporary view test_group_revisions as
+select r.id
+from public.match_revisions r
+join test_group_matches m on m.id = r.match_id;
 
 create temporary table match_command_test_state (
   name text primary key,
@@ -92,10 +100,10 @@ select ok(
   (select value->>'matchId' is not null from match_command_test_state where name = 'first-submit'),
   'an ordinary member can submit a complete match'
 );
-select is((select count(*) from public.matches), 1::bigint, 'submission creates one match');
-select is((select count(*) from public.match_revisions), 1::bigint, 'submission creates one revision');
-select is((select count(*) from public.match_participants), 2::bigint, 'submission creates both participants');
-select is((select count(*) from public.match_games), 1::bigint, 'submission creates every game');
+select is((select count(*) from test_group_matches), 1::bigint, 'submission creates one match');
+select is((select count(*) from test_group_revisions), 1::bigint, 'submission creates one revision');
+select is((select count(*) from public.match_participants where revision_id in (select id from test_group_revisions)), 2::bigint, 'submission creates both participants');
+select is((select count(*) from public.match_games where revision_id in (select id from test_group_revisions)), 1::bigint, 'submission creates every game');
 
 select is(
   public.command_submit_match(
@@ -110,7 +118,7 @@ select is(
   (select value from match_command_test_state where name = 'first-submit'),
   'an identical retry replays the original result'
 );
-select is((select count(*) from public.matches), 1::bigint, 'an identical retry does not duplicate the match');
+select is((select count(*) from test_group_matches), 1::bigint, 'an identical retry does not duplicate the match');
 
 select throws_ok(
   $$
@@ -145,7 +153,7 @@ select throws_ok(
   'Scores must be integers between 0 and 99',
   'database validation rejects out-of-range scores'
 );
-select is((select count(*) from public.matches), 1::bigint, 'invalid input rolls back the match and outbox transaction');
+select is((select count(*) from test_group_matches), 1::bigint, 'invalid input rolls back the match and outbox transaction');
 
 select set_config(
   'request.jwt.claims',
@@ -190,7 +198,7 @@ select throws_ok(
   'Submitter must play in the match',
   'a neutral scorer cannot create an unreviewable match'
 );
-select is((select count(*) from public.matches), 1::bigint, 'neutral submission rejection makes no aggregate writes');
+select is((select count(*) from test_group_matches), 1::bigint, 'neutral submission rejection makes no aggregate writes');
 
 select set_config(
   'request.jwt.claims',
@@ -248,7 +256,7 @@ select throws_ok(
   'Only current match participants can revise',
   'a non-participant cannot add themselves to a disputed revision'
 );
-select is((select count(*) from public.match_revisions), 1::bigint, 'unauthorized revision rejection leaves history unchanged');
+select is((select count(*) from test_group_revisions), 1::bigint, 'unauthorized revision rejection leaves history unchanged');
 
 select set_config(
   'request.jwt.claims',
@@ -265,7 +273,7 @@ select 'revision', public.command_revise_match(
   array['33333333-3333-4333-8333-333333333333']::uuid[],
   '[{"teamAScore":21,"teamBScore":19}]'::jsonb
 );
-select is((select count(*) from public.match_revisions), 2::bigint, 'a current participant can revise a disputed match');
+select is((select count(*) from test_group_revisions), 2::bigint, 'a current participant can revise a disputed match');
 
 select set_config(
   'request.jwt.claims',
@@ -287,7 +295,7 @@ select throws_ok(
   'Stale match revision',
   'a stale revision is rejected without another write'
 );
-select is((select count(*) from public.match_revisions), 2::bigint, 'stale revision rejection leaves revision history unchanged');
+select is((select count(*) from test_group_revisions), 2::bigint, 'stale revision rejection leaves revision history unchanged');
 
 select set_config(
   'request.jwt.claims',
@@ -345,7 +353,7 @@ select is(
   'an identical atomic correction retry replays the original result'
 );
 select is(
-  (select count(*) from public.match_revisions),
+  (select count(*) from test_group_revisions),
   3::bigint,
   'an identical atomic correction retry does not duplicate the revision'
 );
@@ -443,6 +451,102 @@ select is(
   1::bigint,
   'rating rebuild requests coalesce to one active job per group'
 );
+
+select ok(
+  not has_table_privilege('authenticated', 'public.active_match_drafts', 'INSERT')
+    and not has_table_privilege('authenticated', 'public.active_match_drafts', 'UPDATE')
+    and not has_table_privilege('authenticated', 'public.active_match_drafts', 'DELETE'),
+  'authenticated clients cannot bypass shared draft server actions with direct writes'
+);
+
+insert into public.active_match_drafts (
+  id,
+  group_id,
+  created_by_user_id,
+  format,
+  team_a_user_ids,
+  team_b_user_ids,
+  games,
+  expires_at
+)
+values (
+  '55555555-5555-4555-8555-555555555555',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  '11111111-1111-4111-8111-111111111111',
+  'singles',
+  array['22222222-2222-4222-8222-222222222222']::uuid[],
+  array['33333333-3333-4333-8333-333333333333']::uuid[],
+  '[{"teamAScore":12,"teamBScore":12}]'::jsonb,
+  now() + interval '1 day'
+);
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"22222222-2222-4222-8222-222222222222","role":"authenticated"}',
+  true
+);
+
+insert into match_command_test_state (name, value)
+select 'shared-draft-submit', public.command_submit_match(
+  '17171717-1717-4717-8717-171717171717',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  '55555555-5555-4555-8555-555555555555',
+  'singles',
+  array['22222222-2222-4222-8222-222222222222']::uuid[],
+  array['33333333-3333-4333-8333-333333333333']::uuid[],
+  '[{"teamAScore":21,"teamBScore":19}]'::jsonb
+);
+
+select ok(
+  (select value->>'matchId' is not null from match_command_test_state where name = 'shared-draft-submit'),
+  'a stored participant can submit a draft created by another member'
+);
+select is(
+  (
+    select m.created_by_user_id
+    from public.matches m
+    where m.id = (select (value->>'matchId')::uuid from match_command_test_state where name = 'shared-draft-submit')
+  ),
+  '22222222-2222-4222-8222-222222222222'::uuid,
+  'the resulting match is attributed to the participant who submitted it'
+);
+select is(
+  (
+    select r.submitted_by_user_id
+    from public.match_revisions r
+    where r.id = (select (value->>'revisionId')::uuid from match_command_test_state where name = 'shared-draft-submit')
+  ),
+  '22222222-2222-4222-8222-222222222222'::uuid,
+  'the first revision is attributed to the participant who submitted it'
+);
+select is(
+  (select submitted_match_id from public.active_match_drafts where id = '55555555-5555-4555-8555-555555555555'),
+  (select (value->>'matchId')::uuid from match_command_test_state where name = 'shared-draft-submit'),
+  'submission atomically retires the shared draft for every participant'
+);
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"33333333-3333-4333-8333-333333333333","role":"authenticated"}',
+  true
+);
+select throws_ok(
+  $$
+    select public.command_submit_match(
+      '18181818-1818-4818-8818-181818181818',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      '55555555-5555-4555-8555-555555555555',
+      'singles',
+      array['22222222-2222-4222-8222-222222222222']::uuid[],
+      array['33333333-3333-4333-8333-333333333333']::uuid[],
+      '[{"teamAScore":21,"teamBScore":19}]'::jsonb
+    )
+  $$,
+  'MRVAL',
+  'Active match is unavailable',
+  'a second participant cannot submit an already retired shared draft'
+);
+select is((select count(*) from test_group_matches), 2::bigint, 'a competing shared-draft submission creates no duplicate match');
 
 select * from finish();
 rollback;

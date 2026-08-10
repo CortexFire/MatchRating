@@ -4,6 +4,28 @@ import HomePage from "./page";
 
 const appDataMocks = vi.hoisted(() => ({
   getCurrentProfile: vi.fn(async () => ({ id: "alice-id", name: "Alice Tan", initials: "AT" })),
+  listCurrentUserActiveMatchDrafts: vi.fn(async () => [
+    {
+      id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      groupId: "11111111-1111-4111-8111-111111111111",
+      groupName: "Wednesday Club Ladder",
+      format: "singles" as const,
+      teamA: ["Alice Tan"],
+      teamB: ["Bea Rivera"],
+      scores: ["21-19"],
+      role: "Creator" as const,
+    },
+    {
+      id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      groupId: "22222222-2222-4222-8222-222222222222",
+      groupName: "Older Draft Club",
+      format: "doubles" as const,
+      teamA: ["Older A1", "Older A2"],
+      teamB: ["Older B1", "Older B2"],
+      scores: ["11-8"],
+      role: "Participant" as const,
+    },
+  ]),
   listCurrentUserGroups: vi.fn(async () => [
     {
       id: "11111111-1111-4111-8111-111111111111",
@@ -36,21 +58,39 @@ const appDataMocks = vi.hoisted(() => ({
 vi.mock("@/lib/app-data", () => appDataMocks);
 
 describe("HomePage", () => {
-  test("uses the current user's real group for recording", async () => {
+  test("resumes the newest real active draft with its canonical grouped link", async () => {
     const html = renderToStaticMarkup(await HomePage());
 
     expect(html).toContain("Alice Tan");
-    expect(html).toContain('href="/groups/11111111-1111-4111-8111-111111111111/matches/new"');
+    expect(html).toContain("Alice Tan vs Bea Rivera");
+    expect(html).toContain("21-19");
+    expect(html).toContain(
+      'href="/groups/11111111-1111-4111-8111-111111111111/matches/new?draftId=dddddddd-dddd-4ddd-8ddd-dddddddddddd"',
+    );
+    expect(html).not.toContain("Older Draft Club");
     expect(html).not.toContain('href="/groups/new"');
+    expect(appDataMocks.listCurrentUserActiveMatchDrafts).toHaveBeenCalledOnce();
   });
 
   test("falls back to the groups page when the user has no groups", async () => {
     appDataMocks.listCurrentUserGroups.mockResolvedValueOnce([]);
+    appDataMocks.listCurrentUserActiveMatchDrafts.mockResolvedValueOnce([]);
 
     const html = renderToStaticMarkup(await HomePage());
 
     expect(html).toContain('href="/groups"');
     expect(html).not.toContain('/groups/11111111-1111-4111-8111-111111111111/matches/new');
+  });
+
+  test("renders the create-match empty state when there is no active draft", async () => {
+    appDataMocks.listCurrentUserActiveMatchDrafts.mockResolvedValueOnce([]);
+
+    const html = renderToStaticMarkup(await HomePage());
+
+    expect(html).toContain("No active match in progress");
+    expect(html).toContain("Create a match");
+    expect(html).toContain('href="/groups/11111111-1111-4111-8111-111111111111/matches/new"');
+    expect(html).not.toContain("Resume recording");
   });
 
   test("renders real pending reviews with canonical grouped links", async () => {

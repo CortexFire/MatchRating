@@ -668,6 +668,8 @@ type EditableDraftRow = {
   id: string;
   group_id: string;
   created_by_user_id: string;
+  team_a_user_ids: string[];
+  team_b_user_ids: string[];
   expires_at: string;
   submitted_match_id: string | null;
 };
@@ -683,7 +685,6 @@ export async function saveActiveMatchDraft(input: ActiveDraftInput): Promise<Act
     const expires_at = draftExpiresAt();
     const values = {
       group_id: draft.groupId,
-      created_by_user_id: userId,
       format: draft.format,
       team_a_user_ids: draft.teamAUserIds,
       team_b_user_ids: draft.teamBUserIds,
@@ -702,18 +703,31 @@ export async function saveActiveMatchDraft(input: ActiveDraftInput): Promise<Act
         .from("active_match_drafts")
         .update(values)
         .eq("id", parsed.draftId)
+        .is("submitted_match_id", null)
+        .gt("expires_at", new Date().toISOString())
+        .or(
+          `created_by_user_id.eq.${userId},team_a_user_ids.cs.{${userId}},team_b_user_ids.cs.{${userId}}`,
+        )
         .select("id")
-        .single();
+        .maybeSingle();
 
       if (error) {
         throw error;
+      }
+
+      if (!data) {
+        throw new Error("This active match is unavailable or you no longer have access.");
       }
 
       revalidateDraftPaths(parsed.groupId);
       return { ok: true, data: { draftId: data.id } };
     }
 
-    const { data, error } = await service.from("active_match_drafts").insert(values).select("id").single();
+    const { data, error } = await service
+      .from("active_match_drafts")
+      .insert({ ...values, created_by_user_id: userId })
+      .select("id")
+      .single();
     if (error) {
       throw error;
     }
@@ -728,7 +742,7 @@ export async function saveActiveMatchDraft(input: ActiveDraftInput): Promise<Act
 async function getEditableDraft(draftId: string, userId: string, service: SupabaseService): Promise<EditableDraftRow> {
   const { data, error } = await service
     .from("active_match_drafts")
-    .select("id, group_id, created_by_user_id, expires_at, submitted_match_id")
+    .select("id, group_id, created_by_user_id, team_a_user_ids, team_b_user_ids, expires_at, submitted_match_id")
     .eq("id", draftId)
     .maybeSingle();
 
@@ -737,13 +751,30 @@ async function getEditableDraft(draftId: string, userId: string, service: Supaba
   }
 
   const draft = data as EditableDraftRow | null;
-  if (!draft || draft.submitted_match_id || Date.parse(draft.expires_at) <= Date.now()) {
-    await service.from("active_match_drafts").delete().eq("id", draftId);
+  if (!draft) {
+    throw new Error("This active match is unavailable.");
+  }
+
+  if (draft.submitted_match_id) {
+    throw new Error("This active match was already submitted.");
+  }
+
+  if (Date.parse(draft.expires_at) <= Date.now()) {
+    await service
+      .from("active_match_drafts")
+      .delete()
+      .eq("id", draftId)
+      .eq("expires_at", draft.expires_at)
+      .is("submitted_match_id", null);
     throw new Error("This active match expired. Start a new match.");
   }
 
-  if (draft.created_by_user_id !== userId) {
-    throw new Error("Only the match creator can edit this active match.");
+  const canEdit =
+    draft.created_by_user_id === userId ||
+    draft.team_a_user_ids.includes(userId) ||
+    draft.team_b_user_ids.includes(userId);
+  if (!canEdit) {
+    throw new Error("Only the match creator or a participant can edit this active match.");
   }
 
   return draft;
@@ -752,7 +783,6 @@ async function getEditableDraft(draftId: string, userId: string, service: Supaba
 function revalidateDraftPaths(groupId: string) {
   revalidatePath("/home");
   revalidatePath(`/groups/${groupId}`);
-  revalidatePath(`/groups/${groupId}/matches/new`);
 }
 
 export async function submitMatch(input: ActiveDraftInput & RequiredCommandMetadata): Promise<ActionResult<MatchCommandResult>> {
@@ -779,7 +809,6 @@ export async function submitMatch(input: ActiveDraftInput & RequiredCommandMetad
     p_games: validated.games.map(({ teamAScore, teamBScore }) => ({ teamAScore, teamBScore })),
   }, "Could not submit match.");
   scheduleReturnedRatingJob(result);
-  if (result.ok) revalidateDraftPaths(validated.groupId);
   return result;
 }
 
