@@ -28,9 +28,6 @@ export default async function LoginPage({
           </div>
           <div>
             <h1 className="text-2xl font-bold leading-8">Badminton Rankings</h1>
-            <p className="mt-2 text-sm leading-5 text-muted">
-              Track matches, confirm scores, and keep every group rating isolated.
-            </p>
           </div>
         </div>
         <Card>

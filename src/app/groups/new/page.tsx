@@ -12,7 +12,7 @@ export default async function NewGroupPage() {
 
   return (
     <MobileShell active="Home" recordHref={primaryGroup ? `/groups/${primaryGroup.id}/matches/new` : undefined}>
-      <ScreenHeader title="Create group" subtitle="Ratings, history, and rankings stay independent per group." backHref="/groups" />
+      <ScreenHeader title="Create group" backHref="/groups" />
       <Card>
         <CardHeader>
           <CardTitle>Group details</CardTitle>

@@ -17,7 +17,7 @@ export default async function HistoryPage({
 
   return (
     <MobileShell active="History" recordHref={`/groups/${groupId}/matches/new`}>
-      <ScreenHeader title="Match history" subtitle="Historical revisions are the source of truth for every rating rebuild." backHref={`/groups/${groupId}`} />
+      <ScreenHeader title="Match history" backHref={`/groups/${groupId}`} />
       <MatchHistoryList matches={matches} />
     </MobileShell>
   );

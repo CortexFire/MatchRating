@@ -54,8 +54,20 @@ describe("GroupSwitcher", () => {
   });
 
   test("disables the selector when there is only one group", () => {
-    render(<GroupSwitcher currentGroupId="downtown" groups={[{ id: "downtown", name: "Downtown Rec" }]} />);
+    const { container } = render(<GroupSwitcher currentGroupId="downtown" groups={[{ id: "downtown", name: "Downtown Rec" }]} />);
 
     expect((screen.getByLabelText("Current group Downtown Rec") as HTMLSelectElement).disabled).toBe(true);
+    expect(container.querySelector("svg")).toBeNull();
+  });
+
+  test("shows the dropdown indicator when another group is available", () => {
+    const { container } = render(
+      <GroupSwitcher
+        currentGroupId="downtown"
+        groups={[{ id: "downtown", name: "Downtown Rec" }, { id: "wednesday", name: "Wednesday Club" }]}
+      />,
+    );
+
+    expect(container.querySelector("svg")).toBeTruthy();
   });
 });

@@ -30,7 +30,7 @@ export function GroupSwitcher({
     <div className="relative inline-flex min-h-11 items-center rounded-full bg-victory text-sm font-bold text-ink">
       <select
         aria-label={`Current group ${currentGroup?.name ?? "Group"}`}
-        className="min-h-11 appearance-none bg-transparent py-2 pl-4 pr-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action disabled:cursor-default"
+        className={`min-h-11 appearance-none bg-transparent py-2 pl-4 ${groups.length > 1 ? "pr-10" : "pr-4"} focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action disabled:cursor-default`}
         value={currentGroupId}
         disabled={groups.length <= 1}
         onChange={(event) => switchGroup(event.target.value)}
@@ -39,7 +39,7 @@ export function GroupSwitcher({
           <option key={group.id} value={group.id}>{group.name}</option>
         ))}
       </select>
-      <ChevronDown aria-hidden className="pointer-events-none absolute right-4 size-4 stroke-[3]" />
+      {groups.length > 1 ? <ChevronDown aria-hidden className="pointer-events-none absolute right-4 size-4 stroke-[3]" /> : null}
     </div>
   );
 }

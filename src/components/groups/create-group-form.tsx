@@ -11,8 +11,10 @@ function redirectTo(url: string) {
 }
 
 export function CreateGroupForm({ onRedirect = redirectTo }: { onRedirect?: (url: string) => void }) {
-  const [name, setName] = useState("Wednesday Club Ladder");
-  const [description, setDescription] = useState("Friendly competitive badminton ladder.");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [isNameFocused, setIsNameFocused] = useState(false);
+  const [isDescriptionFocused, setIsDescriptionFocused] = useState(false);
   const [message, setMessage] = useState("");
   const [isPending, startTransition] = useTransition();
 
@@ -33,16 +35,26 @@ export function CreateGroupForm({ onRedirect = redirectTo }: { onRedirect?: (url
     <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
       <label className="flex flex-col gap-2 text-sm font-semibold text-ink">
         Group name
-        <Input value={name} onChange={(event) => setName(event.target.value)} required />
+        <Input
+          placeholder={isNameFocused || name ? undefined : "Club Name"}
+          value={name}
+          onFocus={() => setIsNameFocused(true)}
+          onBlur={() => setIsNameFocused(false)}
+          onChange={(event) => setName(event.target.value)}
+          required
+        />
       </label>
       <label className="flex flex-col gap-2 text-sm font-semibold text-ink">
         Description
-        <Input value={description} onChange={(event) => setDescription(event.target.value)} />
+        <Input
+          placeholder={isDescriptionFocused || description ? undefined : "Club description"}
+          value={description}
+          onFocus={() => setIsDescriptionFocused(true)}
+          onBlur={() => setIsDescriptionFocused(false)}
+          onChange={(event) => setDescription(event.target.value)}
+        />
       </label>
-      <div className="rounded-lg border border-dashed border-stroke bg-surface p-3 text-sm text-muted">
-        Recently played members can be invited after the group is created. Invite email sending is intentionally out of MVP.
-      </div>
-      <Button type="submit" disabled={isPending}>
+      <Button type="submit" disabled={isPending || !name.trim()}>
         <Plus className="size-4" />
         {isPending ? "Creating" : "Create group"}
       </Button>

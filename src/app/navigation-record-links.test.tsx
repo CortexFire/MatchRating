@@ -62,6 +62,12 @@ describe("top-level navigation record links", () => {
     expect(html).toContain(recordHref);
   });
 
+  test("new group does not show the removed group-isolation subtitle", async () => {
+    const html = renderToStaticMarkup(await NewGroupPage());
+
+    expect(html).not.toContain("Ratings, history, and rankings stay independent per group.");
+  });
+
   test("matches review links Record to the current user's primary group", async () => {
     const html = renderToStaticMarkup(await ReviewMatchesPage());
 

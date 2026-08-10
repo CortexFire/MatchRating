@@ -20,7 +20,7 @@ export default async function RankingsPage({
 
   return (
     <MobileShell active="Rank" recordHref={recordHref}>
-      <ScreenHeader title="Rankings" subtitle="Glicko-2 ratings are isolated to this group." backHref={`/groups/${groupId}`} />
+      <ScreenHeader title="Rankings" backHref={`/groups/${groupId}`} />
       <div className="flex gap-2">
         <Badge tone="selected">Overall</Badge>
         <Badge>Singles</Badge>

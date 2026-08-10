@@ -34,6 +34,13 @@ test("renders stored group matches", async () => {
   expect(html).not.toContain("No matches recorded yet");
 });
 
+test("renders the history title without the redundant rebuild explanation", async () => {
+  const html = renderToStaticMarkup(await HistoryPage({ params: Promise.resolve({ groupId: "group-1" }) }));
+
+  expect(html).toContain("Match history");
+  expect(html).not.toContain("Historical revisions are the source of truth for every rating rebuild.");
+});
+
 test("renders not found instead of an empty history for an inaccessible group", async () => {
   mocks.canCurrentUserReadGroup.mockResolvedValue(false);
 
