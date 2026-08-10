@@ -48,12 +48,12 @@ async function createGoogleNonce() {
   return { nonce, hashedNonce };
 }
 
-export function LoginForm({ initialNextPath = DEFAULT_AUTH_NEXT_PATH, onRedirect = redirectTo }: { initialNextPath?: string; onRedirect?: (url: string) => void }) {
+export function LoginForm({ initialNextPath = DEFAULT_AUTH_NEXT_PATH, initialMessage = "Use Google or request a one-time email code to sign in.", onRedirect = redirectTo }: { initialNextPath?: string; initialMessage?: string; onRedirect?: (url: string) => void }) {
   const nextPath = getSafeAuthNextPath(initialNextPath);
   const [email, setEmail] = useState("");
   const [token, setToken] = useState("");
   const [codeSent, setCodeSent] = useState(false);
-  const [message, setMessage] = useState("Use Google or request a one-time email code to sign in.");
+  const [message, setMessage] = useState(initialMessage);
   const [isPending, startTransition] = useTransition();
   const googleButtonRef = useRef<HTMLDivElement>(null);
   const googleNonceRef = useRef("");

@@ -16,8 +16,9 @@ import {
 import { hashInviteToken } from "@/lib/invites/tokens";
 import {
   createAuthCallbackIntent,
-  getAuthCallbackIntentCookie,
+  getAuthCallbackIntentCookieForTrustedPublicSite,
 } from "@/lib/auth/callback-intent";
+import { getTrustedPublicSiteOrigin } from "@/lib/auth/public-site-origin";
 import { DEFAULT_AUTH_NEXT_PATH, getSafeAuthNextPath } from "@/lib/auth/next-path";
 import {
   validateMatchSubmission,
@@ -171,16 +172,8 @@ const reviseSchema = z
     }),
   );
 
-function getSiteOrigin() {
-  return (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/+$/, "");
-}
-
-function getAuthCallbackIntentCookieForSite() {
-  return getAuthCallbackIntentCookie(new URL(getSiteOrigin()).protocol === "https:");
-}
-
 function getAuthCallbackUrl(nextPath = DEFAULT_AUTH_NEXT_PATH, intent?: string) {
-  const callbackUrl = new URL("/auth/confirm", getSiteOrigin());
+  const callbackUrl = new URL("/auth/confirm", getTrustedPublicSiteOrigin());
   callbackUrl.searchParams.set("next", getSafeAuthNextPath(nextPath));
   if (intent) {
     callbackUrl.searchParams.set("auth_intent", intent);
@@ -414,7 +407,7 @@ export async function signInWithOtp(email: string, nextPath = DEFAULT_AUTH_NEXT_
       throw error;
     }
 
-    const cookie = getAuthCallbackIntentCookieForSite();
+    const cookie = getAuthCallbackIntentCookieForTrustedPublicSite();
     (await cookies()).set({ ...cookie, value: intent });
 
     return { ok: true, data: { email: parsedEmail }, message: "Check your email for the sign-in code." };
@@ -441,7 +434,7 @@ export async function verifyEmailOtp(input: {
       throw error;
     }
 
-    const cookie = getAuthCallbackIntentCookieForSite();
+    const cookie = getAuthCallbackIntentCookieForTrustedPublicSite();
     (await cookies()).set({ ...cookie, value: "", maxAge: 0 });
 
     return { ok: true, data: { email: parsed.email }, message: "Signed in." };
@@ -615,7 +608,7 @@ export async function getOrCreateInvite(groupId: string): Promise<ActionResult<{
       throw existingError;
     }
 
-    const origin = getSiteOrigin();
+    const origin = getTrustedPublicSiteOrigin();
     if (existingInvite?.id) {
       return { ok: true, data: { token: existingInvite.id, url: `${origin}/join/${existingInvite.id}` } };
     }

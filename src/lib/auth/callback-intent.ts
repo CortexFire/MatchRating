@@ -1,4 +1,5 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
+import { getTrustedPublicSiteOrigin } from "./public-site-origin";
 
 const AUTH_CALLBACK_INTENT_BYTES = 32;
 const AUTH_CALLBACK_INTENT_LENGTH = 43;
@@ -34,6 +35,10 @@ export function getAuthCallbackIntentCookie(secure: boolean): CookieDefinition {
     maxAge: 3600,
     secure,
   };
+}
+
+export function getAuthCallbackIntentCookieForTrustedPublicSite(): CookieDefinition {
+  return getAuthCallbackIntentCookie(new URL(getTrustedPublicSiteOrigin()).protocol === "https:");
 }
 
 function isAuthCallbackIntent(value: string): boolean {

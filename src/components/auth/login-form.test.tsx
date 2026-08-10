@@ -314,4 +314,15 @@ describe("LoginForm", () => {
       expect(redirects).toEqual([]);
     });
   });
+
+  test("shows a safe initial callback failure message", async () => {
+    render(
+      <LoginForm
+        initialMessage="That sign-in link is invalid or expired. Request a new link or enter the six-digit email code."
+        onRedirect={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("That sign-in link is invalid or expired. Request a new link or enter the six-digit email code.")).toBeTruthy();
+  });
 });
