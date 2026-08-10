@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { z } from "zod";
@@ -13,6 +14,11 @@ import {
   isDemoLoginEnabled,
 } from "@/lib/demo-auth";
 import { hashInviteToken } from "@/lib/invites/tokens";
+import {
+  createAuthCallbackIntent,
+  getAuthCallbackIntentCookie,
+} from "@/lib/auth/callback-intent";
+import { DEFAULT_AUTH_NEXT_PATH, getSafeAuthNextPath } from "@/lib/auth/next-path";
 import {
   validateMatchSubmission,
   type MatchSubmissionInput,
@@ -165,22 +171,21 @@ const reviseSchema = z
     }),
   );
 
-const DEFAULT_AUTH_REDIRECT_PATH = "/onboarding";
-
 function getSiteOrigin() {
   return (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/+$/, "");
 }
 
-function getSafeAuthNextPath(value = DEFAULT_AUTH_REDIRECT_PATH) {
-  if (!value.startsWith("/") || value.startsWith("//")) {
-    return DEFAULT_AUTH_REDIRECT_PATH;
-  }
-
-  return value;
+function getAuthCallbackIntentCookieForSite() {
+  return getAuthCallbackIntentCookie(new URL(getSiteOrigin()).protocol === "https:");
 }
 
-function getAuthCallbackUrl(nextPath = DEFAULT_AUTH_REDIRECT_PATH) {
-  return `${getSiteOrigin()}/auth/confirm?next=${encodeURIComponent(getSafeAuthNextPath(nextPath))}`;
+function getAuthCallbackUrl(nextPath = DEFAULT_AUTH_NEXT_PATH, intent?: string) {
+  const callbackUrl = new URL("/auth/confirm", getSiteOrigin());
+  callbackUrl.searchParams.set("next", getSafeAuthNextPath(nextPath));
+  if (intent) {
+    callbackUrl.searchParams.set("auth_intent", intent);
+  }
+  return callbackUrl.toString();
 }
 
 function getActionErrorMessage(error: unknown, fallback: string) {
@@ -373,7 +378,7 @@ export async function signOut(): Promise<void> {
   redirect("/login");
 }
 
-export async function signInWithOtp(email: string, nextPath = DEFAULT_AUTH_REDIRECT_PATH): Promise<ActionResult<{ email: string; redirectTo?: string }>> {
+export async function signInWithOtp(email: string, nextPath = DEFAULT_AUTH_NEXT_PATH): Promise<ActionResult<{ email: string; redirectTo?: string }>> {
   try {
     const parsedEmail = z.string().email().parse(email);
     const demoPlayer = getDemoPlayerByEmail(parsedEmail);
@@ -397,16 +402,20 @@ export async function signInWithOtp(email: string, nextPath = DEFAULT_AUTH_REDIR
       };
     }
 
+    const intent = createAuthCallbackIntent();
     const { error } = await supabase.auth.signInWithOtp({
       email: parsedEmail,
       options: {
-        emailRedirectTo: getAuthCallbackUrl(nextPath),
+        emailRedirectTo: getAuthCallbackUrl(nextPath, intent),
       },
     });
 
     if (error) {
       throw error;
     }
+
+    const cookie = getAuthCallbackIntentCookieForSite();
+    (await cookies()).set({ ...cookie, value: intent });
 
     return { ok: true, data: { email: parsedEmail }, message: "Check your email for the sign-in code." };
   } catch (error) {
@@ -431,6 +440,9 @@ export async function verifyEmailOtp(input: {
     if (error) {
       throw error;
     }
+
+    const cookie = getAuthCallbackIntentCookieForSite();
+    (await cookies()).set({ ...cookie, value: "", maxAge: 0 });
 
     return { ok: true, data: { email: parsed.email }, message: "Signed in." };
   } catch (error) {
@@ -648,22 +660,13 @@ export async function joinGroupByInvite(token: string, metadata: CommandMetadata
   return result;
 }
 
-export async function leaveGroup(groupId: string): Promise<ActionResult<{ groupId: string }>> {
-  try {
-    const userId = await requireUserId();
-    await ensureActiveMember(groupId, userId);
-    const service = createSupabaseServiceClient();
-    await service
-      .from("group_memberships")
-      .update({ status: "left", left_at: new Date().toISOString() })
-      .eq("group_id", groupId)
-      .eq("user_id", userId);
-
-    revalidatePath(`/groups/${groupId}`);
-    return { ok: true, data: { groupId } };
-  } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Could not leave group." };
-  }
+export async function leaveGroup(groupId: string, metadata: CommandMetadata = {}): Promise<ActionResult<{ groupId: string }>> {
+  const result = await executeCommand<{ groupId: string }>("command_leave_group", {
+    p_command_id: commandId(metadata),
+    p_group_id: groupId,
+  }, "Could not leave group.");
+  if (result.ok) revalidatePath(`/groups/${groupId}`);
+  return result;
 }
 
 

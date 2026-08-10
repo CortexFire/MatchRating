@@ -25,7 +25,13 @@ const supabaseMocks = vi.hoisted(() => {
   };
 });
 
+const cookieMocks = vi.hoisted(() => {
+  const store = { set: vi.fn() };
+  return { cookies: vi.fn(async () => store), store };
+});
+
 vi.mock("@/lib/supabase/server", () => supabaseMocks);
+vi.mock("next/headers", () => cookieMocks);
 
 describe("auth actions", () => {
   beforeEach(() => {
@@ -51,15 +57,22 @@ describe("auth actions", () => {
   });
 
 
-  test("signInWithOtp sends the email code with the auth callback redirect", async () => {
+  test("signInWithOtp sends a callback intent and arms its HTTPS cookie after a successful email send", async () => {
     const result = await actions.signInWithOtp("player@example.com");
 
     expect(result.ok).toBe(true);
-    expect(supabaseMocks.auth.signInWithOtp).toHaveBeenCalledWith({
-      email: "player@example.com",
-      options: {
-        emailRedirectTo: "https://matches.example.com/auth/confirm?next=%2Fonboarding",
-      },
+    const redirectUrl = new URL(supabaseMocks.auth.signInWithOtp.mock.calls[0]?.[0].options.emailRedirectTo);
+    const intent = redirectUrl.searchParams.get("auth_intent");
+    expect(redirectUrl.searchParams.get("next")).toBe("/onboarding");
+    expect(intent).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(cookieMocks.store.set).toHaveBeenCalledWith({
+      name: "__Host-matchrating-auth-intent",
+      value: intent,
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 3600,
+      secure: true,
     });
   });
 
@@ -82,6 +95,7 @@ describe("auth actions", () => {
       token_hash: "hash-alice",
       type: "magiclink",
     });
+    expect(cookieMocks.store.set).not.toHaveBeenCalled();
   });
 
   test("signInWithOtp sends email for demo addresses when demo login is disabled", async () => {
@@ -89,22 +103,22 @@ describe("auth actions", () => {
 
     expect(result.ok).toBe(true);
     expect(supabaseMocks.auth.admin.generateLink).not.toHaveBeenCalled();
-    expect(supabaseMocks.auth.signInWithOtp).toHaveBeenCalledWith({
-      email: "alice@demo.matchrating.app",
-      options: {
-        emailRedirectTo: "https://matches.example.com/auth/confirm?next=%2Fonboarding",
-      },
-    });
+    const redirectUrl = new URL(supabaseMocks.auth.signInWithOtp.mock.calls[0]?.[0].options.emailRedirectTo);
+    expect(redirectUrl.searchParams.get("next")).toBe("/onboarding");
+    expect(redirectUrl.searchParams.get("auth_intent")).toMatch(/^[A-Za-z0-9_-]{43}$/);
   });
   test("email auth preserves a safe onboarding invite redirect", async () => {
     await actions.signInWithOtp("player@example.com", "/onboarding?invite=invite-token");
 
-    expect(supabaseMocks.auth.signInWithOtp).toHaveBeenCalledWith({
-      email: "player@example.com",
-      options: {
-        emailRedirectTo: "https://matches.example.com/auth/confirm?next=%2Fonboarding%3Finvite%3Dinvite-token",
-      },
-    });
+    const redirectUrl = new URL(supabaseMocks.auth.signInWithOtp.mock.calls[0]?.[0].options.emailRedirectTo);
+    expect(redirectUrl.searchParams.get("next")).toBe("/onboarding?invite=invite-token");
+  });
+
+  test("signInWithOtp falls back from a malicious next path before issuing its email link", async () => {
+    await actions.signInWithOtp("player@example.com", "//evil.example.com");
+
+    const redirectUrl = new URL(supabaseMocks.auth.signInWithOtp.mock.calls[0]?.[0].options.emailRedirectTo);
+    expect(redirectUrl.searchParams.get("next")).toBe("/onboarding");
   });
 
   test("verifyEmailOtp verifies a six-digit email code", async () => {
@@ -125,6 +139,15 @@ describe("auth actions", () => {
       token: "123456",
       type: "email",
     });
+    expect(cookieMocks.store.set).toHaveBeenCalledWith({
+      name: "__Host-matchrating-auth-intent",
+      value: "",
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 0,
+      secure: true,
+    });
   });
 
   test("verifyEmailOtp rejects incomplete codes before calling Supabase", async () => {
@@ -144,6 +167,7 @@ describe("auth actions", () => {
       message: "Enter the 6-digit code from your email.",
     });
     expect(supabaseMocks.auth.verifyOtp).not.toHaveBeenCalled();
+    expect(cookieMocks.store.set).not.toHaveBeenCalled();
   });
 
   test("auth action errors are returned as user-safe messages", async () => {
@@ -157,5 +181,15 @@ describe("auth actions", () => {
       ok: false,
       message: "Email provider is unavailable",
     });
+    expect(cookieMocks.store.set).not.toHaveBeenCalled();
+  });
+
+  test("verifyEmailOtp preserves a pending callback intent when Supabase rejects the code", async () => {
+    supabaseMocks.auth.verifyOtp.mockResolvedValue({ error: new Error("Invalid code") });
+
+    const result = await actions.verifyEmailOtp({ email: "player@example.com", token: "123456" });
+
+    expect(result).toEqual({ ok: false, message: "Invalid code" });
+    expect(cookieMocks.store.set).not.toHaveBeenCalled();
   });
 });
