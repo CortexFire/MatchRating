@@ -24,15 +24,6 @@ export type DemoMatch = {
   ratingDelta: string;
 };
 
-export type DemoCurrentGame = {
-  id: string;
-  status: "In progress" | "Complete";
-  groupName: string;
-  startedAt: string;
-  players: string[];
-  scores?: string[];
-};
-
 export const demoUser = {
   id: "alice",
   name: "Alice Tan",
@@ -217,31 +208,6 @@ export const demoMatches: DemoMatch[] = [
     scores: ["21-13", "21-18"],
     winnerTeam: "A",
     ratingDelta: "+16 / -16",
-  },
-];
-
-export const demoCurrentGames: DemoCurrentGame[] = [
-  {
-    id: "game-206",
-    status: "In progress",
-    groupName: "Wednesday Club Ladder",
-    startedAt: "Today, 8:53 PM",
-    players: ["Alice Tan", "Cory Shah", "Bea Rivera", "Dev Okafor"],
-    scores: ["11-8"],
-  },
-  {
-    id: "game-205",
-    status: "In progress",
-    groupName: "Downtown Rec Club",
-    startedAt: "Today, 8:14 PM",
-    players: ["Emi Wilson", "Finn Liu"],
-  },
-  {
-    id: "game-204",
-    status: "Complete",
-    groupName: "Wednesday Club Ladder",
-    startedAt: "Mon, 7:40 PM",
-    players: ["Gia Patel", "Henry Park"],
   },
 ];
 

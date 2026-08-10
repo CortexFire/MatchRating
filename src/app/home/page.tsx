@@ -7,25 +7,21 @@ import { AvatarInitials } from "@/components/ui/avatar";
 import { PendingReviewList } from "@/components/match/pending-review-list";
 import {
   getCurrentProfile,
+  listCurrentUserActiveMatchDrafts,
   listCurrentUserGroups,
   listPendingReviewsForCurrentUser,
 } from "@/lib/app-data";
-import {
-  getPrimaryCurrentGame,
-  splitCurrentGameTeams,
-} from "@/lib/home";
-import { demoCurrentGames } from "@/lib/demo-data";
 import { toPendingReviewMatch } from "@/lib/matches/pending-review";
 
 export default async function HomePage() {
-  const [profile, groups, pendingReviews] = await Promise.all([
+  const [profile, groups, activeDrafts, pendingReviews] = await Promise.all([
     getCurrentProfile(),
     listCurrentUserGroups(),
+    listCurrentUserActiveMatchDrafts(),
     listPendingReviewsForCurrentUser(),
   ]);
   const primaryGroup = groups[0];
-  const primaryGame = getPrimaryCurrentGame(demoCurrentGames);
-  const primaryTeams = primaryGame ? splitCurrentGameTeams(primaryGame) : null;
+  const primaryDraft = activeDrafts[0];
   const pendingReviewMatches = pendingReviews.map(toPendingReviewMatch);
 
   return (
@@ -56,43 +52,39 @@ export default async function HomePage() {
           <h2 className="text-lg font-bold text-ink">Active match</h2>
         </div>
 
-        {primaryGame ? (
+        {primaryDraft ? (
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-muted">
-                  {primaryGame.groupName}
+                  {primaryDraft.groupName}
                 </p>
-                <p className="text-base font-bold text-ink">
-                  {primaryGame.startedAt}
+                <p className="text-base font-bold capitalize text-ink">
+                  {primaryDraft.format}
                 </p>
               </div>
               <span className="rounded-full bg-surface px-3 py-1 text-xs font-semibold text-muted">
                 In progress
               </span>
             </div>
-            <div className="rounded-lg border border-stroke bg-app-bg p-4">
+            <Link
+              href={`/groups/${primaryDraft.groupId}/matches/new?draftId=${primaryDraft.id}`}
+              className="block rounded-lg border border-stroke bg-app-bg p-4 transition hover:border-action focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+            >
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-ink">
-                    {primaryTeams?.teamA.join(" / ")}
-                  </p>
-                  <p className="mt-1 truncate text-sm text-muted">
-                    vs {primaryTeams?.teamB.join(" / ")}
+                    {primaryDraft.teamA.join(" / ")} vs {primaryDraft.teamB.join(" / ")}
                   </p>
                 </div>
                 <p className="text-sm font-semibold text-action">
-                  {primaryGame.scores?.join(", ") ?? "Live"}
+                  {primaryDraft.scores.join(", ")}
                 </p>
               </div>
-            </div>
+            </Link>
             <div className="flex justify-center">
               <Link
-                href={
-                  primaryGroup
-                    ? `/groups/${primaryGroup.id}/matches/new`
-                    : "/groups"
-                }
+                href={`/groups/${primaryDraft.groupId}/matches/new?draftId=${primaryDraft.id}`}
                 className="inline-flex rounded-lg bg-action px-4 py-2 text-sm font-semibold text-white transition hover:bg-action/90"
               >
                 Resume recording

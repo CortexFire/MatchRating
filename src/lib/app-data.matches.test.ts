@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
   canCurrentUserReadGroup,
+  getActiveMatchDraft,
   getGroup,
   getGroupMatchDetail,
+  listCurrentUserActiveMatchDrafts,
   listGroupActiveMatchDrafts,
   listGroupMatches,
   listGroupPlayers,
@@ -70,6 +72,17 @@ const baseRows: Record<string, unknown[]> = {
   match_confirmations: [{ revision_id: REVISION_OLD, user_id: OPPONENT, action: "confirmed", created_at: "2026-08-06T21:00:00.000Z" }],
   rating_events: [],
   profiles: [{ id: SUBMITTER, display_name: "Alice Tan" }, { id: OPPONENT, display_name: "Bea Rivera" }],
+  active_match_drafts: [{
+    id: "30303030-3030-4030-8030-303030303030",
+    group_id: GROUP_ONE,
+    created_by_user_id: SUBMITTER,
+    format: "singles",
+    team_a_user_ids: [SUBMITTER],
+    team_b_user_ids: [OPPONENT],
+    games: [{ teamAScore: 12, teamBScore: 12 }],
+    expires_at: "2099-01-01T00:00:00.000Z",
+    submitted_match_id: null,
+  }],
 };
 
 let rowsByTable: Record<string, unknown[]>;
@@ -204,6 +217,33 @@ describe("stored match reads", () => {
     const matches = await listPendingReviewsForCurrentUser();
 
     expect(matches.map((match) => match.id)).toEqual([MATCH_NEW]);
+  });
+
+  test("hydrates a visible non-creator draft as an editable participant", async () => {
+    const draft = await getActiveMatchDraft("30303030-3030-4030-8030-303030303030");
+
+    expect(draft).toMatchObject({
+      role: "Participant",
+      canEdit: true,
+      initialMatch: {
+        format: "singles",
+        teamAUserIds: [SUBMITTER],
+        teamBUserIds: [OPPONENT],
+        games: [{ teamAScore: 12, teamBScore: 12 }],
+      },
+    });
+  });
+
+  test("hides current-user drafts after the user leaves their group", async () => {
+    rowsByTable.group_memberships = [];
+
+    await expect(listCurrentUserActiveMatchDrafts()).resolves.toEqual([]);
+  });
+
+  test("does not hydrate a draft route after the user leaves its group", async () => {
+    rowsByTable.group_memberships = [];
+
+    await expect(getActiveMatchDraft("30303030-3030-4030-8030-303030303030")).resolves.toBeNull();
   });
 
   test("enforces exact group and match pairing", async () => {

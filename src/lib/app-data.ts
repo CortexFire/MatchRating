@@ -28,7 +28,7 @@ export type AppActiveMatchDraft = {
   teamA: string[];
   teamB: string[];
   scores: string[];
-  role: "Creator" | "Viewer";
+  role: "Creator" | "Participant";
 };
 
 export type AppActiveMatchDraftDetail = AppActiveMatchDraft & {
@@ -366,7 +366,11 @@ async function loadMatchViews(
 export async function listCurrentUserActiveMatchDrafts(): Promise<AppActiveMatchDraft[]> {
   const userId = await requireUserId();
   const service = createSupabaseServiceClient();
-  const drafts = await listVisibleDraftRows(userId, undefined, service);
+  const activeGroupIds = await listActiveGroupIdsForUser(userId, service);
+  if (!activeGroupIds.length) {
+    return [];
+  }
+  const drafts = await listVisibleDraftRows(userId, undefined, service, activeGroupIds);
   return hydrateDraftSummaries(drafts, userId, service);
 }
 
@@ -398,6 +402,11 @@ export async function getActiveMatchDraft(draftId: string): Promise<AppActiveMat
     return null;
   }
 
+  const activeGroupIds = await listActiveGroupIdsForUser(userId, service);
+  if (!activeGroupIds.includes(draft.group_id)) {
+    return null;
+  }
+
   const [summary] = await hydrateDraftSummaries([draft], userId, service);
   if (!summary) {
     return null;
@@ -405,7 +414,7 @@ export async function getActiveMatchDraft(draftId: string): Promise<AppActiveMat
 
   return {
     ...summary,
-    canEdit: draft.created_by_user_id === userId,
+    canEdit: true,
     initialMatch: {
       format: draft.format,
       teamAUserIds: draft.team_a_user_ids,
@@ -415,7 +424,12 @@ export async function getActiveMatchDraft(draftId: string): Promise<AppActiveMat
   };
 }
 
-async function listVisibleDraftRows(userId: string, groupId: string | undefined, service: ReturnType<typeof createSupabaseServiceClient>) {
+async function listVisibleDraftRows(
+  userId: string,
+  groupId: string | undefined,
+  service: ReturnType<typeof createSupabaseServiceClient>,
+  activeGroupIds?: string[],
+) {
   await deleteExpiredDrafts(service);
   let query = service
     .from("active_match_drafts")
@@ -426,6 +440,8 @@ async function listVisibleDraftRows(userId: string, groupId: string | undefined,
 
   if (groupId) {
     query = query.eq("group_id", groupId);
+  } else if (activeGroupIds) {
+    query = query.in("group_id", activeGroupIds);
   }
 
   const { data, error } = await query.order("updated_at", { ascending: false });
@@ -434,6 +450,24 @@ async function listVisibleDraftRows(userId: string, groupId: string | undefined,
   }
 
   return (data ?? []) as ActiveMatchDraftRow[];
+}
+
+async function listActiveGroupIdsForUser(
+  userId: string,
+  service: ReturnType<typeof createSupabaseServiceClient>,
+): Promise<string[]> {
+  const { data, error } = await service
+    .from("group_memberships")
+    .select("group_id")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .is("left_at", null);
+
+  if (error) {
+    throw error;
+  }
+
+  return [...new Set((data ?? []).map((membership) => membership.group_id as string))];
 }
 
 async function deleteExpiredDrafts(service: ReturnType<typeof createSupabaseServiceClient>) {
@@ -483,7 +517,7 @@ async function hydrateDraftSummaries(
     teamA: draft.team_a_user_ids.map((id: string) => profilesById.get(id) ?? "Unknown player"),
     teamB: draft.team_b_user_ids.map((id: string) => profilesById.get(id) ?? "Unknown player"),
     scores: parseDraftGames(draft.games).map((game) => `${game.teamAScore}-${game.teamBScore}`),
-    role: draft.created_by_user_id === userId ? "Creator" : "Viewer",
+    role: draft.created_by_user_id === userId ? "Creator" : "Participant",
   }));
 }
 

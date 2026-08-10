@@ -97,6 +97,10 @@ export function MatchRecorder({
   const [message, setMessage] = useState("");
   const activeDraftId = useRef(draftId);
   const saveActiveMatchDraftRef = useRef(saveActiveMatchDraft);
+  const autosaveTimeout = useRef<number | null>(null);
+  const autosaveQueue = useRef<Promise<void>>(Promise.resolve());
+  const submissionInProgress = useRef(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [guestPlayers, setGuestPlayers] = useState<AppPlayer[]>([]);
   const [draftGuestIds, setDraftGuestIds] = useState<string[]>([]);
   const submitCommandId = useRef<string | null>(null);
@@ -115,7 +119,7 @@ export function MatchRecorder({
   }, [draftId]);
 
   useEffect(() => {
-    if (!canEdit || !saveActiveMatchDraftRef.current) {
+    if (!canEdit || !saveActiveMatchDraftRef.current || submissionInProgress.current) {
       return;
     }
 
@@ -128,27 +132,52 @@ export function MatchRecorder({
 
     const payload = {
       groupId,
-      draftId: activeDraftId.current,
       format,
       teamAUserIds,
       teamBUserIds,
       games: completeGames,
     };
-    const timeout = window.setTimeout(async () => {
-      const result = await saveActiveMatchDraftRef.current?.(payload);
-      if (!result) {
+    const timeout = window.setTimeout(() => {
+      if (autosaveTimeout.current === timeout) {
+        autosaveTimeout.current = null;
+      }
+      if (submissionInProgress.current) {
         return;
       }
-      if (result.ok) {
-        activeDraftId.current = result.data.draftId;
-        setMessage("Draft saved.");
-      } else {
-        setMessage(result.message);
-      }
-    }, 400);
 
-    return () => window.clearTimeout(timeout);
-  }, [canEdit, format, games, groupId, teamA, teamB]);
+      autosaveQueue.current = autosaveQueue.current.then(async () => {
+        try {
+          const result = await saveActiveMatchDraftRef.current?.({
+            ...payload,
+            draftId: activeDraftId.current,
+          });
+          if (!result) {
+            return;
+          }
+          if (result.ok) {
+            activeDraftId.current = result.data.draftId;
+            if (!submissionInProgress.current) {
+              setMessage("Draft saved.");
+            }
+          } else if (!submissionInProgress.current) {
+            setMessage(result.message);
+          }
+        } catch (error) {
+          if (!submissionInProgress.current) {
+            setMessage(error instanceof Error ? error.message : "Draft could not be saved.");
+          }
+        }
+      });
+    }, 400);
+    autosaveTimeout.current = timeout;
+
+    return () => {
+      window.clearTimeout(timeout);
+      if (autosaveTimeout.current === timeout) {
+        autosaveTimeout.current = null;
+      }
+    };
+  }, [canEdit, format, games, groupId, isSubmitting, teamA, teamB]);
 
   function updateFormat(value: MatchFormat) {
     setFormat(value);
@@ -321,7 +350,7 @@ export function MatchRecorder({
   }
 
   async function submitMatch() {
-    if (!canEdit) {
+    if (!canEdit || submissionInProgress.current) {
       return;
     }
 
@@ -333,24 +362,41 @@ export function MatchRecorder({
       }
 
       submitCommandId.current ??= crypto.randomUUID();
-      const input = {
+      const inputWithoutDraft = {
         groupId,
-        draftId: activeDraftId.current,
         commandId: submitCommandId.current,
         format,
         teamAUserIds: compactTeam(teamA),
         teamBUserIds: compactTeam(teamB),
         games: completeGames,
       };
-      const validated = validateMatchSubmission(input, { activeMemberIds });
+      const validated = validateMatchSubmission(inputWithoutDraft, { activeMemberIds });
+
+      submissionInProgress.current = true;
+      setIsSubmitting(true);
+      if (autosaveTimeout.current !== null) {
+        window.clearTimeout(autosaveTimeout.current);
+        autosaveTimeout.current = null;
+      }
+      await autosaveQueue.current;
+
+      const input = { ...inputWithoutDraft, draftId: activeDraftId.current };
       if (submitMatchAction) {
         const result = await submitMatchAction(input);
-        setMessage(result.ok ? "Match saved. Ratings updating…" : result.message);
+        if (result.ok) {
+          setMessage("Match saved. Ratings updating…");
+        } else {
+          submissionInProgress.current = false;
+          setIsSubmitting(false);
+          setMessage(result.message);
+        }
         return;
       }
 
       setMessage(`Submitted. Team ${validated.matchWinnerTeam} wins; ratings update immediately.`);
     } catch (error) {
+      submissionInProgress.current = false;
+      setIsSubmitting(false);
       setMessage(error instanceof Error ? error.message : "Invalid match.");
     }
   }
@@ -435,7 +481,7 @@ export function MatchRecorder({
           </p>
         ) : null}
         {canEdit ? (
-          <Button type="button" onClick={submitMatch} className="w-full">
+          <Button type="button" onClick={submitMatch} disabled={isSubmitting} className="w-full">
             Submit
           </Button>
         ) : null}

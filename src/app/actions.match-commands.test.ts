@@ -9,6 +9,10 @@ const dispatchMocks = vi.hoisted(() => ({
   dispatchRatingRebuild: vi.fn(),
 }));
 
+const nextCacheMocks = vi.hoisted(() => ({
+  revalidatePath: vi.fn(),
+}));
+
 const supabaseMocks = vi.hoisted(() => ({
   requireUserId: vi.fn(),
   rpc: vi.fn(),
@@ -16,10 +20,89 @@ const supabaseMocks = vi.hoisted(() => ({
   createSupabaseServiceClient: vi.fn(),
 }));
 
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/cache", () => nextCacheMocks);
 vi.mock("next/server", () => nextServerMocks);
 vi.mock("@/lib/ratings/rebuild-dispatch", () => dispatchMocks);
 vi.mock("@/lib/supabase/server", () => supabaseMocks);
+
+function draftService({
+  draft,
+  activeMemberIds,
+  updatedDraftId = draft.id,
+}: {
+  draft: {
+    id: string;
+    group_id: string;
+    created_by_user_id: string;
+    team_a_user_ids: string[];
+    team_b_user_ids: string[];
+    expires_at: string;
+    submitted_match_id: string | null;
+  };
+  activeMemberIds: string[];
+  updatedDraftId?: string | null;
+}) {
+  const update = vi.fn();
+  const deleteDraft = vi.fn();
+  const draftEq = vi.fn();
+  const draftIs = vi.fn();
+  const from = vi.fn((table: string) => {
+    if (table === "group_memberships") {
+      let selection = "";
+      const query = {
+        select: vi.fn((value: string) => {
+          selection = value;
+          return query;
+        }),
+        eq: vi.fn(() => query),
+        is: vi.fn(() => query),
+        maybeSingle: vi.fn(async () => ({ data: { id: "membership-1", role: "member" }, error: null })),
+        then: (resolve: (value: { data: unknown[]; error: null }) => unknown) =>
+          resolve({
+            data: selection === "user_id" ? activeMemberIds.map((user_id) => ({ user_id })) : [],
+            error: null,
+          }),
+      };
+      return query;
+    }
+
+    let isUpdate = false;
+    const query = {
+      select: vi.fn(() => query),
+      eq: vi.fn((column: string, value: unknown) => {
+        draftEq(column, value);
+        return query;
+      }),
+      is: vi.fn((column: string, value: unknown) => {
+        draftIs(column, value);
+        return query;
+      }),
+      gt: vi.fn(() => query),
+      or: vi.fn(() => query),
+      update: vi.fn((values: unknown) => {
+        isUpdate = true;
+        update(values);
+        return query;
+      }),
+      delete: vi.fn(() => {
+        deleteDraft();
+        return query;
+      }),
+      maybeSingle: vi.fn(async () => ({
+        data: isUpdate ? (updatedDraftId ? { id: updatedDraftId } : null) : draft,
+        error: null,
+      })),
+      single: vi.fn(async () => ({
+        data: isUpdate ? (updatedDraftId ? { id: updatedDraftId } : null) : draft,
+        error: null,
+      })),
+      then: (resolve: (value: { data: null; error: null }) => unknown) => resolve({ data: null, error: null }),
+    };
+    return query;
+  });
+
+  return { service: { from }, update, deleteDraft, draftEq, draftIs };
+}
 
 describe("transactional match actions", () => {
   beforeEach(() => {
@@ -96,6 +179,23 @@ describe("transactional match actions", () => {
     errorSpy.mockRestore();
   });
 
+  test("does not revalidate server pages before the retired draft recorder shows submission success", async () => {
+    const groupId = "66666666-6666-4666-8666-666666666666";
+    nextServerMocks.after.mockImplementation(() => undefined);
+
+    const result = await actions.submitMatch({
+      commandId: "55555555-5555-4555-8555-555555555555",
+      groupId,
+      format: "singles",
+      teamAUserIds: ["11111111-1111-4111-8111-111111111111"],
+      teamBUserIds: ["77777777-7777-4777-8777-777777777777"],
+      games: [{ teamAScore: 21, teamBScore: 18 }],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(nextCacheMocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
   test("rejects match submission without a client command ID", async () => {
     const result = await actions.submitMatch({
       groupId: "66666666-6666-4666-8666-666666666666",
@@ -107,6 +207,179 @@ describe("transactional match actions", () => {
 
     expect(result).toEqual({ ok: false, message: "A command ID is required." });
     expect(supabaseMocks.rpc).not.toHaveBeenCalled();
+  });
+
+  test("allows a stored participant to update a shared draft without replacing its creator", async () => {
+    const actor = "11111111-1111-4111-8111-111111111111";
+    const creator = "22222222-2222-4222-8222-222222222222";
+    const opponent = "77777777-7777-4777-8777-777777777777";
+    const groupId = "66666666-6666-4666-8666-666666666666";
+    const { service, update } = draftService({
+      draft: {
+        id: "33333333-3333-4333-8333-333333333333",
+        group_id: groupId,
+        created_by_user_id: creator,
+        team_a_user_ids: [actor],
+        team_b_user_ids: [opponent],
+        expires_at: "2099-01-01T00:00:00.000Z",
+        submitted_match_id: null,
+      },
+      activeMemberIds: [actor, creator, opponent],
+    });
+    supabaseMocks.createSupabaseServiceClient.mockReturnValue(service);
+
+    const result = await actions.saveActiveMatchDraft({
+      draftId: "33333333-3333-4333-8333-333333333333",
+      groupId,
+      format: "singles",
+      teamAUserIds: [actor],
+      teamBUserIds: [opponent],
+      games: [{ teamAScore: 21, teamBScore: 19 }],
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      data: { draftId: "33333333-3333-4333-8333-333333333333" },
+    });
+    expect(update).toHaveBeenCalledWith(expect.not.objectContaining({ created_by_user_id: expect.anything() }));
+  });
+
+  test("rejects a stale save after submission without deleting the submitted draft", async () => {
+    const actor = "11111111-1111-4111-8111-111111111111";
+    const creator = "22222222-2222-4222-8222-222222222222";
+    const opponent = "77777777-7777-4777-8777-777777777777";
+    const groupId = "66666666-6666-4666-8666-666666666666";
+    const { service, update, deleteDraft } = draftService({
+      draft: {
+        id: "33333333-3333-4333-8333-333333333333",
+        group_id: groupId,
+        created_by_user_id: creator,
+        team_a_user_ids: [actor],
+        team_b_user_ids: [opponent],
+        expires_at: "2099-01-01T00:00:00.000Z",
+        submitted_match_id: "88888888-8888-4888-8888-888888888888",
+      },
+      activeMemberIds: [actor, creator, opponent],
+    });
+    supabaseMocks.createSupabaseServiceClient.mockReturnValue(service);
+
+    const result = await actions.saveActiveMatchDraft({
+      draftId: "33333333-3333-4333-8333-333333333333",
+      groupId,
+      format: "singles",
+      teamAUserIds: [actor],
+      teamBUserIds: [opponent],
+      games: [{ teamAScore: 21, teamBScore: 19 }],
+    });
+
+    expect(result).toEqual({ ok: false, message: "This active match was already submitted." });
+    expect(update).not.toHaveBeenCalled();
+    expect(deleteDraft).not.toHaveBeenCalled();
+  });
+
+  test("only deletes an expired draft if it is still unsubmitted and has the observed expiry", async () => {
+    const actor = "11111111-1111-4111-8111-111111111111";
+    const opponent = "77777777-7777-4777-8777-777777777777";
+    const groupId = "66666666-6666-4666-8666-666666666666";
+    const expiresAt = "2000-01-01T00:00:00.000Z";
+    const { service, deleteDraft, draftEq, draftIs } = draftService({
+      draft: {
+        id: "33333333-3333-4333-8333-333333333333",
+        group_id: groupId,
+        created_by_user_id: actor,
+        team_a_user_ids: [actor],
+        team_b_user_ids: [opponent],
+        expires_at: expiresAt,
+        submitted_match_id: null,
+      },
+      activeMemberIds: [actor, opponent],
+    });
+    supabaseMocks.createSupabaseServiceClient.mockReturnValue(service);
+
+    const result = await actions.saveActiveMatchDraft({
+      draftId: "33333333-3333-4333-8333-333333333333",
+      groupId,
+      format: "singles",
+      teamAUserIds: [actor],
+      teamBUserIds: [opponent],
+      games: [{ teamAScore: 21, teamBScore: 19 }],
+    });
+
+    expect(result).toEqual({ ok: false, message: "This active match expired. Start a new match." });
+    expect(deleteDraft).toHaveBeenCalledOnce();
+    expect(draftEq).toHaveBeenCalledWith("expires_at", expiresAt);
+    expect(draftIs).toHaveBeenCalledWith("submitted_match_id", null);
+  });
+
+  test("rejects an active group member who is not the creator or a stored participant", async () => {
+    const actor = "11111111-1111-4111-8111-111111111111";
+    const creator = "22222222-2222-4222-8222-222222222222";
+    const teamAPlayer = "77777777-7777-4777-8777-777777777777";
+    const teamBPlayer = "88888888-8888-4888-8888-888888888888";
+    const groupId = "66666666-6666-4666-8666-666666666666";
+    const { service, update } = draftService({
+      draft: {
+        id: "33333333-3333-4333-8333-333333333333",
+        group_id: groupId,
+        created_by_user_id: creator,
+        team_a_user_ids: [teamAPlayer],
+        team_b_user_ids: [teamBPlayer],
+        expires_at: "2099-01-01T00:00:00.000Z",
+        submitted_match_id: null,
+      },
+      activeMemberIds: [actor, creator, teamAPlayer, teamBPlayer],
+    });
+    supabaseMocks.createSupabaseServiceClient.mockReturnValue(service);
+
+    const result = await actions.saveActiveMatchDraft({
+      draftId: "33333333-3333-4333-8333-333333333333",
+      groupId,
+      format: "singles",
+      teamAUserIds: [teamAPlayer],
+      teamBUserIds: [teamBPlayer],
+      games: [{ teamAScore: 21, teamBScore: 19 }],
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      message: "Only the match creator or a participant can edit this active match.",
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  test("rejects an update when the actor loses stored-draft authorization before the write", async () => {
+    const actor = "11111111-1111-4111-8111-111111111111";
+    const creator = "22222222-2222-4222-8222-222222222222";
+    const opponent = "77777777-7777-4777-8777-777777777777";
+    const groupId = "66666666-6666-4666-8666-666666666666";
+    const { service } = draftService({
+      draft: {
+        id: "33333333-3333-4333-8333-333333333333",
+        group_id: groupId,
+        created_by_user_id: creator,
+        team_a_user_ids: [actor],
+        team_b_user_ids: [opponent],
+        expires_at: "2099-01-01T00:00:00.000Z",
+        submitted_match_id: null,
+      },
+      activeMemberIds: [actor, creator, opponent],
+      updatedDraftId: null,
+    });
+    supabaseMocks.createSupabaseServiceClient.mockReturnValue(service);
+
+    const result = await actions.saveActiveMatchDraft({
+      draftId: "33333333-3333-4333-8333-333333333333",
+      groupId,
+      format: "singles",
+      teamAUserIds: [actor],
+      teamBUserIds: [opponent],
+      games: [{ teamAScore: 21, teamBScore: 19 }],
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      message: "This active match is unavailable or you no longer have access.",
+    });
   });
 
   test("rejects a submission when its editable draft belongs to another group", async () => {

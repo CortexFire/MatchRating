@@ -746,6 +746,51 @@ describe("MatchRecorder", () => {
     });
   });
 
+  test("serializes overlapping autosaves and reuses the first save's draft id", async () => {
+    vi.useFakeTimers();
+    let resolveFirstSave!: (result: { ok: true; data: { draftId: string } }) => void;
+    const saveActiveMatchDraft = vi.fn()
+      .mockImplementationOnce(() => new Promise<{ ok: true; data: { draftId: string } }>((resolve) => {
+        resolveFirstSave = resolve;
+      }))
+      .mockResolvedValue({ ok: true as const, data: { draftId: "draft-created" } });
+
+    render(
+      <MatchRecorder
+        groupId="11111111-1111-4111-8111-111111111111"
+        players={demoPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 18 }],
+        }}
+        saveActiveMatchDraft={saveActiveMatchDraft}
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "19" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+
+    expect(saveActiveMatchDraft).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveFirstSave({ ok: true, data: { draftId: "draft-created" } });
+      await Promise.resolve();
+    });
+
+    expect(saveActiveMatchDraft).toHaveBeenCalledTimes(2);
+    expect(saveActiveMatchDraft).toHaveBeenLastCalledWith(expect.objectContaining({
+      draftId: "draft-created",
+      games: [{ teamAScore: 21, teamBScore: 19 }],
+    }));
+  });
+
   test("pauses autosave until every score is entered", async () => {
     vi.useFakeTimers();
     const saveActiveMatchDraft = vi.fn(async () => ({
@@ -816,6 +861,99 @@ describe("MatchRecorder", () => {
 
     expect(await screen.findByText("Enter both scores for every set.")).toBeTruthy();
     expect(submitMatchAction).not.toHaveBeenCalled();
+  });
+
+  test("cancels a scheduled autosave when submitting immediately", async () => {
+    vi.useFakeTimers();
+    const saveActiveMatchDraft = vi.fn(async () => ({
+      ok: true as const,
+      data: { draftId: "draft-1" },
+    }));
+    const submitMatchAction = vi.fn(async () => ({
+      ok: true as const,
+      data: {
+        matchId: "match-1",
+        revisionId: "revision-1",
+        ratingJobId: "job-1",
+        ratingStatus: "queued" as const,
+      },
+    }));
+
+    render(
+      <MatchRecorder
+        groupId="11111111-1111-4111-8111-111111111111"
+        players={demoPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 18 }],
+        }}
+        draftId="draft-1"
+        saveActiveMatchDraft={saveActiveMatchDraft}
+        submitMatchAction={submitMatchAction}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(450);
+    });
+
+    expect(submitMatchAction).toHaveBeenCalledWith(expect.objectContaining({ draftId: "draft-1" }));
+    expect(saveActiveMatchDraft).not.toHaveBeenCalled();
+    expect(screen.getByText("Match saved. Ratings updating…")).toBeTruthy();
+  });
+
+  test("waits for an in-flight autosave before submitting its returned draft id", async () => {
+    vi.useFakeTimers();
+    let resolveSave!: (result: { ok: true; data: { draftId: string } }) => void;
+    const saveActiveMatchDraft = vi.fn(() => new Promise<{ ok: true; data: { draftId: string } }>((resolve) => {
+      resolveSave = resolve;
+    }));
+    const submitMatchAction = vi.fn(async () => ({
+      ok: true as const,
+      data: {
+        matchId: "match-1",
+        revisionId: "revision-1",
+        ratingJobId: "job-1",
+        ratingStatus: "queued" as const,
+      },
+    }));
+
+    render(
+      <MatchRecorder
+        groupId="11111111-1111-4111-8111-111111111111"
+        players={demoPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 18 }],
+        }}
+        saveActiveMatchDraft={saveActiveMatchDraft}
+        submitMatchAction={submitMatchAction}
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(saveActiveMatchDraft).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    await act(async () => {});
+    expect(submitMatchAction).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveSave({ ok: true, data: { draftId: "draft-created" } });
+      await Promise.resolve();
+    });
+
+    expect(submitMatchAction).toHaveBeenCalledWith(expect.objectContaining({ draftId: "draft-created" }));
+    expect(screen.getByText("Match saved. Ratings updating…")).toBeTruthy();
   });
 
   test("does not restart autosave when a server refresh replaces the action reference", async () => {
