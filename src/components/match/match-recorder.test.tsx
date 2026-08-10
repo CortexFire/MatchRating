@@ -482,13 +482,13 @@ describe("MatchRecorder", () => {
     fireEvent.click(screen.getByRole("button", { name: "Select Dev Okafor" }));
     fireEvent.click(screen.getByRole("button", { name: "Add players" }));
 
-    await waitFor(() =>
+    await waitFor(() => {
       expect(createGuestPlayers).toHaveBeenCalledWith({
         groupId: "test-group",
         names: ["Mina Ray"],
-      }),
-    );
-    expect(screen.getByRole("heading", { name: "Match Recording" })).toBeTruthy();
+      });
+      expect(screen.getByRole("heading", { name: "Match Recording" })).toBeTruthy();
+    });
     expect(screen.getByText("Mina")).toBeTruthy();
     expect(screen.queryByText("Noah")).toBeNull();
   });
