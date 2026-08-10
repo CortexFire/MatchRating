@@ -19,7 +19,7 @@ export async function GET(request: Request) {
   const type = requestUrl.searchParams.get("type");
   const nextPath = getSafeAuthNextPath(requestUrl.searchParams.get("next"));
 
-  if (tokenHash && type) {
+  if (!code && tokenHash && type) {
     const cookie = getAuthCallbackIntentCookie(requestUrl.protocol === "https:");
     const storedIntent = (await cookies()).get(cookie.name)?.value ?? "";
     const callbackIntent = requestUrl.searchParams.get("auth_intent") ?? "";

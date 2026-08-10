@@ -39,6 +39,17 @@ describe("auth confirm route", () => {
     expect(response.headers.get("location")).toBe("https://matches.example.com/onboarding");
   });
 
+  test("gives OAuth code callbacks precedence over extraneous token callback parameters", async () => {
+    const response = await GET(
+      new Request("https://matches.example.com/auth/confirm?code=oauth-code&token_hash=hash-value&type=email&next=/onboarding"),
+    );
+
+    expect(response.headers.get("location")).toBe("https://matches.example.com/onboarding");
+    expect(supabaseMocks.auth.exchangeCodeForSession).toHaveBeenCalledWith("oauth-code");
+    expect(supabaseMocks.auth.verifyOtp).not.toHaveBeenCalled();
+    expect(cookieMocks.cookies).not.toHaveBeenCalled();
+  });
+
   test("verifies an email token hash with a matching HTTPS callback intent and consumes its cookie", async () => {
     const intent = "A".repeat(43);
     cookieMocks.store.get.mockReturnValue({ value: intent });
