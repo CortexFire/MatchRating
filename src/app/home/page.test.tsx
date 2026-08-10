@@ -49,4 +49,13 @@ describe("HomePage", () => {
     expect(html).toContain('href="/groups/new"');
     expect(html).toContain("Create group");
   });
+
+  test("renders active match and pending review sections", async () => {
+    const html = renderToStaticMarkup(await HomePage());
+
+    expect(html).toContain("Active match");
+    expect(html).toContain("Pending review");
+    expect(html).toContain("Resume recording");
+    expect(html).toContain('href="/matches/match-104/confirm"');
+  });
 });

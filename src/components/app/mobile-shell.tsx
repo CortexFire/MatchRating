@@ -50,11 +50,16 @@ export function MobileShell({
                     isActive && "text-action",
                     item.primary &&
                       "size-14 rounded-full border-4 border-muted bg-surface text-muted hover:border-action hover:text-action",
+                    item.primary && isActive && "border-action text-action bg-green-200",
                   )}
                 >
                   <Icon
                     aria-hidden="true"
-                    className={cn("size-9 stroke-[2.7]", item.primary && "size-8 stroke-[2.7]")}
+                    className={cn(
+                      "stroke-[2.7]",
+                      item.primary ? "size-8" : "size-9",
+                      isActive && "fill-green-200",
+                    )}
                   />
                 </Link>
               );

@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { ChevronRight, UsersRound } from "lucide-react";
+import { ChevronRight, Pencil, UsersRound } from "lucide-react";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { ScreenHeader } from "@/components/app/screen-header";
 import { AvatarInitials } from "@/components/ui/avatar";
@@ -11,22 +11,48 @@ import { Card, CardContent } from "@/components/ui/card";
 import { getCurrentProfile, listCurrentUserGroups } from "@/lib/app-data";
 
 export default async function ProfilePage() {
-  const [profile, groups] = await Promise.all([getCurrentProfile(), listCurrentUserGroups()]);
+  const [profile, groups] = await Promise.all([
+    getCurrentProfile(),
+    listCurrentUserGroups(),
+  ]);
   const primaryGroup = groups[0];
 
   return (
-    <MobileShell active="Profile" recordHref={primaryGroup ? `/groups/${primaryGroup.id}/matches/new` : undefined}>
-      <section className="flex items-center gap-4">
-        <AvatarInitials initials={profile.initials} className="size-16 text-lg" />
+    <MobileShell
+      active="Profile"
+      recordHref={
+        primaryGroup ? `/groups/${primaryGroup.id}/matches/new` : undefined
+      }
+    >
+      <ScreenHeader title="Player Profile" />
+
+      <section className="relative flex flex-col items-center justify-center gap-3 rounded-lg border border-stroke bg-surface p-4">
+        {/**TODO: make button activate edit flow */}
+        <button
+          type="button"
+          className="absolute right-1 top-0 inline-flex h-9 w-9 cursor-pointer items-center justify-center"
+          aria-label="Edit profile"
+        >
+          <Pencil className="size-4 stroke-[2.5]" aria-hidden="true" />
+        </button>
+        <AvatarInitials
+          initials={profile.initials}
+          className="size-19 text-2xl"
+        />
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-muted">Profile</p>
-          <h1 className="truncate text-2xl font-bold leading-8 text-ink">{profile.name}</h1>
+          <h1 className="truncate text-2xl font-bold leading-8 text-ink">
+            {profile.name}
+          </h1>
         </div>
       </section>
 
-      <ScreenHeader title="Groups" />
       {groups.length ? (
-        <section className="flex flex-col gap-3">
+        <section className="flex flex-col gap-3 rounded-lg border border-stroke bg-surface p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-ink">Groups</h2>
+            </div>
+          </div>
           {groups.map((group) => (
             <Card key={group.id}>
               <CardContent className="p-0">
@@ -38,17 +64,26 @@ export default async function ProfilePage() {
                     <UsersRound className="size-5" aria-hidden="true" />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-base font-bold text-ink">{group.name}</span>
-                    <span className="mt-1 block truncate text-sm text-muted">{group.memberCount} members</span>
+                    <span className="block truncate text-base font-bold text-ink">
+                      {group.name}
+                    </span>
+                    <span className="mt-1 block truncate text-sm text-muted">
+                      {group.memberCount} members
+                    </span>
                   </span>
-                  <ChevronRight className="size-5 shrink-0 text-muted" aria-hidden="true" />
+                  <ChevronRight
+                    className="size-5 shrink-0 text-muted"
+                    aria-hidden="true"
+                  />
                 </Link>
               </CardContent>
             </Card>
           ))}
         </section>
       ) : (
-        <p className="rounded-lg border border-stroke bg-surface p-4 text-sm text-muted">No groups yet.</p>
+        <p className="rounded-lg border border-stroke bg-surface p-4 text-sm text-muted">
+          No groups yet.
+        </p>
       )}
 
       <form action={signOut} className="mt-auto pt-4">

@@ -20,6 +20,7 @@ type DemoCurrentGame = {
   groupName: string;
   players: string[];
   scores?: string[];
+  startedAt?: string;
 };
 
 export type HomePendingReviewSummary = {
