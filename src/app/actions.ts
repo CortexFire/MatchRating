@@ -381,7 +381,7 @@ export async function signInWithOtp(email: string, nextPath = DEFAULT_AUTH_NEXT_
       const demoLogin = await ensureDemoFixtures(parsedEmail, getAuthCallbackUrl(getDemoPostLoginPath()));
       const { error } = await supabase.auth.verifyOtp({
         token_hash: demoLogin.tokenHash,
-        type: "magiclink",
+        type: "email",
       });
 
       if (error) {

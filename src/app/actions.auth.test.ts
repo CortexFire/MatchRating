@@ -93,7 +93,7 @@ describe("auth actions", () => {
     expect(supabaseMocks.auth.admin.generateLink).toHaveBeenCalledTimes(8);
     expect(supabaseMocks.auth.verifyOtp).toHaveBeenCalledWith({
       token_hash: "hash-alice",
-      type: "magiclink",
+      type: "email",
     });
     expect(cookieMocks.store.set).not.toHaveBeenCalled();
   });
