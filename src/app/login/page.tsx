@@ -2,15 +2,7 @@ import { Trophy } from "lucide-react";
 import { LoginForm } from "@/components/auth/login-form";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { Card, CardContent } from "@/components/ui/card";
-
-function safeNextPath(value?: string | string[]) {
-  const next = Array.isArray(value) ? value[0] : value;
-  if (!next || !next.startsWith("/") || next.startsWith("//")) {
-    return "/onboarding";
-  }
-
-  return next;
-}
+import { getSafeAuthNextPath } from "@/lib/auth/next-path";
 
 export default async function LoginPage({
   searchParams,
@@ -32,7 +24,7 @@ export default async function LoginPage({
         </div>
         <Card>
           <CardContent className="p-4">
-            <LoginForm initialNextPath={safeNextPath(params.next)} />
+            <LoginForm initialNextPath={getSafeAuthNextPath(params.next)} />
           </CardContent>
         </Card>
       </section>
