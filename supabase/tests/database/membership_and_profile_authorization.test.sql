@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(18);
+select plan(19);
 
 insert into public.profiles (id, display_name, first_name, last_name, is_guest)
 values
@@ -45,8 +45,10 @@ select set_config(
 );
 
 select ok(
-  not has_table_privilege('authenticated', 'public.group_memberships', 'INSERT, UPDATE, DELETE'),
-  'authenticated callers have no direct membership mutation privileges'
+  not has_table_privilege('public', 'public.group_memberships', 'INSERT, UPDATE, DELETE')
+    and not has_table_privilege('anon', 'public.group_memberships', 'INSERT, UPDATE, DELETE')
+    and not has_table_privilege('authenticated', 'public.group_memberships', 'INSERT, UPDATE, DELETE'),
+  'public, anonymous, and authenticated callers have no direct membership mutation privileges'
 );
 select throws_ok(
   $$
@@ -65,6 +67,14 @@ select throws_ok(
   '42501',
   'permission denied for table group_memberships',
   'an authenticated caller cannot directly change a membership'
+);
+select throws_ok(
+  $$
+    delete from public.group_memberships
+  $$,
+  '42501',
+  'permission denied for table group_memberships',
+  'an authenticated caller cannot directly delete a membership'
 );
 
 select ok(

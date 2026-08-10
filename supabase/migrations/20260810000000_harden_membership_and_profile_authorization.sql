@@ -1,6 +1,6 @@
 -- Forward-only authorization boundary for memberships and profile visibility.
 
-revoke insert, update, delete on table public.group_memberships from authenticated;
+revoke insert, update, delete on table public.group_memberships from public, anon, authenticated;
 
 drop policy if exists "users can create own membership" on public.group_memberships;
 drop policy if exists "users can leave own membership" on public.group_memberships;
