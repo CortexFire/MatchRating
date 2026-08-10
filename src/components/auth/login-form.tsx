@@ -6,9 +6,8 @@ import { KeyRound, Mail, RefreshCw } from "lucide-react";
 import { signInWithOtp, verifyEmailOtp } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DEFAULT_AUTH_NEXT_PATH, getSafeAuthNextPath } from "@/lib/auth/next-path";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-
-const POST_LOGIN_PATH = "/onboarding";
 
 function redirectTo(url: string) {
   window.location.assign(url);
@@ -49,11 +48,12 @@ async function createGoogleNonce() {
   return { nonce, hashedNonce };
 }
 
-export function LoginForm({ initialNextPath = POST_LOGIN_PATH, onRedirect = redirectTo }: { initialNextPath?: string; onRedirect?: (url: string) => void }) {
+export function LoginForm({ initialNextPath = DEFAULT_AUTH_NEXT_PATH, initialMessage = "Use Google or request a one-time email code to sign in.", onRedirect = redirectTo }: { initialNextPath?: string; initialMessage?: string; onRedirect?: (url: string) => void }) {
+  const nextPath = getSafeAuthNextPath(initialNextPath);
   const [email, setEmail] = useState("");
   const [token, setToken] = useState("");
   const [codeSent, setCodeSent] = useState(false);
-  const [message, setMessage] = useState("Use Google or request a one-time email code to sign in.");
+  const [message, setMessage] = useState(initialMessage);
   const [isPending, startTransition] = useTransition();
   const googleButtonRef = useRef<HTMLDivElement>(null);
   const googleNonceRef = useRef("");
@@ -61,11 +61,11 @@ export function LoginForm({ initialNextPath = POST_LOGIN_PATH, onRedirect = redi
 
   function sendEmailCode(nextEmail: string) {
     startTransition(async () => {
-      const result = await signInWithOtp(nextEmail, initialNextPath);
+      const result = await signInWithOtp(nextEmail, nextPath);
       setMessage(result.message ?? (result.ok ? "Check your email for the sign-in code." : "Could not send code."));
 
       if (result.ok && result.data.redirectTo) {
-        onRedirect(result.data.redirectTo);
+        onRedirect(getSafeAuthNextPath(result.data.redirectTo));
         return;
       }
 
@@ -96,7 +96,7 @@ export function LoginForm({ initialNextPath = POST_LOGIN_PATH, onRedirect = redi
         throw error;
       }
 
-      onRedirect(initialNextPath);
+      onRedirect(nextPath);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not complete Google sign-in.");
     }
@@ -163,7 +163,7 @@ export function LoginForm({ initialNextPath = POST_LOGIN_PATH, onRedirect = redi
       setMessage(result.message ?? (result.ok ? "Signed in." : "Could not verify code."));
 
       if (result.ok) {
-        onRedirect(initialNextPath);
+        onRedirect(nextPath);
       }
     });
   }

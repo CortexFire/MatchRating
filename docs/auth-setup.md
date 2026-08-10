@@ -20,6 +20,10 @@ Add these redirect URLs in Supabase Auth settings:
 
 Email auth links use `/auth/confirm`, which exchanges Supabase callback parameters for a server session and redirects to the safe in-app `next` path. Google sign-in uses an ID token directly and does not use this route.
 
+## Email Link Behavior
+
+Email sign-in links are bound to the browser that requested them for one hour. Requesting another link replaces the browser intent, so only the latest link can be used in that browser during the one-hour window. If you open a link on another device or in another browser, sign in with the six-digit code from the email instead; the code remains the cross-device fallback.
+
 ## Google Provider
 
 1. In Google Auth Platform, create a Web application OAuth client.

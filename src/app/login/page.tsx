@@ -2,20 +2,15 @@ import { Trophy } from "lucide-react";
 import { LoginForm } from "@/components/auth/login-form";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { Card, CardContent } from "@/components/ui/card";
+import { getSafeAuthNextPath } from "@/lib/auth/next-path";
 
-function safeNextPath(value?: string | string[]) {
-  const next = Array.isArray(value) ? value[0] : value;
-  if (!next || !next.startsWith("/") || next.startsWith("//")) {
-    return "/onboarding";
-  }
-
-  return next;
-}
+const AUTH_CALLBACK_FAILURE_MESSAGE =
+  "That sign-in link is invalid or expired. Request a new link or enter the six-digit email code.";
 
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ next?: string | string[] }>;
+  searchParams?: Promise<{ next?: string | string[]; error?: string | string[] }>;
 }) {
   const params = searchParams ? await searchParams : {};
 
@@ -32,7 +27,10 @@ export default async function LoginPage({
         </div>
         <Card>
           <CardContent className="p-4">
-            <LoginForm initialNextPath={safeNextPath(params.next)} />
+            <LoginForm
+              initialMessage={params.error === "auth_callback_failed" ? AUTH_CALLBACK_FAILURE_MESSAGE : undefined}
+              initialNextPath={getSafeAuthNextPath(params.next)}
+            />
           </CardContent>
         </Card>
       </section>

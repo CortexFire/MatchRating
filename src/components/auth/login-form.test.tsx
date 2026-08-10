@@ -142,6 +142,24 @@ describe("LoginForm", () => {
     expect(configuration.nonce).toBe(await hashNonce(nonce));
   });
 
+  test("redirects Google sign-in through the safe next-path boundary", async () => {
+    const redirects: string[] = [];
+    render(
+      <LoginForm
+        initialNextPath="/groups%252Fgroup-1"
+        onRedirect={(url) => redirects.push(url)}
+      />,
+    );
+
+    await waitFor(() => expect(googleMocks.initialize).toHaveBeenCalled());
+    const configuration = googleMocks.initialize.mock.calls[0][0] as GoogleConfiguration;
+    configuration.callback({ credential: "google-id-token" });
+
+    await waitFor(() => {
+      expect(redirects).toEqual(["/onboarding"]);
+    });
+  });
+
   test("keeps the user on the form when Google sign-in fails", async () => {
     supabaseMocks.signInWithIdToken.mockResolvedValue({
       error: new Error("Google credential was rejected."),
@@ -203,6 +221,28 @@ describe("LoginForm", () => {
       expect(redirects).toEqual(["/groups/11111111-1111-4111-8111-111111111111"]);
     });
     expect(screen.queryByLabelText("One-time code")).toBeNull();
+  });
+
+  test("redirects demo sign-in results through the safe next-path boundary", async () => {
+    actionMocks.signInWithOtp.mockResolvedValue({
+      ok: true,
+      data: {
+        email: "alice@demo.matchrating.app",
+        redirectTo: "https://evil.example.com",
+      },
+      message: "Signed in as Alice Tan.",
+    });
+    const redirects: string[] = [];
+    render(<LoginForm onRedirect={(url) => redirects.push(url)} />);
+
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "alice@demo.matchrating.app" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send one-time code" }));
+
+    await waitFor(() => {
+      expect(redirects).toEqual(["/onboarding"]);
+    });
   });
 
   test("submits the email code to verifyEmailOtp", async () => {
@@ -273,5 +313,16 @@ describe("LoginForm", () => {
       expect(screen.getByText("Invalid code.")).toBeTruthy();
       expect(redirects).toEqual([]);
     });
+  });
+
+  test("shows a safe initial callback failure message", async () => {
+    render(
+      <LoginForm
+        initialMessage="That sign-in link is invalid or expired. Request a new link or enter the six-digit email code."
+        onRedirect={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("That sign-in link is invalid or expired. Request a new link or enter the six-digit email code.")).toBeTruthy();
   });
 });
