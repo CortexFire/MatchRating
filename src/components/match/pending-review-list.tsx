@@ -1,13 +1,7 @@
 import Link from "next/link";
+import type { PendingReviewMatch } from "@/lib/matches/pending-review";
 
-export type PendingReviewMatch = {
-  id: string;
-  groupId: string;
-  summary: string;
-  details: string;
-  score: string;
-  format: string;
-};
+export type { PendingReviewMatch } from "@/lib/matches/pending-review";
 
 export function PendingReviewList({
   matches,
@@ -19,7 +13,7 @@ export function PendingReviewList({
       {matches.map((match) => (
         <Link
           key={match.id}
-          href={`/matches/${match.id}/confirm`}
+          href={`/groups/${match.groupId}/matches/${match.id}`}
           className="flex w-full min-h-[70px] items-center justify-between gap-3 rounded-lg border border-muted/70 bg-app-bg px-3.5 py-2 transition hover:border-action focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
         >
           <div className="min-w-0">

@@ -3,17 +3,6 @@ type DemoPlayer = {
   name: string;
 };
 
-type DemoMatch = {
-  id: string;
-  format: "singles" | "doubles";
-  status: "Pending confirmation" | "Confirmed" | "Disputed";
-  submittedAt: string;
-  teamA: string[];
-  teamB: string[];
-  scores: string[];
-  winnerTeam: "A" | "B";
-};
-
 type DemoCurrentGame = {
   id: string;
   status: "In progress" | "Complete";
@@ -21,14 +10,6 @@ type DemoCurrentGame = {
   players: string[];
   scores?: string[];
   startedAt?: string;
-};
-
-export type HomePendingReviewSummary = {
-  id: string;
-  summary: string;
-  details: string;
-  score: string;
-  format: string;
 };
 
 export function getTimeGreeting(date = new Date()) {
@@ -43,10 +24,6 @@ export function getTimeGreeting(date = new Date()) {
   }
 
   return "Good evening";
-}
-
-export function getPendingReviewMatches(matches: DemoMatch[]) {
-  return matches.filter((match) => match.status === "Pending confirmation");
 }
 
 export function getCurrentGames(games: DemoCurrentGame[]) {
@@ -88,25 +65,8 @@ export function buildActiveMatchRecordingHref(
   return `/groups/${groupId}/matches/new?${params.toString()}`;
 }
 
-export function toPendingReviewSummary(match: DemoMatch): HomePendingReviewSummary {
-  const winningTeam = match.winnerTeam === "A" ? match.teamA : match.teamB;
-  const losingTeam = match.winnerTeam === "A" ? match.teamB : match.teamA;
-
-  return {
-    id: match.id,
-    summary: `${shortTeamName(winningTeam)} def. ${shortTeamName(losingTeam)}`,
-    details: `${match.submittedAt} @ Downtown Rec`,
-    score: match.scores[0].replace(/\s*-\s*/, " - "),
-    format: `Best of ${match.scores.length}`,
-  };
-}
-
 function toPlayerIds(players: string[], playerIdsByName: Map<string, string>) {
   return players
     .map((player) => playerIdsByName.get(player))
     .filter((id): id is string => Boolean(id));
-}
-
-function shortTeamName(players: string[]) {
-  return players.map((player) => player.split(" ")[0]).join("/");
 }

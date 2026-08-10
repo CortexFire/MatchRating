@@ -1,13 +1,11 @@
 import { describe, expect, test } from "vitest";
 import {
   getCurrentGames,
-  getPendingReviewMatches,
   getPrimaryCurrentGame,
   getTimeGreeting,
   splitCurrentGameTeams,
-  toPendingReviewSummary,
 } from "./home";
-import { demoCurrentGames, demoMatches } from "./demo-data";
+import { demoCurrentGames } from "./demo-data";
 
 describe("home screen helpers", () => {
   test("chooses the greeting for the local time of day", () => {
@@ -16,12 +14,9 @@ describe("home screen helpers", () => {
     expect(getTimeGreeting(new Date("2026-06-11T19:00:00"))).toBe("Good evening");
   });
 
-  test("returns matches pending review and in-progress games", () => {
-    const pending = getPendingReviewMatches(demoMatches);
+  test("returns in-progress games", () => {
     const currentGames = getCurrentGames(demoCurrentGames);
 
-    expect(pending).toHaveLength(3);
-    expect(pending.every((match) => match.status === "Pending confirmation")).toBe(true);
     expect(currentGames).toHaveLength(2);
     expect(currentGames.every((game) => game.status === "In progress")).toBe(true);
   });
@@ -42,15 +37,4 @@ describe("home screen helpers", () => {
     });
   });
 
-  test("formats pending review matches for the home screen", () => {
-    const pendingMatch = getPendingReviewMatches(demoMatches)[0];
-
-    expect(toPendingReviewSummary(pendingMatch)).toEqual({
-      id: "match-104",
-      summary: "Alice/Cory def. Bea/Dev",
-      details: "Today, 8:42 PM @ Downtown Rec",
-      score: "21 - 19",
-      format: "Best of 3",
-    });
-  });
 });

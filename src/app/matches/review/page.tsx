@@ -3,6 +3,7 @@ import { ChevronLeft } from "lucide-react";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { PendingReviewList } from "@/components/match/pending-review-list";
 import { listCurrentUserGroups, listPendingReviewsForCurrentUser } from "@/lib/app-data";
+import { toPendingReviewMatch } from "@/lib/matches/pending-review";
 
 export const dynamic = "force-dynamic";
 
@@ -29,35 +30,10 @@ export default async function ReviewMatchesPage() {
         <h1 className="text-center text-2xl font-bold leading-8 text-ink">Review Matches</h1>
       </header>
       {matches.length ? (
-        <PendingReviewList matches={matches.map((match) => {
-          const winning = match.winnerTeam === "A" ? match.teamA : match.teamB;
-          const losing = match.winnerTeam === "A" ? match.teamB : match.teamA;
-          const winningGames = match.games.filter((game) => game.winnerTeam === match.winnerTeam).length;
-          const losingGames = match.games.length - winningGames;
-          return {
-            id: match.id,
-            groupId: match.groupId,
-            summary: `${shortTeamName(winning)} def. ${shortTeamName(losing)}`,
-            details: `${formatSubmittedAt(match.submittedAt)} @ ${match.groupName}`,
-            score: match.games.length ? `${winningGames} - ${losingGames}` : "—",
-            format: match.format === "singles" ? "Singles" : "Doubles",
-          };
-        })} />
+        <PendingReviewList matches={matches.map(toPendingReviewMatch)} />
       ) : (
         <p className="rounded-lg border border-stroke bg-surface p-4 text-sm text-muted">No pending reviews yet.</p>
       )}
     </MobileShell>
   );
-}
-
-function shortTeamName(players: Array<{ name: string }>) {
-  return players.map((player) => player.name.split(" ")[0]).join("/");
-}
-
-function formatSubmittedAt(value: string) {
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "America/Los_Angeles",
-  }).format(new Date(value));
 }
