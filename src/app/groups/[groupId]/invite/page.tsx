@@ -17,7 +17,7 @@ export default async function GroupInvitePage({
 
   return (
     <MobileShell active="Home" showNav={false}>
-      <ScreenHeader title="Join Group" subtitle={group?.name} backHref={`/groups/${groupId}/members`} />
+      <ScreenHeader title="Join Group" subtitle={group?.name} backHref={`/groups/${groupId}`} />
       {invite.ok ? (
         <InvitePanel inviteUrl={invite.data.url} />
       ) : (

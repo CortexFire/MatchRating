@@ -1,12 +1,20 @@
 export const dynamic = "force-dynamic";
 
-import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { notFound } from "next/navigation";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { ScreenHeader } from "@/components/app/screen-header";
-import { Card, CardContent } from "@/components/ui/card";
+import { GroupMembersDisclosure } from "@/components/groups/group-members-disclosure";
 import { ActiveMatchDraftList } from "@/components/match/active-match-draft-list";
-import { getGroup, listGroupActiveMatchDrafts } from "@/lib/app-data";
+import { RatingRebuildStatus } from "@/components/match/rating-rebuild-status";
+import { RecentMatchList } from "@/components/match/recent-match-list";
+import {
+  canCurrentUserReadGroup,
+  getGroup,
+  getGroupRatingRebuildStatus,
+  listGroupActiveMatchDrafts,
+  listGroupMatches,
+  listGroupPlayers,
+} from "@/lib/app-data";
 
 export default async function GroupPage({
   params,
@@ -14,41 +22,29 @@ export default async function GroupPage({
   params: Promise<{ groupId: string }>;
 }) {
   const { groupId } = await params;
-  const [group, activeDrafts] = await Promise.all([getGroup(groupId), listGroupActiveMatchDrafts(groupId)]);
+  if (!(await canCurrentUserReadGroup(groupId))) notFound();
+  const [group, activeDrafts, ratingStatus, recentMatches, players] = await Promise.all([
+    getGroup(groupId),
+    listGroupActiveMatchDrafts(groupId),
+    getGroupRatingRebuildStatus(groupId),
+    listGroupMatches(groupId, { limit: 5 }),
+    listGroupPlayers(groupId),
+  ]);
+  if (!group) notFound();
   const recordHref = `/groups/${groupId}/matches/new`;
-
-  const links = [
-    { label: "Members", href: `/groups/${groupId}/members` },
-    { label: "Rankings", href: `/groups/${groupId}/rankings` },
-  ];
 
   return (
     <MobileShell active="Group" recordHref={recordHref}>
-      <ScreenHeader title={group?.name ?? "Group"} backHref="/groups" />
-      {group ? (
-        <>
-          <ActiveMatchDraftList drafts={activeDrafts} />
-          <section className="flex flex-col gap-2">
-            {links.map((link) => (
-              <Card key={link.label}>
-                <CardContent className="p-0">
-                  <Link
-                    href={link.href}
-                    className="flex items-center gap-3 p-4 transition hover:bg-app-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
-                  >
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-base font-bold text-ink">{link.label}</span>
-                    </span>
-                    <ChevronRight className="size-5 shrink-0 text-muted" aria-hidden="true" />
-                  </Link>
-                </CardContent>
-              </Card>
-            ))}
-          </section>
-        </>
-      ) : (
-        <p className="rounded-lg border border-stroke bg-surface p-4 text-sm text-muted">Group not found.</p>
-      )}
+      <ScreenHeader title={group.name} backHref="/groups" />
+      <ActiveMatchDraftList drafts={activeDrafts} />
+      <RatingRebuildStatus
+        groupId={groupId}
+        jobId={ratingStatus.id}
+        status={ratingStatus.status}
+        canRetry={ratingStatus.canRetry}
+      />
+      <RecentMatchList matches={recentMatches} historyHref={`/groups/${groupId}/history`} />
+      <GroupMembersDisclosure players={players} inviteHref={`/groups/${groupId}/invite`} />
     </MobileShell>
   );
 }

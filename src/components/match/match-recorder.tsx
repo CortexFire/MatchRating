@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ChevronDown, Medal, Plus, X } from "lucide-react";
-import { type ActionResult } from "@/app/actions";
+import { useEffect, useRef, useState } from "react";
+import { Medal, Plus, X } from "lucide-react";
+import { type ActionResult, type MatchCommandResult } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import {
   PlayerSelectView,
   type PlayerFilter,
   type PlayerSelection,
 } from "@/components/match/player-select-view";
+import { GroupSwitcher, type GroupOption } from "@/components/match/group-switcher";
 import { validateMatchSubmission, type MatchFormat, type MatchSubmissionInput, type Team } from "@/lib/matches/validation";
 import { type AppPlayer } from "@/lib/app-data";
 import { cn } from "@/lib/utils";
@@ -18,7 +19,7 @@ type RecordedGame = Score & { winnerTeam: Team };
 type TeamSelection = PlayerSelection;
 type CreateGuestPlayers = (input: { groupId: string; names: string[] }) => Promise<ActionResult<{ players: AppPlayer[] }>>;
 type SaveActiveMatchDraft = (input: MatchSubmissionInput & { draftId?: string }) => Promise<ActionResult<{ draftId: string }>>;
-type SubmitMatchAction = (input: MatchSubmissionInput & { draftId?: string }) => Promise<ActionResult<{ matchId: string }>>;
+type SubmitMatchAction = (input: MatchSubmissionInput & { draftId?: string; commandId: string }) => Promise<ActionResult<MatchCommandResult>>;
 type TeamSlot =
   | { id: string; initials: string; name: string; fullName: string; empty?: false }
   | { empty: true };
@@ -42,6 +43,7 @@ export type InitialMatchRecording = {
 export function MatchRecorder({
   groupId = "test-group",
   groupName = "Downtown Rec",
+  groupOptions = [{ id: groupId, name: groupName }],
   players,
   initialMatch = defaultMatchRecording,
   draftId,
@@ -52,6 +54,7 @@ export function MatchRecorder({
 }: {
   groupId?: string;
   groupName?: string;
+  groupOptions?: GroupOption[];
   players: AppPlayer[];
   initialMatch?: InitialMatchRecording;
   draftId?: string;
@@ -81,9 +84,11 @@ export function MatchRecorder({
   const [playerFilter, setPlayerFilter] = useState<PlayerFilter>("all");
   const [playerSearch, setPlayerSearch] = useState("");
   const [message, setMessage] = useState("");
-  const [activeDraftId, setActiveDraftId] = useState(draftId);
+  const activeDraftId = useRef(draftId);
+  const saveActiveMatchDraftRef = useRef(saveActiveMatchDraft);
   const [guestPlayers, setGuestPlayers] = useState<AppPlayer[]>([]);
   const [draftGuestIds, setDraftGuestIds] = useState<string[]>([]);
+  const submitCommandId = useRef<string | null>(null);
   const selectablePlayers = [...players, ...guestPlayers];
   const activeMemberIds = selectablePlayers.map((player) => player.id);
 
@@ -91,7 +96,15 @@ export function MatchRecorder({
   const teamBSlots = buildTeamSlots(teamB, selectablePlayers, format);
 
   useEffect(() => {
-    if (!canEdit || !saveActiveMatchDraft) {
+    saveActiveMatchDraftRef.current = saveActiveMatchDraft;
+  }, [saveActiveMatchDraft]);
+
+  useEffect(() => {
+    activeDraftId.current = draftId;
+  }, [draftId]);
+
+  useEffect(() => {
+    if (!canEdit || !saveActiveMatchDraftRef.current) {
       return;
     }
 
@@ -103,16 +116,19 @@ export function MatchRecorder({
 
     const payload = {
       groupId,
-      draftId: activeDraftId,
+      draftId: activeDraftId.current,
       format,
       teamAUserIds,
       teamBUserIds,
       games: games.map(({ teamAScore, teamBScore }) => ({ teamAScore, teamBScore })),
     };
     const timeout = window.setTimeout(async () => {
-      const result = await saveActiveMatchDraft(payload);
+      const result = await saveActiveMatchDraftRef.current?.(payload);
+      if (!result) {
+        return;
+      }
       if (result.ok) {
-        setActiveDraftId(result.data.draftId);
+        activeDraftId.current = result.data.draftId;
         setMessage("Draft saved.");
       } else {
         setMessage(result.message);
@@ -120,7 +136,7 @@ export function MatchRecorder({
     }, 400);
 
     return () => window.clearTimeout(timeout);
-  }, [activeDraftId, canEdit, format, games, groupId, saveActiveMatchDraft, teamA, teamB]);
+  }, [canEdit, format, games, groupId, teamA, teamB]);
 
   function updateFormat(value: MatchFormat) {
     setFormat(value);
@@ -282,9 +298,11 @@ export function MatchRecorder({
     }
 
     try {
+      submitCommandId.current ??= crypto.randomUUID();
       const input = {
         groupId,
-        draftId: activeDraftId,
+        draftId: activeDraftId.current,
+        commandId: submitCommandId.current,
         format,
         teamAUserIds: compactTeam(teamA),
         teamBUserIds: compactTeam(teamB),
@@ -293,7 +311,7 @@ export function MatchRecorder({
       const validated = validateMatchSubmission(input, { activeMemberIds });
       if (submitMatchAction) {
         const result = await submitMatchAction(input);
-        setMessage(result.ok ? "Submitted. Ratings update immediately." : result.message);
+        setMessage(result.ok ? "Match saved. Ratings updating…" : result.message);
         return;
       }
 
@@ -307,7 +325,8 @@ export function MatchRecorder({
     return (
       <PlayerSelectView
         players={selectablePlayers}
-        groupName={groupName}
+        groups={groupOptions}
+        currentGroupId={groupId}
         format={format}
         draftTeamA={draftTeamA}
         draftTeamB={draftTeamB}
@@ -329,13 +348,7 @@ export function MatchRecorder({
     <section className="flex min-h-full flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-[22px] font-bold leading-7 text-ink">Match Recording</h1>
-        <div
-          className="inline-flex min-h-11 items-center gap-2 rounded-full bg-victory px-4 text-sm font-bold text-ink"
-          aria-label={`Current group ${groupName}`}
-        >
-          {groupName}
-          <ChevronDown className="size-4 stroke-[3]" />
-        </div>
+        <GroupSwitcher groups={groupOptions} currentGroupId={groupId} />
       </div>
 
       <FormatToggle value={format} onChange={updateFormat} disabled={!canEdit} />

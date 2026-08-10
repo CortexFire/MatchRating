@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronDown, Search, UserPlus } from "lucide-react";
+import { Search, UserPlus } from "lucide-react";
+import { GroupSwitcher, type GroupOption } from "@/components/match/group-switcher";
 import { AvatarInitials } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +14,8 @@ export type PlayerSelection = Array<string | null>;
 
 type PlayerSelectViewProps = {
   players: AppPlayer[];
-  groupName: string;
+  groups: GroupOption[];
+  currentGroupId: string;
   format: MatchFormat;
   draftTeamA: PlayerSelection;
   draftTeamB: PlayerSelection;
@@ -38,7 +40,8 @@ const filters: Array<{ value: PlayerFilter; label: string }> = [
 
 export function PlayerSelectView({
   players,
-  groupName,
+  groups,
+  currentGroupId,
   format,
   draftTeamA,
   draftTeamB,
@@ -117,13 +120,7 @@ export function PlayerSelectView({
     <section className="flex min-h-full flex-col gap-4 bg-app-bg text-ink">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-[22px] font-bold leading-7 text-ink">Player Select</h1>
-        <div
-          className="inline-flex min-h-11 items-center gap-2 rounded-full bg-victory px-4 text-sm font-bold text-ink"
-          aria-label={`Current group ${groupName}`}
-        >
-          {groupName}
-          <ChevronDown aria-hidden="true" className="size-4 stroke-[3]" />
-        </div>
+        <GroupSwitcher groups={groups} currentGroupId={currentGroupId} />
       </div>
 
       <div className="grid grid-cols-2 gap-3">

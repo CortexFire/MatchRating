@@ -74,7 +74,6 @@ create table public.match_revisions (
   version integer not null check (version > 0),
   submitted_by_user_id uuid not null references public.profiles(id) on delete restrict,
   format public.match_format not null,
-  reason text not null default '',
   status text not null default 'active',
   created_at timestamptz not null default now(),
   unique (match_id, version)
@@ -110,7 +109,6 @@ create table public.match_confirmations (
   revision_id uuid not null references public.match_revisions(id) on delete cascade,
   user_id uuid not null references public.profiles(id) on delete restrict,
   action public.confirmation_action not null,
-  note text,
   created_at timestamptz not null default now(),
   unique (revision_id, user_id)
 );

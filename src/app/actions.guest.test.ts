@@ -29,14 +29,16 @@ const supabaseMocks = vi.hoisted(() => {
   const service = {
     from: vi.fn((table: keyof typeof tables) => tables[table]),
   };
+  const rpc = vi.fn();
 
   return {
-    createSupabaseServerClient: vi.fn(),
+    createSupabaseServerClient: vi.fn(async () => ({ rpc })),
     createSupabaseServiceClient: vi.fn(() => service),
     requireUserId: vi.fn(),
     membershipSelect,
     profileInsertResult,
     service,
+    rpc,
     tables,
   };
 });
@@ -51,15 +53,10 @@ describe("guest player actions", () => {
       data: { id: "membership-1", role: "owner" },
       error: null,
     });
-    supabaseMocks.profileInsertResult.select.mockResolvedValue({
-      data: [
-        { id: "guest-1", display_name: "Mary Jane Watson" },
-        { id: "guest-2", display_name: "Prince" },
-      ],
+    supabaseMocks.rpc.mockResolvedValue({
+      data: { players: [{ id: "guest-1", name: "Mary Jane Watson" }, { id: "guest-2", name: "Prince" }] },
       error: null,
     });
-    supabaseMocks.tables.group_memberships.insert.mockResolvedValue({ error: null });
-    supabaseMocks.tables.group_rating_states.insert.mockResolvedValue({ error: null });
   });
 
   test("creates guest profiles, memberships, and rating states", async () => {
@@ -99,52 +96,9 @@ describe("guest player actions", () => {
         ],
       },
     });
-    expect(supabaseMocks.tables.profiles.insert).toHaveBeenCalledWith([
-      {
-        display_name: "Mary Jane Watson",
-        first_name: "Mary",
-        last_name: "Jane Watson",
-        is_guest: true,
-      },
-      {
-        display_name: "Prince",
-        first_name: "Prince",
-        last_name: "",
-        is_guest: true,
-      },
-    ]);
-    expect(supabaseMocks.tables.group_memberships.insert).toHaveBeenCalledWith([
-      {
-        group_id: "group-1",
-        user_id: "guest-1",
-        role: "member",
-        status: "active",
-      },
-      {
-        group_id: "group-1",
-        user_id: "guest-2",
-        role: "member",
-        status: "active",
-      },
-    ]);
-    expect(supabaseMocks.tables.group_rating_states.insert).toHaveBeenCalledWith([
-      {
-        group_id: "group-1",
-        user_id: "guest-1",
-        rating: 1500,
-        rd: 350,
-        volatility: 0.06,
-        games_played: 0,
-      },
-      {
-        group_id: "group-1",
-        user_id: "guest-2",
-        rating: 1500,
-        rd: 350,
-        volatility: 0.06,
-        games_played: 0,
-      },
-    ]);
+    expect(supabaseMocks.rpc).toHaveBeenCalledWith("command_create_guest_players", expect.objectContaining({
+      p_group_id: "group-1", p_names: ["Mary Jane Watson", "Prince"], p_command_id: expect.any(String),
+    }));
   });
 
   test("rejects unauthenticated callers before inserting guests", async () => {
@@ -152,16 +106,16 @@ describe("guest player actions", () => {
 
     const result = await actions.createGuestPlayers({ groupId: "group-1", names: ["Noah Kim"] });
 
-    expect(result).toEqual({ ok: false, message: "Unauthorized" });
+    expect(result).toEqual({ ok: false, code: "UNKNOWN", message: "Could not create guest players." });
     expect(supabaseMocks.tables.profiles.insert).not.toHaveBeenCalled();
   });
 
   test("rejects callers who are not active group members", async () => {
-    supabaseMocks.membershipSelect.maybeSingle.mockResolvedValue({ data: null, error: null });
+    supabaseMocks.rpc.mockResolvedValue({ data: null, error: { code: "MR403", message: "Not an active group member" } });
 
     const result = await actions.createGuestPlayers({ groupId: "group-1", names: ["Noah Kim"] });
 
-    expect(result).toEqual({ ok: false, message: "You are not an active member of this group." });
+    expect(result).toEqual({ ok: false, code: "NOT_GROUP_MEMBER", message: "You are not an active member of this group." });
     expect(supabaseMocks.tables.profiles.insert).not.toHaveBeenCalled();
   });
 });
