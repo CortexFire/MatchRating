@@ -1,5 +1,27 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { getGroupMatchDetail, listGroupMatches, listPendingReviewsForCurrentUser } from "./app-data";
+import {
+  canCurrentUserReadGroup,
+  getGroup,
+  getGroupMatchDetail,
+  listGroupActiveMatchDrafts,
+  listGroupMatches,
+  listGroupPlayers,
+  listPendingReviewsForCurrentUser,
+} from "./app-data";
+
+const reactMocks = vi.hoisted(() => ({
+  values: new Map<unknown, Map<string, unknown>>(),
+  cache: vi.fn((fn: (...args: unknown[]) => unknown) => (...args: unknown[]) => {
+    let values = reactMocks.values.get(fn);
+    if (!values) {
+      values = new Map();
+      reactMocks.values.set(fn, values);
+    }
+    const key = JSON.stringify(args);
+    if (!values.has(key)) values.set(key, fn(...args));
+    return values.get(key);
+  }),
+}));
 
 const supabaseMocks = vi.hoisted(() => ({
   createSupabaseServerClient: vi.fn(),
@@ -8,6 +30,7 @@ const supabaseMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/supabase/server", () => supabaseMocks);
+vi.mock("react", () => reactMocks);
 
 const GROUP_ONE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const GROUP_TWO = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -75,6 +98,10 @@ function makeQuery(table: string) {
       if (operator === "is") rows = rows.filter((row) => ((row as Record<string, unknown>)[column] ?? null) !== value);
       return query;
     }),
+    delete: vi.fn(() => query),
+    lt: vi.fn(() => query),
+    gt: vi.fn(() => query),
+    or: vi.fn(() => query),
     order: vi.fn((column: string, options: { ascending: boolean }) => {
       orders.push({ column, ascending: options.ascending });
       return query;
@@ -106,6 +133,7 @@ function makeQuery(table: string) {
 describe("stored match reads", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    reactMocks.values.clear();
     rowsByTable = structuredClone(baseRows);
     queriesByTable = {};
     from = vi.fn((table: string) => {
@@ -143,15 +171,33 @@ describe("stored match reads", () => {
     expect(matchesQuery.limit.mock.invocationCallOrder[0]).toBeGreaterThan(matchesQuery.order.mock.invocationCallOrder[1]);
   });
 
-  test("includes every stored match status", async () => {
-    rowsByTable.matches = (rowsByTable.matches as Array<Record<string, unknown>>).map((match, index) => ({
-      ...match,
-      status: ["confirmed", "disputed", "pending_confirmation"][index],
-    }));
+  test("includes every stored match status for the group with equal-timestamp IDs descending", async () => {
+    rowsByTable.matches = [
+      { id: MATCH_OLD, group_id: GROUP_ONE, active_revision_id: REVISION_OLD, status: "confirmed", submitted_at: "2026-08-07T20:00:00.000Z" },
+      { id: MATCH_OTHER, group_id: GROUP_ONE, active_revision_id: REVISION_OTHER, status: "disputed", submitted_at: "2026-08-07T20:00:00.000Z" },
+      { id: MATCH_NEW, group_id: GROUP_ONE, active_revision_id: REVISION_NEW, status: "pending_confirmation", submitted_at: "2026-08-07T20:00:00.000Z" },
+    ];
 
     const matches = await listGroupMatches(GROUP_ONE);
 
-    expect(matches.map((match) => match.status)).toEqual(["pending_confirmation", "confirmed"]);
+    expect(matches.map((match) => match.id)).toEqual([MATCH_OTHER, MATCH_OLD, MATCH_NEW]);
+    expect(matches.map((match) => match.status)).toEqual(["disputed", "confirmed", "pending_confirmation"]);
+  });
+
+  test("shares current-user group authorization across landing readers", async () => {
+    await Promise.all([
+      canCurrentUserReadGroup(GROUP_ONE),
+      getGroup(GROUP_ONE),
+      listGroupActiveMatchDrafts(GROUP_ONE),
+      listGroupMatches(GROUP_ONE),
+      listGroupPlayers(GROUP_ONE),
+    ]);
+
+    expect(supabaseMocks.requireUserId).toHaveBeenCalledTimes(1);
+    const membershipAuthorizationQueries = queriesByTable.group_memberships.filter((query) =>
+      query.maybeSingle.mock.calls.length > 0,
+    );
+    expect(membershipAuthorizationQueries).toHaveLength(1);
   });
 
   test("lists only pending matches the current user can still review", async () => {
@@ -168,9 +214,13 @@ describe("stored match reads", () => {
     await expect(getGroupMatchDetail(GROUP_TWO, MATCH_NEW)).resolves.toBeNull();
   });
 
-  test("returns no match data without active membership", async () => {
+  test("preserves authorization on every exported group reader", async () => {
     rowsByTable.group_memberships = [];
 
+    await expect(canCurrentUserReadGroup(GROUP_ONE)).resolves.toBe(false);
+    await expect(getGroup(GROUP_ONE)).rejects.toThrow("not an active member");
+    await expect(listGroupActiveMatchDrafts(GROUP_ONE)).rejects.toThrow("not an active member");
+    await expect(listGroupPlayers(GROUP_ONE)).rejects.toThrow("not an active member");
     await expect(listGroupMatches(GROUP_ONE)).resolves.toEqual([]);
     await expect(getGroupMatchDetail(GROUP_ONE, MATCH_NEW)).resolves.toBeNull();
   });

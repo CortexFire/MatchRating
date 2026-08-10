@@ -1,4 +1,5 @@
 import { createSupabaseServerClient, createSupabaseServiceClient, requireUserId } from "@/lib/supabase/server";
+import { cache } from "react";
 import { type MatchFormat, type MatchGameInput } from "@/lib/matches/validation";
 import {
   buildMatchViews,
@@ -82,6 +83,13 @@ type RatingRow = {
 type MatchGroupRow = {
   group_id: string;
 };
+
+const getCurrentUserId = cache(requireUserId);
+const canCurrentUserReadGroupCached = cache(async (groupId: string) => {
+  if (!isUuid(groupId)) return false;
+  const userId = await getCurrentUserId();
+  return canReadGroup(groupId, userId, createSupabaseServiceClient());
+});
 
 export type AppMatchSummary = MatchView;
 export type AppPendingReview = MatchView;
@@ -228,9 +236,9 @@ export async function getMatchGroupId(matchId: string): Promise<string | null> {
 }
 
 export async function listGroupMatches(groupId: string, options?: { limit?: number }): Promise<AppMatchSummary[]> {
-  const userId = await requireUserId();
+  const userId = await getCurrentUserId();
   const service = createSupabaseServiceClient();
-  if (!isUuid(groupId) || !(await canReadGroup(groupId, userId, service))) return [];
+  if (!(await canCurrentUserReadGroupCached(groupId))) return [];
 
   let query = service
     .from("matches")
@@ -292,9 +300,7 @@ export async function getGroupMatchDetail(groupId: string, matchId: string): Pro
 }
 
 export async function canCurrentUserReadGroup(groupId: string): Promise<boolean> {
-  const userId = await requireUserId();
-  if (!isUuid(groupId)) return false;
-  return canReadGroup(groupId, userId, createSupabaseServiceClient());
+  return canCurrentUserReadGroupCached(groupId);
 }
 
 async function canReadGroup(
@@ -365,7 +371,7 @@ export async function listCurrentUserActiveMatchDrafts(): Promise<AppActiveMatch
 }
 
 export async function listGroupActiveMatchDrafts(groupId: string): Promise<AppActiveMatchDraft[]> {
-  const userId = await requireUserId();
+  const userId = await getCurrentUserId();
   await ensureCurrentUserCanReadGroup(groupId);
   const service = createSupabaseServiceClient();
   const drafts = await listVisibleDraftRows(userId, groupId, service);
@@ -565,22 +571,7 @@ export async function listGroupPlayers(groupId: string): Promise<AppPlayer[]> {
 }
 
 async function ensureCurrentUserCanReadGroup(groupId: string) {
-  const userId = await requireUserId();
-  const service = createSupabaseServiceClient();
-  const { data, error } = await service
-    .from("group_memberships")
-    .select("id")
-    .eq("group_id", groupId)
-    .eq("user_id", userId)
-    .eq("status", "active")
-    .is("left_at", null)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  if (!data) {
+  if (!(await canCurrentUserReadGroupCached(groupId))) {
     throw new Error("You are not an active member of this group.");
   }
 }

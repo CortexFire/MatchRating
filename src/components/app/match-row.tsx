@@ -2,6 +2,12 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { type AppMatchSummary } from "@/lib/app-data";
 
+const submittedAtFormatter = new Intl.DateTimeFormat("en-US", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "America/Los_Angeles",
+});
+
 function toneForStatus(status: AppMatchSummary["status"]) {
   if (status === "confirmed") {
     return "victory" as const;
@@ -44,9 +50,5 @@ function displayStatus(status: AppMatchSummary["status"]) {
 }
 
 function formatSubmittedAt(value: string) {
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "America/Los_Angeles",
-  }).format(new Date(value));
+  return submittedAtFormatter.format(new Date(value));
 }
