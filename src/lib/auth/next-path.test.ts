@@ -18,6 +18,7 @@ describe("getSafeAuthNextPath", () => {
     "https://evil.example.com",
     "javascript:alert(1)",
     "//evil.example.com",
+    "/%2e%2e//evil.example.com",
     "/\\evil.example.com",
     "/groups\\group-1",
     "/%2F%2Fevil.example.com",

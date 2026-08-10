@@ -34,5 +34,9 @@ export function getSafeAuthNextPath(value: string | string[] | null | undefined)
   }
 
   const url = new URL(nextPath, "https://matchrating.local");
+  if (!url.pathname.startsWith("/") || url.pathname.startsWith("//") || url.pathname.includes("\\") || hasEncodedPathDelimiter(url.pathname)) {
+    return DEFAULT_AUTH_NEXT_PATH;
+  }
+
   return `${url.pathname}${url.search}${url.hash}`;
 }
