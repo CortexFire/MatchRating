@@ -1,34 +1,32 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { ChevronRight, UsersRound, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { AvatarInitials } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { PendingReviewList } from "@/components/match/pending-review-list";
-import { getCurrentProfile, listCurrentUserGroups } from "@/lib/app-data";
 import {
-  getCurrentGames,
-  getPendingReviewMatches,
+  getCurrentProfile,
+  listCurrentUserGroups,
+  listPendingReviewsForCurrentUser,
+} from "@/lib/app-data";
+import {
   getPrimaryCurrentGame,
   splitCurrentGameTeams,
-  toPendingReviewSummary,
 } from "@/lib/home";
-import { demoCurrentGames, demoMatches } from "@/lib/demo-data";
+import { demoCurrentGames } from "@/lib/demo-data";
+import { toPendingReviewMatch } from "@/lib/matches/pending-review";
 
 export default async function HomePage() {
-  const [profile, groups] = await Promise.all([
+  const [profile, groups, pendingReviews] = await Promise.all([
     getCurrentProfile(),
     listCurrentUserGroups(),
+    listPendingReviewsForCurrentUser(),
   ]);
   const primaryGroup = groups[0];
-  const activeGames = getCurrentGames(demoCurrentGames);
   const primaryGame = getPrimaryCurrentGame(demoCurrentGames);
   const primaryTeams = primaryGame ? splitCurrentGameTeams(primaryGame) : null;
-  const pendingReviewMatches = getPendingReviewMatches(demoMatches).map(
-    toPendingReviewSummary,
-  );
+  const pendingReviewMatches = pendingReviews.map(toPendingReviewMatch);
 
   return (
     <MobileShell
