@@ -1,10 +1,11 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { ChevronRight, UsersRound } from "lucide-react";
+import { ChevronRight, Plus, UsersRound } from "lucide-react";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { ScreenHeader } from "@/components/app/screen-header";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { listCurrentUserGroups } from "@/lib/app-data";
 
 export default async function GroupsPage() {
@@ -13,7 +14,19 @@ export default async function GroupsPage() {
 
   return (
     <MobileShell active="Groups" recordHref={primaryGroup ? `/groups/${primaryGroup.id}/matches/new` : undefined}>
-      <ScreenHeader title="Groups" />
+      <ScreenHeader
+        title="Groups"
+        action={
+          groups.length ? (
+            <Button asChild className="shrink-0 px-3 text-xs">
+              <Link href="/groups/new">
+                <Plus className="size-4" aria-hidden="true" />
+                Create group
+              </Link>
+            </Button>
+          ) : undefined
+        }
+      />
       {groups.length ? (
         <section className="flex flex-col gap-3">
           {groups.map((group) => (
@@ -37,7 +50,17 @@ export default async function GroupsPage() {
           ))}
         </section>
       ) : (
-        <p className="rounded-lg border border-stroke bg-surface p-4 text-sm text-muted">Create or join a group to start ranking matches.</p>
+        <Card>
+          <CardContent className="flex flex-col gap-3 p-4">
+            <p className="text-sm text-muted">Create or join a group to start ranking matches.</p>
+            <Button asChild className="w-full">
+              <Link href="/groups/new">
+                <Plus className="size-4" aria-hidden="true" />
+                Create group
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
       )}
     </MobileShell>
   );

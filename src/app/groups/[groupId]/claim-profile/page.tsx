@@ -18,7 +18,6 @@ export default async function ClaimProfilePage({
 
   return (
     <MobileShell showNav={false}>
-      <p className="-mb-2 truncate text-base text-ink">Claiming an existing guest profile</p>
       <section className="flex min-h-[calc(100dvh-64px)] flex-col justify-center">
         <Card>
           <CardContent className="p-6">

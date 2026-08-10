@@ -1,34 +1,45 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown, Medal, Plus, X } from "lucide-react";
-import { type ActionResult } from "@/app/actions";
+import { useEffect, useRef, useState } from "react";
+import { Medal, Plus, Trash2, X } from "lucide-react";
+import { type ActionResult, type MatchCommandResult } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import {
   PlayerSelectView,
   type PlayerFilter,
   type PlayerSelection,
 } from "@/components/match/player-select-view";
-import { validateMatchSubmission, type MatchFormat, type Team } from "@/lib/matches/validation";
+import { GroupSwitcher, type GroupOption } from "@/components/match/group-switcher";
+import {
+  validateMatchSubmission,
+  type MatchFormat,
+  type MatchGameInput,
+  type MatchSubmissionInput,
+  type Team,
+} from "@/lib/matches/validation";
 import { type AppPlayer } from "@/lib/app-data";
 import { cn } from "@/lib/utils";
 
 type Score = { teamAScore: number; teamBScore: number };
-type RecordedGame = Score & { winnerTeam: Team };
+type EditableScore = number | "";
+type RecordedGame = {
+  teamAScore: EditableScore;
+  teamBScore: EditableScore;
+  winnerTeam: Team;
+};
 type TeamSelection = PlayerSelection;
 type CreateGuestPlayers = (input: { groupId: string; names: string[] }) => Promise<ActionResult<{ players: AppPlayer[] }>>;
+type SaveActiveMatchDraft = (input: MatchSubmissionInput & { draftId?: string }) => Promise<ActionResult<{ draftId: string }>>;
+type SubmitMatchAction = (input: MatchSubmissionInput & { draftId?: string; commandId: string }) => Promise<ActionResult<MatchCommandResult>>;
 type TeamSlot =
   | { id: string; initials: string; name: string; fullName: string; empty?: false }
   | { empty: true };
 
-const WIN_SCORE = 21;
-const LOSS_SCORE = 18;
-const defaultMatchRecording = {
+const defaultMatchRecording: Omit<InitialMatchRecording, "games"> = {
   format: "doubles",
   teamAUserIds: [],
   teamBUserIds: [],
-  games: [{ teamAScore: WIN_SCORE, teamBScore: LOSS_SCORE }],
-} satisfies InitialMatchRecording;
+};
 
 export type InitialMatchRecording = {
   format: MatchFormat;
@@ -40,44 +51,104 @@ export type InitialMatchRecording = {
 export function MatchRecorder({
   groupId = "test-group",
   groupName = "Downtown Rec",
+  groupOptions = [{ id: groupId, name: groupName }],
   players,
-  initialMatch = defaultMatchRecording,
+  initialMatch,
+  draftId,
+  canEdit = true,
   createGuestPlayers,
+  saveActiveMatchDraft,
+  submitMatchAction,
 }: {
   groupId?: string;
   groupName?: string;
+  groupOptions?: GroupOption[];
   players: AppPlayer[];
   initialMatch?: InitialMatchRecording;
+  draftId?: string;
+  canEdit?: boolean;
   createGuestPlayers?: CreateGuestPlayers;
+  saveActiveMatchDraft?: SaveActiveMatchDraft;
+  submitMatchAction?: SubmitMatchAction;
 }) {
-  const [format, setFormat] = useState<MatchFormat>(initialMatch.format);
+  const startingMatch = initialMatch ?? defaultMatchRecording;
+  const [format, setFormat] = useState<MatchFormat>(startingMatch.format);
   const [teamA, setTeamA] = useState<TeamSelection>(() =>
-    normalizeTeamSlots(initialMatch.teamAUserIds, initialMatch.format),
+    normalizeTeamSlots(startingMatch.teamAUserIds, startingMatch.format),
   );
   const [teamB, setTeamB] = useState<TeamSelection>(() =>
-    normalizeTeamSlots(initialMatch.teamBUserIds, initialMatch.format),
+    normalizeTeamSlots(startingMatch.teamBUserIds, startingMatch.format),
   );
   const [games, setGames] = useState<RecordedGame[]>(() =>
-    initialMatch.games.map((game) => ({ ...game, winnerTeam: winnerFromScore(game) })),
+    initialMatch
+      ? initialMatch.games.map((game) => ({ ...game, winnerTeam: winnerFromScore(game) }))
+      : [newBlankGame()],
   );
   const [playerSelectOpen, setPlayerSelectOpen] = useState(false);
   const [activeSelectTeam, setActiveSelectTeam] = useState<Team>("A");
   const [draftTeamA, setDraftTeamA] = useState<TeamSelection>(() =>
-    resizeTeamSlots(initialMatch.teamAUserIds, initialMatch.format),
+    resizeTeamSlots(startingMatch.teamAUserIds, startingMatch.format),
   );
   const [draftTeamB, setDraftTeamB] = useState<TeamSelection>(() =>
-    resizeTeamSlots(initialMatch.teamBUserIds, initialMatch.format),
+    resizeTeamSlots(startingMatch.teamBUserIds, startingMatch.format),
   );
   const [playerFilter, setPlayerFilter] = useState<PlayerFilter>("all");
   const [playerSearch, setPlayerSearch] = useState("");
   const [message, setMessage] = useState("");
+  const activeDraftId = useRef(draftId);
+  const saveActiveMatchDraftRef = useRef(saveActiveMatchDraft);
   const [guestPlayers, setGuestPlayers] = useState<AppPlayer[]>([]);
   const [draftGuestIds, setDraftGuestIds] = useState<string[]>([]);
+  const submitCommandId = useRef<string | null>(null);
   const selectablePlayers = [...players, ...guestPlayers];
   const activeMemberIds = selectablePlayers.map((player) => player.id);
 
   const teamASlots = buildTeamSlots(teamA, selectablePlayers, format);
   const teamBSlots = buildTeamSlots(teamB, selectablePlayers, format);
+
+  useEffect(() => {
+    saveActiveMatchDraftRef.current = saveActiveMatchDraft;
+  }, [saveActiveMatchDraft]);
+
+  useEffect(() => {
+    activeDraftId.current = draftId;
+  }, [draftId]);
+
+  useEffect(() => {
+    if (!canEdit || !saveActiveMatchDraftRef.current) {
+      return;
+    }
+
+    const teamAUserIds = compactTeam(teamA);
+    const teamBUserIds = compactTeam(teamB);
+    const completeGames = toCompleteGames(games);
+    if (!teamsComplete(format, teamAUserIds, teamBUserIds) || !completeGames) {
+      return;
+    }
+
+    const payload = {
+      groupId,
+      draftId: activeDraftId.current,
+      format,
+      teamAUserIds,
+      teamBUserIds,
+      games: completeGames,
+    };
+    const timeout = window.setTimeout(async () => {
+      const result = await saveActiveMatchDraftRef.current?.(payload);
+      if (!result) {
+        return;
+      }
+      if (result.ok) {
+        activeDraftId.current = result.data.draftId;
+        setMessage("Draft saved.");
+      } else {
+        setMessage(result.message);
+      }
+    }, 400);
+
+    return () => window.clearTimeout(timeout);
+  }, [canEdit, format, games, groupId, teamA, teamB]);
 
   function updateFormat(value: MatchFormat) {
     setFormat(value);
@@ -105,6 +176,9 @@ export function MatchRecorder({
   }
 
   function openPlayerSelect(team: Team) {
+    if (!canEdit) {
+      return;
+    }
     setDraftTeamA(resizeTeamSlots(teamA, format));
     setDraftTeamB(resizeTeamSlots(teamB, format));
     setActiveSelectTeam(team);
@@ -214,34 +288,67 @@ export function MatchRecorder({
         const updated =
           team === "A" ? { ...game, teamAScore: score } : { ...game, teamBScore: score };
 
-        return updated.teamAScore === updated.teamBScore
-          ? updated
-          : { ...updated, winnerTeam: winnerFromScore(updated) };
+        if (
+          updated.teamAScore === "" ||
+          updated.teamBScore === "" ||
+          updated.teamAScore === updated.teamBScore
+        ) {
+          return updated;
+        }
+
+        return {
+          ...updated,
+          winnerTeam: winnerFromScore({
+            teamAScore: updated.teamAScore,
+            teamBScore: updated.teamBScore,
+          }),
+        };
       }),
     );
     setMessage("");
   }
 
   function addSet() {
-    setGames((current) => [
-      ...current,
-      { teamAScore: WIN_SCORE, teamBScore: LOSS_SCORE, winnerTeam: "A" },
-    ]);
+    setGames((current) => [...current, newBlankGame()]);
     setMessage("");
   }
 
-  function submitMatch() {
+  function removeSet(gameIndex: number) {
+    setGames((current) =>
+      current.length > 1 ? current.filter((_, index) => index !== gameIndex) : current,
+    );
+    setMessage("");
+  }
+
+  async function submitMatch() {
+    if (!canEdit) {
+      return;
+    }
+
     try {
-      const validated = validateMatchSubmission(
-        {
-          groupId,
-          format,
-          teamAUserIds: compactTeam(teamA),
-          teamBUserIds: compactTeam(teamB),
-          games: games.map(({ teamAScore, teamBScore }) => ({ teamAScore, teamBScore })),
-        },
-        { activeMemberIds },
-      );
+      const completeGames = toCompleteGames(games);
+      if (!completeGames) {
+        setMessage("Enter both scores for every set.");
+        return;
+      }
+
+      submitCommandId.current ??= crypto.randomUUID();
+      const input = {
+        groupId,
+        draftId: activeDraftId.current,
+        commandId: submitCommandId.current,
+        format,
+        teamAUserIds: compactTeam(teamA),
+        teamBUserIds: compactTeam(teamB),
+        games: completeGames,
+      };
+      const validated = validateMatchSubmission(input, { activeMemberIds });
+      if (submitMatchAction) {
+        const result = await submitMatchAction(input);
+        setMessage(result.ok ? "Match saved. Ratings updating…" : result.message);
+        return;
+      }
+
       setMessage(`Submitted. Team ${validated.matchWinnerTeam} wins; ratings update immediately.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Invalid match.");
@@ -252,7 +359,8 @@ export function MatchRecorder({
     return (
       <PlayerSelectView
         players={selectablePlayers}
-        groupName={groupName}
+        groups={groupOptions}
+        currentGroupId={groupId}
         format={format}
         draftTeamA={draftTeamA}
         draftTeamB={draftTeamB}
@@ -274,16 +382,10 @@ export function MatchRecorder({
     <section className="flex min-h-full flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-[22px] font-bold leading-7 text-ink">Match Recording</h1>
-        <div
-          className="inline-flex min-h-11 items-center gap-2 rounded-full bg-victory px-4 text-sm font-bold text-ink"
-          aria-label={`Current group ${groupName}`}
-        >
-          {groupName}
-          <ChevronDown className="size-4 stroke-[3]" />
-        </div>
+        <GroupSwitcher groups={groupOptions} currentGroupId={groupId} />
       </div>
 
-      <FormatToggle value={format} onChange={updateFormat} />
+      <FormatToggle value={format} onChange={updateFormat} disabled={!canEdit} />
 
       <div className="grid grid-cols-2 gap-6 px-3">
         <TeamSummaryCard
@@ -291,12 +393,14 @@ export function MatchRecorder({
           slots={teamASlots}
           onOpenPicker={() => openPlayerSelect("A")}
           onRemove={(slotIndex) => removePlayer("A", slotIndex)}
+          editable={canEdit}
         />
         <TeamSummaryCard
           label="Team B"
           slots={teamBSlots}
           onOpenPicker={() => openPlayerSelect("B")}
           onRemove={(slotIndex) => removePlayer("B", slotIndex)}
+          editable={canEdit}
         />
       </div>
 
@@ -308,16 +412,20 @@ export function MatchRecorder({
             index={index}
             onWinnerChange={(winner) => setWinner(index, winner)}
             onScoreChange={(team, value) => updateScore(index, team, value)}
+            onRemove={canEdit && games.length > 1 ? () => removeSet(index) : undefined}
+            editable={canEdit}
           />
         ))}
-        <button
-          type="button"
-          onClick={addSet}
-          className="flex min-h-11 w-full items-center justify-center gap-1 rounded-lg border border-stroke bg-surface text-sm font-bold text-ink transition hover:bg-app-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
-        >
-          <Plus className="size-4" />
-          Add set
-        </button>
+        {canEdit ? (
+          <button
+            type="button"
+            onClick={addSet}
+            className="flex min-h-11 w-full items-center justify-center gap-1 rounded-lg border border-stroke bg-surface text-sm font-bold text-ink transition hover:bg-app-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+          >
+            <Plus className="size-4" />
+            Add set
+          </button>
+        ) : null}
       </div>
 
       <div className="mt-auto flex flex-col gap-3 pt-2">
@@ -326,9 +434,11 @@ export function MatchRecorder({
             {message}
           </p>
         ) : null}
-        <Button type="button" onClick={submitMatch} className="w-full">
-          Submit
-        </Button>
+        {canEdit ? (
+          <Button type="button" onClick={submitMatch} className="w-full">
+            Submit
+          </Button>
+        ) : null}
       </div>
     </section>
   );
@@ -357,11 +467,41 @@ function compactTeam(team: Array<string | null>): string[] {
   return team.filter((playerId): playerId is string => Boolean(playerId));
 }
 
+function teamsComplete(format: MatchFormat, teamAUserIds: string[], teamBUserIds: string[]) {
+  const size = format === "singles" ? 1 : 2;
+  return teamAUserIds.length === size && teamBUserIds.length === size;
+}
+
 function winnerFromScore(game: Score): Team {
   return game.teamAScore >= game.teamBScore ? "A" : "B";
 }
 
-function normalizeScoreValue(value: string) {
+function newBlankGame(): RecordedGame {
+  return { teamAScore: "", teamBScore: "", winnerTeam: "A" };
+}
+
+function toCompleteGames(games: RecordedGame[]): MatchGameInput[] | null {
+  const completeGames: MatchGameInput[] = [];
+
+  for (const game of games) {
+    if (game.teamAScore === "" || game.teamBScore === "") {
+      return null;
+    }
+
+    completeGames.push({
+      teamAScore: game.teamAScore,
+      teamBScore: game.teamBScore,
+    });
+  }
+
+  return completeGames;
+}
+
+function normalizeScoreValue(value: string): EditableScore {
+  if (value === "") {
+    return "";
+  }
+
   const parsed = Number(value);
 
   if (!Number.isFinite(parsed)) {
@@ -374,9 +514,11 @@ function normalizeScoreValue(value: string) {
 function FormatToggle({
   value,
   onChange,
+  disabled = false,
 }: {
   value: MatchFormat;
   onChange: (value: MatchFormat) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="grid min-h-11 grid-cols-2 rounded-lg border border-stroke bg-surface p-1">
@@ -385,9 +527,10 @@ function FormatToggle({
           key={option}
           type="button"
           onClick={() => onChange(option)}
+          disabled={disabled}
           aria-pressed={value === option}
           className={cn(
-            "rounded-md text-sm font-semibold capitalize text-muted transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action",
+            "rounded-md text-sm font-semibold capitalize text-muted transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action disabled:cursor-default",
             value === option && "bg-selection text-ink",
           )}
         >
@@ -403,11 +546,13 @@ function TeamSummaryCard({
   slots,
   onOpenPicker,
   onRemove,
+  editable,
 }: {
   label: string;
   slots: TeamSlot[];
   onOpenPicker: (slotIndex: number) => void;
   onRemove: (slotIndex: number) => void;
+  editable: boolean;
 }) {
   return (
     <div className="flex flex-col items-center gap-2">
@@ -415,32 +560,43 @@ function TeamSummaryCard({
       <div className="relative flex min-h-[74px] min-w-[116px] items-start justify-center gap-2 rounded-lg border border-stroke bg-surface px-2 py-2">
         {slots.map((slot, index) =>
           slot.empty ? (
-            <button
-              key={`empty-${index}`}
-              type="button"
-              onClick={() => onOpenPicker(index)}
-              className="flex min-w-11 flex-col items-center gap-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
-              aria-label={`${label} empty player slot ${index + 1}`}
-              aria-haspopup="dialog"
-            >
-              <span className="flex size-11 items-center justify-center rounded-full border border-stroke bg-app-bg text-muted transition hover:text-ink">
-                <Plus className="size-5" />
-              </span>
-              <span className="text-[11px] text-transparent">Empty</span>
-            </button>
+            editable ? (
+              <button
+                key={`empty-${index}`}
+                type="button"
+                onClick={() => onOpenPicker(index)}
+                className="flex min-w-11 flex-col items-center gap-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+                aria-label={`${label} empty player slot ${index + 1}`}
+                aria-haspopup="dialog"
+              >
+                <span className="flex size-11 items-center justify-center rounded-full border border-stroke bg-app-bg text-muted transition hover:text-ink">
+                  <Plus className="size-5" />
+                </span>
+                <span className="text-[11px] text-transparent">Empty</span>
+              </button>
+            ) : (
+              <div key={`empty-${index}`} className="flex min-w-11 flex-col items-center gap-1" aria-label={`${label} empty player slot ${index + 1}`}>
+                <span className="flex size-11 items-center justify-center rounded-full border border-stroke bg-app-bg text-muted">
+                  <Plus className="size-5" />
+                </span>
+                <span className="text-[11px] text-transparent">Empty</span>
+              </div>
+            )
           ) : (
             <div key={`${slot.id}-${index}`} className="relative flex min-w-0 flex-col items-center gap-1">
               <span className="flex size-11 items-center justify-center rounded-full bg-victory text-sm font-bold text-ink">
                 {slot.initials}
               </span>
-              <button
-                type="button"
-                onClick={() => onRemove(index)}
-                aria-label={`Remove ${slot.name} from ${label}`}
-                className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full border border-stroke bg-surface text-muted shadow-sm transition hover:bg-app-bg hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
-              >
-                <X className="size-3" />
-              </button>
+              {editable ? (
+                <button
+                  type="button"
+                  onClick={() => onRemove(index)}
+                  aria-label={`Remove ${slot.name} from ${label}`}
+                  className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full border border-stroke bg-surface text-muted shadow-sm transition hover:bg-app-bg hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+                >
+                  <X className="size-3" />
+                </button>
+              ) : null}
               <span className="max-w-12 truncate text-[11px] text-muted">{slot.name}</span>
             </div>
           ),
@@ -455,17 +611,33 @@ function SetScoreRow({
   index,
   onWinnerChange,
   onScoreChange,
+  onRemove,
+  editable,
 }: {
   game: RecordedGame;
   index: number;
   onWinnerChange: (winner: Team) => void;
   onScoreChange: (team: Team, value: string) => void;
+  onRemove?: () => void;
+  editable: boolean;
 }) {
   const winner = game.winnerTeam;
 
   return (
     <div className="flex flex-col gap-1">
-      <h3 className="text-sm font-bold text-muted">Set {index + 1}</h3>
+      <div className="flex items-center gap-1">
+        <h3 className="text-sm font-bold text-muted">Set {index + 1}</h3>
+        {onRemove ? (
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label={`Remove Set ${index + 1}`}
+            className="flex size-7 items-center justify-center rounded-md text-muted transition hover:bg-app-bg hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+          >
+            <Trash2 className="size-4" aria-hidden="true" />
+          </button>
+        ) : null}
+      </div>
       <div className="grid grid-cols-2 gap-4">
         <ScoreTile
           setNumber={index + 1}
@@ -474,6 +646,7 @@ function SetScoreRow({
           selected={winner === "A"}
           onWinnerClick={() => onWinnerChange("A")}
           onScoreChange={(value) => onScoreChange("A", value)}
+          editable={editable}
         />
         <ScoreTile
           setNumber={index + 1}
@@ -482,6 +655,7 @@ function SetScoreRow({
           selected={winner === "B"}
           onWinnerClick={() => onWinnerChange("B")}
           onScoreChange={(value) => onScoreChange("B", value)}
+          editable={editable}
         />
       </div>
     </div>
@@ -495,36 +669,39 @@ function ScoreTile({
   selected,
   onWinnerClick,
   onScoreChange,
+  editable,
 }: {
   setNumber: number;
   team: Team;
-  score: number;
+  score: EditableScore;
   selected: boolean;
   onWinnerClick: () => void;
   onScoreChange: (value: string) => void;
+  editable: boolean;
 }) {
   return (
     <div
-      aria-label={`Set ${setNumber} Team ${team} ${score} ${selected ? "Win" : "Loss"}`}
+      aria-label={`Set ${setNumber} Team ${team} ${score === "" ? "not entered" : score} ${selected ? "Win" : "Loss"}`}
       className={cn(
         "relative flex h-[86px] items-center justify-center rounded-lg border transition focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-action",
         selected ? "border-victory-stroke bg-victory" : "border-stroke bg-surface",
       )}
     >
       {selected ? <Medal className="absolute left-2 top-2 size-4 text-ink" aria-hidden="true" /> : null}
+      <button
+        type="button"
+        onClick={onWinnerClick}
+        disabled={!editable}
+        aria-pressed={selected}
+        aria-label={`Mark Set ${setNumber} Team ${team} as winner`}
+        className="absolute inset-0 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action disabled:cursor-default"
+      />
       <div
         className={cn(
-          "relative grid h-[70px] w-[92px] grid-rows-[1fr_auto] items-center rounded-md border bg-surface px-2 pb-2 pt-1",
+          "pointer-events-none relative grid h-[70px] w-[92px] grid-rows-[1fr_auto] items-center rounded-md border bg-surface px-2 pb-2 pt-1",
           selected ? "border-victory-stroke" : "border-stroke",
         )}
       >
-        <button
-          type="button"
-          onClick={onWinnerClick}
-          aria-pressed={selected}
-          aria-label={`Mark Set ${setNumber} Team ${team} as winner`}
-          className="absolute inset-0 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
-        />
         <input
           aria-label={`Set ${setNumber} Team ${team} score`}
           type="number"
@@ -532,9 +709,11 @@ function ScoreTile({
           max={99}
           inputMode="numeric"
           value={score}
+          placeholder="-"
           onClick={(event) => event.stopPropagation()}
           onChange={(event) => onScoreChange(event.target.value)}
-          className="relative z-10 h-11 w-full self-center rounded-md border border-transparent bg-transparent p-0 text-center text-[32pt] font-bold leading-none text-ink [appearance:textfield] focus:border-selection-stroke focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          disabled={!editable}
+          className="pointer-events-auto relative z-10 h-11 w-full self-center rounded-md border border-transparent bg-transparent p-0 text-center text-[32pt] font-bold leading-none text-ink [appearance:textfield] focus:border-selection-stroke focus:outline-none disabled:cursor-default [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
         <span
           aria-hidden="true"

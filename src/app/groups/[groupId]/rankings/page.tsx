@@ -6,7 +6,8 @@ import { PlayerRow } from "@/components/app/player-row";
 import { ScreenHeader } from "@/components/app/screen-header";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { listGroupPlayers } from "@/lib/app-data";
+import { RatingRebuildStatus } from "@/components/match/rating-rebuild-status";
+import { getGroupRatingRebuildStatus, listGroupPlayers } from "@/lib/app-data";
 
 export default async function RankingsPage({
   params,
@@ -14,12 +15,12 @@ export default async function RankingsPage({
   params: Promise<{ groupId: string }>;
 }) {
   const { groupId } = await params;
-  const players = await listGroupPlayers(groupId);
+  const [players, ratingStatus] = await Promise.all([listGroupPlayers(groupId), getGroupRatingRebuildStatus(groupId)]);
   const recordHref = `/groups/${groupId}/matches/new`;
 
   return (
     <MobileShell active="Rank" recordHref={recordHref}>
-      <ScreenHeader title="Rankings" subtitle="Glicko-2 ratings are isolated to this group." backHref={`/groups/${groupId}`} />
+      <ScreenHeader title="Rankings" backHref={`/groups/${groupId}`} />
       <div className="flex gap-2">
         <Badge tone="selected">Overall</Badge>
         <Badge>Singles</Badge>
@@ -29,6 +30,12 @@ export default async function RankingsPage({
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
         <Input className="pl-9" placeholder="Search rankings" />
       </div>
+      <RatingRebuildStatus
+        groupId={groupId}
+        jobId={ratingStatus.id}
+        status={ratingStatus.status}
+        canRetry={ratingStatus.canRetry}
+      />
       {players.length ? (
         <section className="flex flex-col gap-2">
           {players.map((player) => (

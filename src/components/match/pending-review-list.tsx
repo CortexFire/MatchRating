@@ -2,6 +2,7 @@ import Link from "next/link";
 
 export type PendingReviewMatch = {
   id: string;
+  groupId: string;
   summary: string;
   details: string;
   score: string;

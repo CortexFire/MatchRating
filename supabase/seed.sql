@@ -1,0 +1,1 @@
+-- Project-specific local fixtures are created by pgTAP tests.

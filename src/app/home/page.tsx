@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ChevronRight, UsersRound, Plus } from "lucide-react";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { AvatarInitials } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { PendingReviewList } from "@/components/match/pending-review-list";
 import { getCurrentProfile, listCurrentUserGroups } from "@/lib/app-data";

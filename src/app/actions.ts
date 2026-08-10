@@ -1,7 +1,10 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { z } from "zod";
 import { type AppPlayer } from "@/lib/app-data";
 import {
@@ -10,18 +13,20 @@ import {
   getDemoPostLoginPath,
   isDemoLoginEnabled,
 } from "@/lib/demo-auth";
-import { createInviteToken, hashInviteToken } from "@/lib/invites/tokens";
+import { hashInviteToken } from "@/lib/invites/tokens";
 import {
-  type HistoricalMatch,
-  rebuildGroupRatingsFromMatches,
-  type RatingEvent,
-  type RatingState,
-} from "@/lib/ratings/glicko2";
+  createAuthCallbackIntent,
+  getAuthCallbackIntentCookieForTrustedPublicSite,
+} from "@/lib/auth/callback-intent";
+import { getTrustedPublicSiteOrigin } from "@/lib/auth/public-site-origin";
+import { DEFAULT_AUTH_NEXT_PATH, getSafeAuthNextPath } from "@/lib/auth/next-path";
 import {
   validateMatchSubmission,
   type MatchSubmissionInput,
-  type ValidatedMatchSubmission,
 } from "@/lib/matches/validation";
+import { draftExpiresAt, validateActiveMatchDraft } from "@/lib/matches/drafts";
+import { type CommandResult, toCommandError } from "@/lib/commands/result";
+import { dispatchRatingRebuild } from "@/lib/ratings/rebuild-dispatch";
 import {
   createSupabaseServerClient,
   createSupabaseServiceClient,
@@ -32,6 +37,59 @@ export type ActionResult<T = unknown> =
   | { ok: true; data: T; message?: string }
   | { ok: false; message: string };
 
+type CommandMetadata = { commandId?: string };
+type RequiredCommandMetadata = { commandId: string };
+export type MatchCommandResult = {
+  matchId: string;
+  revisionId: string;
+  ratingJobId: string;
+  ratingStatus: "queued" | "running" | "completed" | "failed";
+};
+
+async function executeCommand<T>(
+  name: string,
+  args: Record<string, unknown>,
+  fallback: string,
+): Promise<CommandResult<T>> {
+  try {
+    await requireUserId();
+    const client = await createSupabaseServerClient();
+    const { data, error } = await client.rpc(name, args);
+    if (error) return toCommandError(error, fallback);
+    return { ok: true, data: data as T };
+  } catch (error) {
+    return toCommandError(error instanceof Error ? { message: error.message } : undefined, fallback);
+  }
+}
+
+function commandId(value: CommandMetadata) {
+  return value.commandId ?? randomUUID();
+}
+
+function scheduleReturnedRatingJob(result: CommandResult<{ ratingJobId?: string }>) {
+  if (result.ok && result.data.ratingJobId) {
+    const jobId = result.data.ratingJobId;
+    try {
+      after(async () => {
+        try {
+          await dispatchRatingRebuild(jobId);
+        } catch (error) {
+          console.error("rating_dispatch_failed", {
+            jobId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      });
+    } catch (error) {
+      console.error("rating_dispatch_schedule_failed", {
+        jobId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return result;
+}
+
 const groupSchema = z.object({
   name: z.string().trim().min(2).max(80),
   description: z.string().trim().max(280).optional().default(""),
@@ -41,6 +99,8 @@ const guestPlayersSchema = z.object({
   groupId: z.string().min(1),
   names: z.array(z.string().trim().min(1).max(80)).min(1).max(4),
 });
+
+const inviteTokenSchema = z.string().uuid();
 
 const onboardingProfileSchema = z.object({
   firstName: z.string().trim().min(1).max(80),
@@ -54,7 +114,17 @@ const claimGuestProfilesSchema = z.object({
 
 const disputeSchema = z.object({
   revisionId: z.string().uuid(),
-  note: z.string().trim().min(2).max(600),
+  commandId: z.string().uuid(),
+});
+
+const confirmSchema = z.object({
+  revisionId: z.string().uuid(),
+  commandId: z.string().uuid(),
+});
+
+const retryRatingSchema = z.object({
+  jobId: z.string().uuid(),
+  commandId: z.string().uuid(),
 });
 
 const emailOtpSchema = z.object({
@@ -67,10 +137,25 @@ const emailOtpSchema = z.object({
     }),
 });
 
+const activeDraftSchema = z.object({
+  draftId: z.string().uuid().optional(),
+  groupId: z.string().uuid(),
+  format: z.enum(["singles", "doubles"]),
+  teamAUserIds: z.array(z.string().uuid()),
+  teamBUserIds: z.array(z.string().uuid()),
+  games: z.array(
+    z.object({
+      teamAScore: z.number().int().min(0).max(99),
+      teamBScore: z.number().int().min(0).max(99),
+    }),
+  ),
+});
+
 const reviseSchema = z
   .object({
     matchId: z.string().uuid(),
-    reason: z.string().trim().min(2).max(600),
+    expectedRevisionId: z.string().uuid(),
+    commandId: z.string().uuid(),
   })
   .and(
     z.object({
@@ -87,22 +172,13 @@ const reviseSchema = z
     }),
   );
 
-const DEFAULT_AUTH_REDIRECT_PATH = "/onboarding";
-
-function getSiteOrigin() {
-  return (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/+$/, "");
-}
-
-function getSafeAuthNextPath(value = DEFAULT_AUTH_REDIRECT_PATH) {
-  if (!value.startsWith("/") || value.startsWith("//")) {
-    return DEFAULT_AUTH_REDIRECT_PATH;
+function getAuthCallbackUrl(nextPath = DEFAULT_AUTH_NEXT_PATH, intent?: string) {
+  const callbackUrl = new URL("/auth/confirm", getTrustedPublicSiteOrigin());
+  callbackUrl.searchParams.set("next", getSafeAuthNextPath(nextPath));
+  if (intent) {
+    callbackUrl.searchParams.set("auth_intent", intent);
   }
-
-  return value;
-}
-
-function getAuthCallbackUrl(nextPath = DEFAULT_AUTH_REDIRECT_PATH) {
-  return `${getSiteOrigin()}/auth/confirm?next=${encodeURIComponent(getSafeAuthNextPath(nextPath))}`;
+  return callbackUrl.toString();
 }
 
 function getActionErrorMessage(error: unknown, fallback: string) {
@@ -117,6 +193,8 @@ function normalizeGuestName(name: string) {
   return name.trim().split(/\s+/).filter(Boolean).join(" ");
 }
 
+// Legacy read helpers remain until a follow-up migration removes their unused source.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function splitGuestName(name: string) {
   const [firstName = "", ...rest] = normalizeGuestName(name).split(" ");
   return { firstName, lastName: rest.join(" ") };
@@ -172,18 +250,20 @@ type SupabaseService = ReturnType<typeof createSupabaseServiceClient>;
 type InviteRow = {
   id: string;
   group_id: string;
-  expires_at: string | null;
-  max_uses: number | null;
   use_count: number;
   revoked_at: string | null;
 };
 
 async function getInviteByToken(token: string, service: SupabaseService): Promise<InviteRow> {
-  const tokenHash = hashInviteToken(token);
+  const parsedToken = inviteTokenSchema.safeParse(token);
+  if (!parsedToken.success) {
+    throw new Error("This invite link is no longer valid.");
+  }
+
   const { data: invite, error } = await service
     .from("group_invites")
-    .select("id, group_id, expires_at, max_uses, use_count, revoked_at")
-    .eq("token_hash", tokenHash)
+    .select("id, group_id, use_count, revoked_at")
+    .eq("id", parsedToken.data)
     .maybeSingle();
 
   if (error) {
@@ -192,14 +272,6 @@ async function getInviteByToken(token: string, service: SupabaseService): Promis
 
   if (!invite || invite.revoked_at) {
     throw new Error("This invite link is no longer valid.");
-  }
-
-  if (invite.expires_at && Date.parse(invite.expires_at) < Date.now()) {
-    throw new Error("This invite link has expired.");
-  }
-
-  if (invite.max_uses && invite.use_count >= invite.max_uses) {
-    throw new Error("This invite link has already been used.");
   }
 
   return invite as InviteRow;
@@ -262,6 +334,7 @@ async function getClaimableGuestProfiles(groupId: string, service: SupabaseServi
     .sort((a, b) => a.rank - b.rank || b.rating - a.rating || a.name.localeCompare(b.name));
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function assertClaimableGuests(groupId: string, guestProfileIds: string[], service: SupabaseService) {
   const claimable = await getClaimableGuestProfiles(groupId, service);
   const claimableIds = new Set(claimable.map((profile) => profile.id));
@@ -271,6 +344,7 @@ async function assertClaimableGuests(groupId: string, guestProfileIds: string[],
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function assertClaimDoesNotDuplicateParticipants(userId: string, guestProfileIds: string[], service: SupabaseService) {
   const { data, error } = await service
     .from("match_participants")
@@ -297,7 +371,7 @@ export async function signOut(): Promise<void> {
   redirect("/login");
 }
 
-export async function signInWithOtp(email: string, nextPath = DEFAULT_AUTH_REDIRECT_PATH): Promise<ActionResult<{ email: string; redirectTo?: string }>> {
+export async function signInWithOtp(email: string, nextPath = DEFAULT_AUTH_NEXT_PATH): Promise<ActionResult<{ email: string; redirectTo?: string }>> {
   try {
     const parsedEmail = z.string().email().parse(email);
     const demoPlayer = getDemoPlayerByEmail(parsedEmail);
@@ -307,7 +381,7 @@ export async function signInWithOtp(email: string, nextPath = DEFAULT_AUTH_REDIR
       const demoLogin = await ensureDemoFixtures(parsedEmail, getAuthCallbackUrl(getDemoPostLoginPath()));
       const { error } = await supabase.auth.verifyOtp({
         token_hash: demoLogin.tokenHash,
-        type: "magiclink",
+        type: "email",
       });
 
       if (error) {
@@ -321,16 +395,20 @@ export async function signInWithOtp(email: string, nextPath = DEFAULT_AUTH_REDIR
       };
     }
 
+    const intent = createAuthCallbackIntent();
     const { error } = await supabase.auth.signInWithOtp({
       email: parsedEmail,
       options: {
-        emailRedirectTo: getAuthCallbackUrl(nextPath),
+        emailRedirectTo: getAuthCallbackUrl(nextPath, intent),
       },
     });
 
     if (error) {
       throw error;
     }
+
+    const cookie = getAuthCallbackIntentCookieForTrustedPublicSite();
+    (await cookies()).set({ ...cookie, value: intent });
 
     return { ok: true, data: { email: parsedEmail }, message: "Check your email for the sign-in code." };
   } catch (error) {
@@ -338,29 +416,6 @@ export async function signInWithOtp(email: string, nextPath = DEFAULT_AUTH_REDIR
   }
 }
 
-export async function signInWithGoogle(nextPath = DEFAULT_AUTH_REDIRECT_PATH): Promise<ActionResult<{ url: string }>> {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: getAuthCallbackUrl(nextPath),
-      },
-    });
-
-    if (error) {
-      throw error;
-    }
-
-    if (!data.url) {
-      throw new Error("Could not start Google sign-in.");
-    }
-
-    return { ok: true, data: { url: data.url } };
-  } catch (error) {
-    return { ok: false, message: getActionErrorMessage(error, "Could not start Google sign-in.") };
-  }
-}
 
 export async function verifyEmailOtp(input: {
   email: string;
@@ -378,6 +433,9 @@ export async function verifyEmailOtp(input: {
     if (error) {
       throw error;
     }
+
+    const cookie = getAuthCallbackIntentCookieForTrustedPublicSite();
+    (await cookies()).set({ ...cookie, value: "", maxAge: 0 });
 
     return { ok: true, data: { email: parsed.email }, message: "Signed in." };
   } catch (error) {
@@ -494,604 +552,319 @@ export async function listClaimableGuestProfiles(groupId: string): Promise<Actio
 export async function claimGuestProfiles(input: {
   groupId: string;
   guestProfileIds: string[];
-}): Promise<ActionResult<{ groupId: string }>> {
-  try {
-    const userId = await requireUserId();
-    const parsed = claimGuestProfilesSchema.parse({
-      groupId: input.groupId,
-      guestProfileIds: [...new Set(input.guestProfileIds)],
-    });
-    const service = createSupabaseServiceClient();
-    await ensureActiveMember(parsed.groupId, userId, service);
-    await assertClaimableGuests(parsed.groupId, parsed.guestProfileIds, service);
-    await assertClaimDoesNotDuplicateParticipants(userId, parsed.guestProfileIds, service);
-
-    await service.from("match_participants").update({ user_id: userId }).in("user_id", parsed.guestProfileIds);
-    await service
-      .from("group_memberships")
-      .update({ status: "left", left_at: new Date().toISOString() })
-      .eq("group_id", parsed.groupId)
-      .in("user_id", parsed.guestProfileIds);
-    await service
-      .from("group_rating_states")
-      .delete()
-      .eq("group_id", parsed.groupId)
-      .in("user_id", parsed.guestProfileIds);
-
-    const matches = await fetchHistoricalMatches(parsed.groupId);
-    const rebuilt = rebuildGroupRatingsFromMatches(matches);
-    await persistRatingRebuild(parsed.groupId, rebuilt.ratings, rebuilt.events);
-    revalidatePath(`/groups/${parsed.groupId}`);
-    return { ok: true, data: { groupId: parsed.groupId } };
-  } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Could not claim guest profiles." };
-  }
+  commandId?: string;
+}): Promise<ActionResult<{ groupId: string; ratingJobId?: string }>> {
+  const parsed = claimGuestProfilesSchema.safeParse({ ...input, guestProfileIds: [...new Set(input.guestProfileIds)] });
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Could not claim guest profiles." };
+  const result = await executeCommand<{ groupId: string; ratingJobId?: string }>("command_claim_guest_profiles", {
+    p_command_id: commandId(input), p_group_id: parsed.data.groupId, p_guest_ids: parsed.data.guestProfileIds,
+  }, "Could not claim guest profiles.");
+  scheduleReturnedRatingJob(result);
+  if (result.ok) revalidatePath(`/groups/${parsed.data.groupId}`);
+  return result;
 }
 export async function createGuestPlayers(input: {
   groupId: string;
   names: string[];
+  commandId?: string;
 }): Promise<ActionResult<{ players: AppPlayer[] }>> {
-  try {
-    const userId = await requireUserId();
-    const parsed = guestPlayersSchema.parse(input);
-    const service = createSupabaseServiceClient();
-    await ensureActiveMember(parsed.groupId, userId, service);
-
-    const names = parsed.names.map(normalizeGuestName);
-    const { data: profiles, error: profilesError } = await service
-      .from("profiles")
-      .insert(
-        names.map((name) => {
-          const { firstName, lastName } = splitGuestName(name);
-          return {
-            display_name: name,
-            first_name: firstName,
-            last_name: lastName,
-            is_guest: true,
-          };
-        }),
-      )
-      .select("id, display_name");
-
-    if (profilesError) {
-      throw profilesError;
-    }
-
-    if (!profiles || profiles.length !== names.length) {
-      throw new Error("Could not create guest players.");
-    }
-
-    const memberships = profiles.map((profile: { id: string }) => ({
-      group_id: parsed.groupId,
-      user_id: profile.id,
-      role: "member",
-      status: "active",
-    }));
-    const ratings = profiles.map((profile: { id: string }) => ({
-      group_id: parsed.groupId,
-      user_id: profile.id,
-      rating: 1500,
-      rd: 350,
-      volatility: 0.06,
-      games_played: 0,
-    }));
-
-    const membershipResult = await service.from("group_memberships").insert(memberships);
-    if (membershipResult.error) {
-      throw membershipResult.error;
-    }
-
-    const ratingResult = await service.from("group_rating_states").insert(ratings);
-    if (ratingResult.error) {
-      throw ratingResult.error;
-    }
-
-    revalidatePath(`/groups/${parsed.groupId}`);
-    return {
-      ok: true,
-      data: {
-        players: profiles.map((profile: { id: string; display_name: string }) => ({
-          id: profile.id,
-          name: profile.display_name,
-          initials: initialsFor(profile.display_name),
-          role: "Member",
-          rating: 1500,
-          rd: 350,
-          rank: 0,
-          gamesPlayed: 0,
-          status: "Active",
-          isGuest: true,
-        })),
-      },
-    };
-  } catch (error) {
-    return { ok: false, message: getActionErrorMessage(error, "Could not create guest players.") };
-  }
+  const parsed = guestPlayersSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Could not create guest players." };
+  const result = await executeCommand<{ players: Array<{ id: string; name: string }> }>("command_create_guest_players", {
+    p_command_id: commandId(input), p_group_id: parsed.data.groupId, p_names: parsed.data.names.map(normalizeGuestName),
+  }, "Could not create guest players.");
+  if (!result.ok) return result;
+  revalidatePath(`/groups/${parsed.data.groupId}`);
+  return { ok: true, data: { players: result.data.players.map((player) => ({ id: player.id, name: player.name, initials: initialsFor(player.name), role: "Member", rating: 1500, rd: 350, rank: 0, gamesPlayed: 0, status: "Active", isGuest: true })) } };
 }
 export async function createGroup(input: {
   name: string;
   description?: string;
+  commandId?: string;
 }): Promise<ActionResult<{ groupId: string }>> {
+  const parsed = groupSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Could not create group." };
+  const result = await executeCommand<{ groupId: string }>("command_create_group", {
+    p_command_id: commandId(input), p_name: parsed.data.name, p_description: parsed.data.description,
+  }, "Could not create group.");
+  if (result.ok) revalidatePath("/groups/new");
+  return result;
+}
+
+export async function getOrCreateInvite(groupId: string): Promise<ActionResult<{ token: string; url: string }>> {
   try {
     const userId = await requireUserId();
-    const parsed = groupSchema.parse(input);
     const service = createSupabaseServiceClient();
+    await ensureActiveMember(groupId, userId, service);
 
-    const { data: group, error: groupError } = await service
-      .from("groups")
+    const { data: existingInvite, error: existingError } = await service
+      .from("group_invites")
+      .select("id")
+      .eq("group_id", groupId)
+      .is("revoked_at", null)
+      .maybeSingle();
+
+    if (existingError) {
+      throw existingError;
+    }
+
+    const origin = getTrustedPublicSiteOrigin();
+    if (existingInvite?.id) {
+      return { ok: true, data: { token: existingInvite.id, url: `${origin}/join/${existingInvite.id}` } };
+    }
+
+    const inviteId = randomUUID();
+    const { data: invite, error: insertError } = await service
+      .from("group_invites")
       .insert({
-        owner_user_id: userId,
-        name: parsed.name,
-        description: parsed.description,
+        id: inviteId,
+        group_id: groupId,
+        token_hash: hashInviteToken(inviteId),
+        created_by_user_id: userId,
       })
       .select("id")
       .single();
 
-    if (groupError) {
-      throw groupError;
+    if (insertError) {
+      throw insertError;
     }
 
-    await service.from("group_memberships").insert({
-      group_id: group.id,
-      user_id: userId,
-      role: "owner",
-      status: "active",
-    });
+    if (!invite) {
+      throw new Error("Could not load invite.");
+    }
 
-    await service.from("group_rating_states").insert({
-      group_id: group.id,
-      user_id: userId,
-      rating: 1500,
-      rd: 350,
-      volatility: 0.06,
-      games_played: 0,
-      rank: 1,
-    });
-
-    revalidatePath("/groups/new");
-    return { ok: true, data: { groupId: group.id } };
+    return { ok: true, data: { token: invite.id, url: `${origin}/join/${invite.id}` } };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Could not create group." };
+    return { ok: false, message: error instanceof Error ? error.message : "Could not load invite." };
   }
 }
 
 export async function createInvite(groupId: string): Promise<ActionResult<{ token: string; url: string }>> {
+  return getOrCreateInvite(groupId);
+}
+
+export async function joinGroupByInvite(token: string, metadata: CommandMetadata = {}): Promise<ActionResult<{ groupId: string; claimableProfileCount: number }>> {
+  const parsed = inviteTokenSchema.safeParse(token);
+  if (!parsed.success) return { ok: false, message: "This invite link is no longer valid." };
+  const result = await executeCommand<{ groupId: string; claimableProfileCount: number }>("command_join_group_by_invite", {
+    p_command_id: commandId(metadata), p_invite_id: parsed.data,
+  }, "Could not join group.");
+  if (result.ok) revalidatePath(`/groups/${result.data.groupId}`);
+  return result;
+}
+
+export async function leaveGroup(groupId: string, metadata: CommandMetadata = {}): Promise<ActionResult<{ groupId: string }>> {
+  const result = await executeCommand<{ groupId: string }>("command_leave_group", {
+    p_command_id: commandId(metadata),
+    p_group_id: groupId,
+  }, "Could not leave group.");
+  if (result.ok) revalidatePath(`/groups/${groupId}`);
+  return result;
+}
+
+
+type ActiveDraftInput = MatchSubmissionInput & { draftId?: string };
+type EditableDraftRow = {
+  id: string;
+  group_id: string;
+  created_by_user_id: string;
+  expires_at: string;
+  submitted_match_id: string | null;
+};
+
+export async function saveActiveMatchDraft(input: ActiveDraftInput): Promise<ActionResult<{ draftId: string }>> {
   try {
     const userId = await requireUserId();
-    await ensureActiveMember(groupId, userId);
-
-    const token = createInviteToken();
+    const parsed = activeDraftSchema.parse(input);
     const service = createSupabaseServiceClient();
-    await service.from("group_invites").insert({
-      group_id: groupId,
-      token_hash: hashInviteToken(token),
+    await ensureActiveMember(parsed.groupId, userId, service);
+    const activeMemberIds = await getActiveMemberIds(parsed.groupId);
+    const draft = validateActiveMatchDraft(parsed, { activeMemberIds });
+    const expires_at = draftExpiresAt();
+    const values = {
+      group_id: draft.groupId,
       created_by_user_id: userId,
-      expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString(),
-    });
+      format: draft.format,
+      team_a_user_ids: draft.teamAUserIds,
+      team_b_user_ids: draft.teamBUserIds,
+      games: draft.games,
+      expires_at,
+      updated_at: new Date().toISOString(),
+    };
 
-    const origin = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
-    return { ok: true, data: { token, url: `${origin}/join/${token}` } };
-  } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Could not create invite." };
-  }
-}
+    if (parsed.draftId) {
+      const existing = await getEditableDraft(parsed.draftId, userId, service);
+      if (existing.group_id !== parsed.groupId) {
+        throw new Error("This active match belongs to another group.");
+      }
 
-export async function joinGroupByInvite(token: string): Promise<ActionResult<{ groupId: string; claimableProfileCount: number }>> {
-  try {
-    const userId = await requireUserId();
-    const service = createSupabaseServiceClient();
-    const invite = await getInviteByToken(token, service);
+      const { data, error } = await service
+        .from("active_match_drafts")
+        .update(values)
+        .eq("id", parsed.draftId)
+        .select("id")
+        .single();
 
-    await service.from("group_memberships").upsert(
-      {
-        group_id: invite.group_id,
-        user_id: userId,
-        role: "member",
-        status: "active",
-        left_at: null,
-      },
-      { onConflict: "group_id,user_id" },
-    );
-    await service.from("group_invite_redemptions").insert({
-      invite_id: invite.id,
-      user_id: userId,
-    });
-    await service
-      .from("group_invites")
-      .update({ use_count: invite.use_count + 1 })
-      .eq("id", invite.id);
-    await service.from("group_rating_states").upsert(
-      {
-        group_id: invite.group_id,
-        user_id: userId,
-        rating: 1500,
-        rd: 350,
-        volatility: 0.06,
-        games_played: 0,
-      },
-      { onConflict: "group_id,user_id" },
-    );
+      if (error) {
+        throw error;
+      }
 
-    const claimableProfileCount = (await getClaimableGuestProfiles(invite.group_id, service)).length;
-    revalidatePath(`/groups/${invite.group_id}`);
-    return { ok: true, data: { groupId: invite.group_id, claimableProfileCount } };
-  } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Could not join group." };
-  }
-}
-
-export async function leaveGroup(groupId: string): Promise<ActionResult<{ groupId: string }>> {
-  try {
-    const userId = await requireUserId();
-    await ensureActiveMember(groupId, userId);
-    const service = createSupabaseServiceClient();
-    await service
-      .from("group_memberships")
-      .update({ status: "left", left_at: new Date().toISOString() })
-      .eq("group_id", groupId)
-      .eq("user_id", userId);
-
-    revalidatePath(`/groups/${groupId}`);
-    return { ok: true, data: { groupId } };
-  } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Could not leave group." };
-  }
-}
-
-export async function submitMatch(input: MatchSubmissionInput): Promise<ActionResult<{ matchId: string }>> {
-  try {
-    const userId = await requireUserId();
-    await ensureActiveMember(input.groupId, userId);
-    const activeMemberIds = await getActiveMemberIds(input.groupId);
-    const validated = validateMatchSubmission(input, { activeMemberIds });
-
-    if (![...validated.teamAUserIds, ...validated.teamBUserIds].includes(userId)) {
-      throw new Error("The submitting user must be one of the match players.");
+      revalidateDraftPaths(parsed.groupId);
+      return { ok: true, data: { draftId: data.id } };
     }
 
-    const service = createSupabaseServiceClient();
-    const { data: match, error: matchError } = await service
-      .from("matches")
-      .insert({
-        group_id: validated.groupId,
-        created_by_user_id: userId,
-        status: "pending_confirmation",
-        submitted_at: new Date().toISOString(),
-      })
-      .select("id")
-      .single();
-
-    if (matchError) {
-      throw matchError;
+    const { data, error } = await service.from("active_match_drafts").insert(values).select("id").single();
+    if (error) {
+      throw error;
     }
 
-    const { data: revision, error: revisionError } = await service
-      .from("match_revisions")
-      .insert({
-        match_id: match.id,
-        version: 1,
-        submitted_by_user_id: userId,
-        format: validated.format,
-        reason: "Initial submission",
-        status: "active",
-      })
-      .select("id")
-      .single();
-
-    if (revisionError) {
-      throw revisionError;
-    }
-
-    await persistRevisionDetails(revision.id, validated);
-    await service.from("matches").update({ active_revision_id: revision.id }).eq("id", match.id);
-    await rebuildGroupRatings(validated.groupId);
-
-    revalidatePath(`/groups/${validated.groupId}`);
-    return { ok: true, data: { matchId: match.id } };
+    revalidateDraftPaths(parsed.groupId);
+    return { ok: true, data: { draftId: data.id } };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Could not submit match." };
+    return { ok: false, message: error instanceof Error ? error.message : "Could not save active match." };
   }
 }
 
-async function persistRevisionDetails(
-  revisionId: string,
-  validated: ValidatedMatchSubmission,
-) {
-  const service = createSupabaseServiceClient();
-  const participants = [
-    ...validated.teamAUserIds.map((userId, index) => ({
-      revision_id: revisionId,
-      user_id: userId,
-      team: "A",
-      slot: index + 1,
-    })),
-    ...validated.teamBUserIds.map((userId, index) => ({
-      revision_id: revisionId,
-      user_id: userId,
-      team: "B",
-      slot: index + 1,
-    })),
-  ];
-  const games = validated.games.map((game) => ({
-    revision_id: revisionId,
-    game_number: game.gameNumber,
-    team_a_score: game.teamAScore,
-    team_b_score: game.teamBScore,
-    winner_team: game.winnerTeam,
-  }));
+async function getEditableDraft(draftId: string, userId: string, service: SupabaseService): Promise<EditableDraftRow> {
+  const { data, error } = await service
+    .from("active_match_drafts")
+    .select("id, group_id, created_by_user_id, expires_at, submitted_match_id")
+    .eq("id", draftId)
+    .maybeSingle();
 
-  const participantResult = await service.from("match_participants").insert(participants);
-  if (participantResult.error) {
-    throw participantResult.error;
+  if (error) {
+    throw error;
   }
 
-  const gameResult = await service.from("match_games").insert(games);
-  if (gameResult.error) {
-    throw gameResult.error;
+  const draft = data as EditableDraftRow | null;
+  if (!draft || draft.submitted_match_id || Date.parse(draft.expires_at) <= Date.now()) {
+    await service.from("active_match_drafts").delete().eq("id", draftId);
+    throw new Error("This active match expired. Start a new match.");
   }
+
+  if (draft.created_by_user_id !== userId) {
+    throw new Error("Only the match creator can edit this active match.");
+  }
+
+  return draft;
 }
 
-export async function confirmMatchRevision(revisionId: string): Promise<ActionResult<{ revisionId: string }>> {
-  return reviewMatchRevision(revisionId, "confirmed");
+function revalidateDraftPaths(groupId: string) {
+  revalidatePath("/home");
+  revalidatePath(`/groups/${groupId}`);
+  revalidatePath(`/groups/${groupId}/matches/new`);
+}
+
+export async function submitMatch(input: ActiveDraftInput & RequiredCommandMetadata): Promise<ActionResult<MatchCommandResult>> {
+  if (!z.string().uuid().safeParse(input.commandId).success) {
+    return { ok: false, message: "A command ID is required." };
+  }
+  const parsed = activeDraftSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Could not submit match." };
+  const validated = validateMatchSubmission(parsed.data);
+  if (parsed.data.draftId) {
+    try {
+      const userId = await requireUserId();
+      const existing = await getEditableDraft(parsed.data.draftId, userId, createSupabaseServiceClient());
+      if (existing.group_id !== validated.groupId) {
+        throw new Error("This active match belongs to another group.");
+      }
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : "Could not submit match." };
+    }
+  }
+  const result = await executeCommand<MatchCommandResult>("command_submit_match", {
+    p_command_id: input.commandId, p_group_id: validated.groupId, p_draft_id: parsed.data.draftId ?? null,
+    p_format: validated.format, p_team_a: validated.teamAUserIds, p_team_b: validated.teamBUserIds,
+    p_games: validated.games.map(({ teamAScore, teamBScore }) => ({ teamAScore, teamBScore })),
+  }, "Could not submit match.");
+  scheduleReturnedRatingJob(result);
+  if (result.ok) revalidateDraftPaths(validated.groupId);
+  return result;
+}
+
+export async function confirmMatchRevision(input: z.infer<typeof confirmSchema>): Promise<ActionResult<{ revisionId: string }>> {
+  const parsed = confirmSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues[0]?.message ?? "Could not confirm match." };
+  }
+  return reviewMatchRevision(parsed.data.revisionId, parsed.data.commandId, "confirmed");
 }
 
 export async function disputeMatchRevision(input: {
   revisionId: string;
-  note: string;
+  commandId: string;
 }): Promise<ActionResult<{ revisionId: string }>> {
   const parsed = disputeSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid dispute." };
   }
 
-  return reviewMatchRevision(parsed.data.revisionId, "disputed", parsed.data.note);
+  return reviewMatchRevision(parsed.data.revisionId, parsed.data.commandId, "disputed");
 }
 
 async function reviewMatchRevision(
   revisionId: string,
+  commandId: string,
   action: "confirmed" | "disputed",
-  note?: string,
 ): Promise<ActionResult<{ revisionId: string }>> {
-  try {
-    const userId = await requireUserId();
-    const service = createSupabaseServiceClient();
-    const { data: revision, error } = await service
-      .from("match_revisions")
-      .select("id, match_id, submitted_by_user_id, matches(group_id)")
-      .eq("id", revisionId)
-      .single();
-
-    if (error) {
-      throw error;
-    }
-
-    const groupId = getNestedGroupId(revision.matches);
-    await ensureActiveMember(groupId, userId);
-    await assertOpposingTeamReviewer(revisionId, revision.submitted_by_user_id, userId);
-    await service.from("match_confirmations").insert({
-      revision_id: revisionId,
-      user_id: userId,
-      action,
-      note,
-    });
-
-    if (action === "confirmed") {
-      await service.from("matches").update({ status: "confirmed" }).eq("id", revision.match_id);
-    } else {
-      await service.from("matches").update({ status: "disputed" }).eq("id", revision.match_id);
-    }
-
-    revalidatePath(`/groups/${groupId}`);
-    return { ok: true, data: { revisionId } };
-  } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Could not review match." };
+  const result = await executeCommand<{ revisionId: string }>("command_review_match", {
+    p_command_id: commandId, p_revision_id: revisionId, p_action: action,
+  }, "Could not review match.");
+  if (result.ok) {
+    revalidatePath("/groups");
+    revalidatePath("/matches/review");
   }
+  return result;
+}
+export async function reviseMatch(input: z.infer<typeof reviseSchema>): Promise<ActionResult<MatchCommandResult>> {
+  const parsed = reviseSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Could not revise match." };
+  const validated = validateMatchSubmission(parsed.data);
+  const result = await executeCommand<MatchCommandResult>("command_revise_match", {
+    p_command_id: parsed.data.commandId, p_match_id: parsed.data.matchId, p_expected_revision_id: parsed.data.expectedRevisionId,
+    p_format: validated.format, p_team_a: validated.teamAUserIds,
+    p_team_b: validated.teamBUserIds, p_games: validated.games.map(({ teamAScore, teamBScore }) => ({ teamAScore, teamBScore })),
+  }, "Could not revise match.");
+  scheduleReturnedRatingJob(result);
+  if (result.ok) revalidateMatchPaths(parsed.data.groupId, parsed.data.matchId);
+  return result;
 }
 
-function getNestedGroupId(matches: { group_id: string } | Array<{ group_id: string }>) {
-  return Array.isArray(matches) ? matches[0]?.group_id : matches.group_id;
+export async function disputeAndReviseMatch(input: z.infer<typeof reviseSchema>): Promise<ActionResult<MatchCommandResult>> {
+  const parsed = reviseSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Could not correct match." };
+  const validated = validateMatchSubmission(parsed.data);
+  const result = await executeCommand<MatchCommandResult>("command_dispute_and_revise_match", {
+    p_command_id: parsed.data.commandId, p_match_id: parsed.data.matchId, p_expected_revision_id: parsed.data.expectedRevisionId,
+    p_format: validated.format, p_team_a: validated.teamAUserIds, p_team_b: validated.teamBUserIds,
+    p_games: validated.games.map(({ teamAScore, teamBScore }) => ({ teamAScore, teamBScore })),
+  }, "Could not correct match.");
+  scheduleReturnedRatingJob(result);
+  if (result.ok) revalidateMatchPaths(parsed.data.groupId, parsed.data.matchId);
+  return result;
 }
 
-async function assertOpposingTeamReviewer(
-  revisionId: string,
-  submittedByUserId: string,
-  reviewerUserId: string,
-) {
-  const service = createSupabaseServiceClient();
-  const { data, error } = await service
-    .from("match_participants")
-    .select("user_id, team")
-    .eq("revision_id", revisionId)
-    .in("user_id", [submittedByUserId, reviewerUserId]);
-
-  if (error) {
-    throw error;
-  }
-
-  const submitter = data?.find((row: { user_id: string }) => row.user_id === submittedByUserId);
-  const reviewer = data?.find((row: { user_id: string }) => row.user_id === reviewerUserId);
-  if (!submitter || !reviewer || submitter.team === reviewer.team) {
-    throw new Error("One player from the opposing team must confirm or dispute.");
-  }
+function revalidateMatchPaths(groupId: string, matchId: string) {
+  revalidatePath("/matches/review");
+  revalidatePath(`/groups/${groupId}`);
+  revalidatePath(`/groups/${groupId}/history`);
+  revalidatePath(`/groups/${groupId}/matches/${matchId}`);
+  revalidatePath(`/groups/${groupId}/matches/${matchId}/revise`);
 }
 
-export async function reviseMatch(input: z.infer<typeof reviseSchema>): Promise<ActionResult<{ matchId: string }>> {
-  try {
-    const userId = await requireUserId();
-    const parsed = reviseSchema.parse(input);
-    await ensureActiveMember(parsed.groupId, userId);
-    const activeMemberIds = await getActiveMemberIds(parsed.groupId);
-    const validated = validateMatchSubmission(parsed, { activeMemberIds });
-    const service = createSupabaseServiceClient();
-    const { data: latest } = await service
-      .from("match_revisions")
-      .select("version")
-      .eq("match_id", parsed.matchId)
-      .order("version", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const { data: revision, error } = await service
-      .from("match_revisions")
-      .insert({
-        match_id: parsed.matchId,
-        version: (latest?.version ?? 0) + 1,
-        submitted_by_user_id: userId,
-        format: validated.format,
-        reason: parsed.reason,
-        status: "active",
-      })
-      .select("id")
-      .single();
-
-    if (error) {
-      throw error;
-    }
-
-    await persistRevisionDetails(revision.id, validated);
-    await service
-      .from("matches")
-      .update({ active_revision_id: revision.id, status: "pending_confirmation" })
-      .eq("id", parsed.matchId);
-    await rebuildGroupRatings(parsed.groupId);
-
-    revalidatePath(`/groups/${parsed.groupId}`);
-    return { ok: true, data: { matchId: parsed.matchId } };
-  } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Could not revise match." };
+export async function retryRatingRebuild(
+  input: z.infer<typeof retryRatingSchema>,
+): Promise<ActionResult<{ ratingJobId: string; ratingStatus: "queued" }>> {
+  const parsed = retryRatingSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues[0]?.message ?? "Could not retry ratings." };
   }
-}
-
-export async function rebuildGroupRatings(groupId: string): Promise<ActionResult<{ eventCount: number }>> {
-  try {
-    const userId = await requireUserId().catch(() => null);
-    if (userId) {
-      const membership = await ensureActiveMember(groupId, userId);
-      if (membership.role === "member") {
-        throw new Error("Only group admins can rebuild ratings.");
-      }
-    }
-
-    const matches = await fetchHistoricalMatches(groupId);
-    const rebuilt = rebuildGroupRatingsFromMatches(matches);
-    await persistRatingRebuild(groupId, rebuilt.ratings, rebuilt.events);
-    revalidatePath(`/groups/${groupId}`);
-    return { ok: true, data: { eventCount: rebuilt.events.length } };
-  } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Could not rebuild ratings." };
-  }
-}
-
-async function fetchHistoricalMatches(groupId: string): Promise<HistoricalMatch[]> {
-  const service = createSupabaseServiceClient();
-  const { data: matches, error } = await service
-    .from("matches")
-    .select("id, submitted_at, active_revision_id")
-    .eq("group_id", groupId)
-    .not("active_revision_id", "is", null)
-    .order("submitted_at", { ascending: true });
-
-  if (error) {
-    throw error;
-  }
-
-  const historicalMatches: HistoricalMatch[] = [];
-
-  for (const match of matches ?? []) {
-    const { data: revision, error: revisionError } = await service
-      .from("match_revisions")
-      .select("id, format")
-      .eq("id", match.active_revision_id)
-      .single();
-    if (revisionError) {
-      throw revisionError;
-    }
-
-    const { data: participants, error: participantsError } = await service
-      .from("match_participants")
-      .select("user_id, team, slot")
-      .eq("revision_id", revision.id)
-      .order("slot", { ascending: true });
-    if (participantsError) {
-      throw participantsError;
-    }
-
-    const { data: games, error: gamesError } = await service
-      .from("match_games")
-      .select("team_a_score, team_b_score")
-      .eq("revision_id", revision.id)
-      .order("game_number", { ascending: true });
-    if (gamesError) {
-      throw gamesError;
-    }
-
-    historicalMatches.push({
-      id: match.id,
-      revisionId: revision.id,
-      submittedAt: match.submitted_at,
-      format: revision.format,
-      teamAUserIds: (participants ?? [])
-        .filter((participant: { team: string }) => participant.team === "A")
-        .map((participant: { user_id: string }) => participant.user_id),
-      teamBUserIds: (participants ?? [])
-        .filter((participant: { team: string }) => participant.team === "B")
-        .map((participant: { user_id: string }) => participant.user_id),
-      games: (games ?? []).map((game: { team_a_score: number; team_b_score: number }) => ({
-        teamAScore: game.team_a_score,
-        teamBScore: game.team_b_score,
-      })),
-    });
-  }
-
-  return historicalMatches;
-}
-
-async function persistRatingRebuild(
-  groupId: string,
-  ratings: Map<string, RatingState>,
-  events: RatingEvent[],
-) {
-  const service = createSupabaseServiceClient();
-  await service.from("rating_events").delete().eq("group_id", groupId);
-  await service.from("group_rating_states").delete().eq("group_id", groupId);
-
-  const rankedRatings = Array.from(ratings.entries())
-    .sort(([, a], [, b]) => b.rating - a.rating || a.rd - b.rd)
-    .map(([userId, rating], index) => ({
-      group_id: groupId,
-      user_id: userId,
-      rating: rating.rating,
-      rd: rating.rd,
-      volatility: rating.volatility,
-      games_played: rating.gamesPlayed,
-      rank: index + 1,
-    }));
-
-  if (rankedRatings.length) {
-    const result = await service.from("group_rating_states").insert(rankedRatings);
-    if (result.error) {
-      throw result.error;
-    }
-  }
-
-  if (events.length) {
-    const result = await service.from("rating_events").insert(
-      events.map((event) => ({
-        group_id: groupId,
-        match_id: event.matchId,
-        revision_id: event.revisionId,
-        user_id: event.userId,
-        sequence: event.sequence,
-        before_rating: event.before.rating,
-        before_rd: event.before.rd,
-        before_volatility: event.before.volatility,
-        after_rating: event.after.rating,
-        after_rd: event.after.rd,
-        after_volatility: event.after.volatility,
-      })),
-    );
-    if (result.error) {
-      throw result.error;
-    }
-  }
+  const result = await executeCommand<{ ratingJobId: string; ratingStatus: "queued" }>("retry_rating_rebuild", {
+    p_command_id: parsed.data.commandId,
+    p_job_id: parsed.data.jobId,
+  }, "Could not retry ratings.");
+  scheduleReturnedRatingJob(result);
+  if (result.ok) revalidatePath("/groups");
+  return result;
 }

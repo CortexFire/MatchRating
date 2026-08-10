@@ -7,6 +7,7 @@ vi.mock("next/cache", () => ({
 
 const supabaseMocks = vi.hoisted(() => {
   const auth = { getClaims: vi.fn() };
+  const rpc = vi.fn();
   const profileUpsert = { select: vi.fn(() => profileUpsert), single: vi.fn() };
   const activeMembership = {
     select: vi.fn(() => activeMembership),
@@ -58,7 +59,7 @@ const supabaseMocks = vi.hoisted(() => {
     ratings,
     untouchedUpdate,
     requireUserId: vi.fn(),
-    createSupabaseServerClient: vi.fn(async () => ({ auth })),
+    createSupabaseServerClient: vi.fn(async () => ({ auth, rpc })),
     createSupabaseServiceClient: vi.fn(() => ({
       from: vi.fn((table: string) => {
         if (table === "profiles") {
@@ -80,6 +81,7 @@ const supabaseMocks = vi.hoisted(() => {
     resetMembershipCalls: () => {
       membershipCall = 0;
     },
+    rpc,
   };
 });
 
@@ -102,6 +104,7 @@ describe("onboarding actions", () => {
     supabaseMocks.participants.then.mockImplementation((resolve) =>
       resolve({ data: [{ revision_id: "revision-1", user_id: "guest-a" }, { revision_id: "revision-1", user_id: "guest-b" }], error: null }),
     );
+    supabaseMocks.rpc.mockResolvedValue({ data: null, error: { code: "MRVAL", message: "Guest claim would duplicate a match participant" } });
   });
 
   test("completeOnboardingProfile upserts the signed-in user's non-guest profile", async () => {
@@ -122,7 +125,8 @@ describe("onboarding actions", () => {
 
     expect(result).toEqual({
       ok: false,
-      message: "Those guest profiles cannot be merged because they appear together in a match.",
+      code: "INVALID_INPUT",
+      message: "Guest claim would duplicate a match participant",
     });
     expect(supabaseMocks.untouchedUpdate.update).not.toHaveBeenCalled();
   });

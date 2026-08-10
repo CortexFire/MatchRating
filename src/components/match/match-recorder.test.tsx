@@ -1,10 +1,15 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, test, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { demoPlayers } from "../../lib/demo-data";
 import { MobileShell } from "../app/mobile-shell";
+import { type AppPlayer } from "@/lib/app-data";
 import { MatchRecorder } from "./match-recorder";
+
+const navigationMocks = vi.hoisted(() => ({ push: vi.fn() }));
+
+vi.mock("next/navigation", () => ({ useRouter: () => navigationMocks }));
 
 const editableDoublesMatch = {
   format: "doubles" as const,
@@ -19,21 +24,195 @@ function openPlayerSelect(slotLabel = "Team B empty player slot 2") {
   fireEvent.click(screen.getByLabelText(slotLabel));
 }
 
+function groupPlayer(id: string, name: string, initials: string): AppPlayer {
+  return {
+    id,
+    name,
+    initials,
+    role: "Member",
+    rating: 1500,
+    rd: 350,
+    rank: 0,
+    gamesPlayed: 0,
+    status: "Active",
+    isGuest: false,
+  };
+}
+
 describe("MatchRecorder", () => {
-  test("shows the provided group name while recording and selecting players", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  test("offers the provided groups in a native group selector while recording", () => {
     render(
       <MatchRecorder
+        groupId="wednesday"
         groupName="Wednesday Club Ladder"
+        groupOptions={[
+          { id: "downtown", name: "Downtown Rec" },
+          { id: "wednesday", name: "Wednesday Club Ladder" },
+        ]}
         players={demoPlayers}
         initialMatch={editableDoublesMatch}
       />,
     );
 
-    expect(screen.getByLabelText("Current group Wednesday Club Ladder")).toBeTruthy();
+    const select = screen.getByRole("combobox", { name: "Current group Wednesday Club Ladder" }) as HTMLSelectElement;
+    expect(select.value).toBe("wednesday");
+    expect(screen.getByRole("option", { name: "Downtown Rec" })).toBeTruthy();
 
     fireEvent.click(screen.getByLabelText("Team B empty player slot 2"));
 
     expect(screen.getByLabelText("Current group Wednesday Club Ladder")).toBeTruthy();
+  });
+
+  test("switches groups from Player Select through the clean target-group route", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(
+      <MatchRecorder
+        groupId="wednesday"
+        groupName="Wednesday Club Ladder"
+        groupOptions={[
+          { id: "downtown", name: "Downtown Rec" },
+          { id: "wednesday", name: "Wednesday Club Ladder" },
+        ]}
+        players={demoPlayers}
+        initialMatch={editableDoublesMatch}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("Team B empty player slot 2"));
+
+    const select = screen.getByRole("combobox", { name: "Current group Wednesday Club Ladder" }) as HTMLSelectElement;
+    expect(select.value).toBe("wednesday");
+    expect(screen.getByRole("option", { name: "Downtown Rec" })).toBeTruthy();
+
+    fireEvent.change(select, { target: { value: "downtown" } });
+
+    expect(confirm).toHaveBeenCalledWith("Switch groups? Your current match setup will be discarded.");
+    expect(navigationMocks.push).toHaveBeenCalledWith("/groups/downtown/matches/new");
+  });
+
+  test("keyed target-group renders discard the previous group's player-select state", async () => {
+    vi.useFakeTimers();
+    const groupAPlayers = [
+      groupPlayer("group-a-ada", "AveryAda", "AA"),
+      groupPlayer("group-a-bea", "AveryBea", "AB"),
+      groupPlayer("group-a-cara", "AveryCara", "AC"),
+    ];
+    const groupBPlayers = [
+      groupPlayer("group-b-ada", "BriaAda", "BA"),
+      groupPlayer("group-b-bea", "BriaBea", "BB"),
+      groupPlayer("group-b-cara", "BriaCara", "BC"),
+    ];
+    const createGuestPlayers = vi.fn(async ({ groupId, names }: { groupId: string; names: string[] }) => ({
+      ok: true as const,
+      data: {
+        players: names.map((name, index) => ({
+          ...groupPlayer(`${groupId}-guest-${index}`, name, "GG"),
+          isGuest: true,
+        })),
+      },
+    }));
+    const saveActiveMatchDraft = vi.fn(async () => ({ ok: true as const, data: { draftId: "saved-draft" } }));
+    const submitMatchAction = vi.fn(async () => ({ ok: false as const, message: "Group A-only submission message" }));
+    const groupOptions = [
+      { id: "group-a", name: "Group A" },
+      { id: "group-b", name: "Group B" },
+    ];
+    const { rerender } = render(
+      <MatchRecorder
+        key="group-a"
+        groupId="group-a"
+        groupName="Group A"
+        groupOptions={groupOptions}
+        players={groupAPlayers}
+        initialMatch={{
+          format: "doubles",
+          teamAUserIds: ["group-a-ada"],
+          teamBUserIds: ["group-a-bea"],
+          games: [{ teamAScore: 14, teamBScore: 12 }],
+        }}
+        draftId="draft-a"
+        createGuestPlayers={createGuestPlayers}
+        saveActiveMatchDraft={saveActiveMatchDraft}
+        submitMatchAction={submitMatchAction}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("Team A empty player slot 2"));
+    expect(screen.getByRole("combobox", { name: "Current group Group A" })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Group A Guest" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add guest player Group A Guest" }));
+    fireEvent.click(screen.getByRole("button", { name: /Select Team B/ }));
+    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "AveryCara" } });
+    fireEvent.click(screen.getByRole("button", { name: "Select AveryCara" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Add players" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    });
+    expect(screen.getByText("Group A-only submission message")).toBeTruthy();
+
+    rerender(
+      <MatchRecorder
+        key="group-b"
+        groupId="group-b"
+        groupName="Group B"
+        groupOptions={groupOptions}
+        players={groupBPlayers}
+        initialMatch={{
+          format: "doubles",
+          teamAUserIds: ["group-b-ada"],
+          teamBUserIds: ["group-b-bea"],
+          games: [{ teamAScore: 21, teamBScore: 18 }],
+        }}
+        draftId="draft-b"
+        createGuestPlayers={createGuestPlayers}
+        saveActiveMatchDraft={saveActiveMatchDraft}
+        submitMatchAction={submitMatchAction}
+      />,
+    );
+
+    expect(screen.getByText("BriaAda")).toBeTruthy();
+    expect(screen.getByText("BriaBea")).toBeTruthy();
+    expect(screen.queryByText("AveryAda")).toBeNull();
+    expect(screen.queryByText("Group A Guest")).toBeNull();
+    expect(screen.queryByText("Group A-only submission message")).toBeNull();
+    expect((screen.getByLabelText("Set 1 Team A score") as HTMLInputElement).value).toBe("21");
+    expect((screen.getByLabelText("Set 1 Team B score") as HTMLInputElement).value).toBe("18");
+
+    fireEvent.click(screen.getByLabelText("Team B empty player slot 2"));
+    expect((screen.getByLabelText("Search for a player") as HTMLInputElement).value).toBe("");
+    expect(screen.getByRole("button", { name: "Filter All" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByRole("button", { name: "Select AveryCara" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Select BriaCara" })).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Group B Guest" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add guest player Group B Guest" }));
+    fireEvent.click(screen.getByRole("button", { name: /Select Team A/ }));
+    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "BriaCara" } });
+    fireEvent.click(screen.getByRole("button", { name: "Select BriaCara" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Add players" }));
+    });
+
+    expect(createGuestPlayers).toHaveBeenLastCalledWith({ groupId: "group-b", names: ["Group B Guest"] });
+
+    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "20" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(450);
+    });
+    expect(saveActiveMatchDraft).toHaveBeenLastCalledWith({
+      groupId: "group-b",
+      draftId: "draft-b",
+      format: "doubles",
+      teamAUserIds: ["group-b-ada", "group-b-cara"],
+      teamBUserIds: ["group-b-bea", "group-b-guest-0"],
+      games: [{ teamAScore: 21, teamBScore: 20 }],
+    });
   });
   test("renders a disputed match as the initial recording state", () => {
     render(
@@ -303,13 +482,13 @@ describe("MatchRecorder", () => {
     fireEvent.click(screen.getByRole("button", { name: "Select Dev Okafor" }));
     fireEvent.click(screen.getByRole("button", { name: "Add players" }));
 
-    await waitFor(() =>
+    await waitFor(() => {
       expect(createGuestPlayers).toHaveBeenCalledWith({
         groupId: "test-group",
         names: ["Mina Ray"],
-      }),
-    );
-    expect(screen.getByRole("heading", { name: "Match Recording" })).toBeTruthy();
+      });
+      expect(screen.getByRole("heading", { name: "Match Recording" })).toBeTruthy();
+    });
     expect(screen.getByText("Mina")).toBeTruthy();
     expect(screen.queryByText("Noah")).toBeNull();
   });
@@ -352,6 +531,119 @@ describe("MatchRecorder", () => {
     expect(screen.getByRole("link", { name: "Groups" })).toBeTruthy();
   });
 
+  test("starts a fresh match with blank score placeholders and Team A selected", () => {
+    render(<MatchRecorder players={demoPlayers} />);
+
+    const teamAScore = screen.getByLabelText("Set 1 Team A score") as HTMLInputElement;
+    const teamBScore = screen.getByLabelText("Set 1 Team B score") as HTMLInputElement;
+
+    expect(teamAScore.value).toBe("");
+    expect(teamBScore.value).toBe("");
+    expect(teamAScore.placeholder).toBe("-");
+    expect(teamBScore.placeholder).toBe("-");
+    expect(screen.getByRole("button", { name: "Mark Set 1 Team A as winner" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  test("adds a blank set with Team A selected", () => {
+    render(<MatchRecorder players={demoPlayers} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add set" }));
+
+    expect((screen.getByLabelText("Set 2 Team A score") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Set 2 Team B score") as HTMLInputElement).value).toBe("");
+    expect(screen.getByRole("button", { name: "Mark Set 2 Team A as winner" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  test("shows set removal controls only for editable matches with multiple sets", () => {
+    const initialMatch = {
+      format: "singles" as const,
+      teamAUserIds: ["alice"],
+      teamBUserIds: ["bea"],
+      games: [
+        { teamAScore: 21, teamBScore: 18 },
+        { teamAScore: 18, teamBScore: 21 },
+      ],
+    };
+    const { unmount } = render(
+      <MatchRecorder players={demoPlayers} initialMatch={initialMatch} />,
+    );
+
+    expect(screen.getByRole("button", { name: "Remove Set 1" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Remove Set 2" })).toBeTruthy();
+
+    unmount();
+    render(<MatchRecorder canEdit={false} players={demoPlayers} initialMatch={initialMatch} />);
+    expect(screen.queryByRole("button", { name: /Remove Set/ })).toBeNull();
+  });
+
+  test("removes and renumbers sets while hiding removal for the final set", () => {
+    render(
+      <MatchRecorder
+        players={demoPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [
+            { teamAScore: 21, teamBScore: 18 },
+            { teamAScore: 18, teamBScore: 21 },
+            { teamAScore: 15, teamBScore: 21 },
+          ],
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Set 2" }));
+
+    expect(screen.queryByRole("heading", { name: "Set 3" })).toBeNull();
+    expect((screen.getByLabelText("Set 2 Team A score") as HTMLInputElement).value).toBe("15");
+    expect((screen.getByLabelText("Set 2 Team B score") as HTMLInputElement).value).toBe("21");
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Set 2" }));
+
+    expect(screen.queryByRole("button", { name: /Remove Set/ })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Set 1" })).toBeTruthy();
+  });
+
+  test("autosaves the shortened set list after removal", async () => {
+    vi.useFakeTimers();
+    const saveActiveMatchDraft = vi.fn(async () => ({
+      ok: true as const,
+      data: { draftId: "draft-1" },
+    }));
+
+    render(
+      <MatchRecorder
+        groupId="11111111-1111-4111-8111-111111111111"
+        players={demoPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [
+            { teamAScore: 21, teamBScore: 18 },
+            { teamAScore: 18, teamBScore: 21 },
+          ],
+        }}
+        saveActiveMatchDraft={saveActiveMatchDraft}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Set 1" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(450);
+    });
+
+    expect(saveActiveMatchDraft).toHaveBeenCalledWith({
+      groupId: "11111111-1111-4111-8111-111111111111",
+      draftId: undefined,
+      format: "singles",
+      teamAUserIds: ["alice"],
+      teamBUserIds: ["bea"],
+      games: [{ teamAScore: 18, teamBScore: 21 }],
+    });
+  });
+
   test("allows scores to be changed with number inputs", () => {
     render(<MatchRecorder players={demoPlayers} />);
 
@@ -366,10 +658,19 @@ describe("MatchRecorder", () => {
 
     const teamAButton = screen.getByRole("button", { name: "Mark Set 1 Team A as winner" });
     const teamBButton = screen.getByRole("button", { name: "Mark Set 1 Team B as winner" });
+    const teamBTile = screen.getByLabelText("Set 1 Team B not entered Loss");
+    const teamBScore = screen.getByLabelText("Set 1 Team B score");
+
+    expect(teamBButton.parentElement).toBe(teamBTile);
+    fireEvent.click(teamBScore);
+    fireEvent.focus(teamBScore);
+    expect(teamAButton.getAttribute("aria-pressed")).toBe("true");
+    expect(teamBButton.getAttribute("aria-pressed")).toBe("false");
+
     fireEvent.click(teamBButton);
 
-    expect((screen.getByLabelText("Set 1 Team A score") as HTMLInputElement).value).toBe("21");
-    expect((screen.getByLabelText("Set 1 Team B score") as HTMLInputElement).value).toBe("18");
+    expect((screen.getByLabelText("Set 1 Team A score") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Set 1 Team B score") as HTMLInputElement).value).toBe("");
     expect(teamAButton.getAttribute("aria-pressed")).toBe("false");
     expect(teamBButton.getAttribute("aria-pressed")).toBe("true");
   });
@@ -391,5 +692,220 @@ describe("MatchRecorder", () => {
 
     expect((screen.getByLabelText("Set 1 Team A score") as HTMLInputElement).value).toBe("21");
     expect((screen.getByLabelText("Set 1 Team B score") as HTMLInputElement).value).toBe("18");
+  });
+
+  test("derives the winner after both blank scores are entered", () => {
+    render(<MatchRecorder players={demoPlayers} />);
+
+    const teamAButton = screen.getByRole("button", { name: "Mark Set 1 Team A as winner" });
+    const teamBButton = screen.getByRole("button", { name: "Mark Set 1 Team B as winner" });
+
+    fireEvent.change(screen.getByLabelText("Set 1 Team A score"), { target: { value: "18" } });
+    expect(teamAButton.getAttribute("aria-pressed")).toBe("true");
+    expect(teamBButton.getAttribute("aria-pressed")).toBe("false");
+
+    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "21" } });
+    expect(teamAButton.getAttribute("aria-pressed")).toBe("false");
+    expect(teamBButton.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  test("autosaves a complete draft after scores change", async () => {
+    vi.useFakeTimers();
+    const saveActiveMatchDraft = vi.fn(async () => ({
+      ok: true as const,
+      data: { draftId: "draft-1" },
+    }));
+
+    render(
+      <MatchRecorder
+        groupId="11111111-1111-4111-8111-111111111111"
+        players={demoPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 18 }],
+        }}
+        saveActiveMatchDraft={saveActiveMatchDraft}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "20" } });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(450);
+    });
+
+    expect(saveActiveMatchDraft).toHaveBeenLastCalledWith({
+      groupId: "11111111-1111-4111-8111-111111111111",
+      draftId: undefined,
+      format: "singles",
+      teamAUserIds: ["alice"],
+      teamBUserIds: ["bea"],
+      games: [{ teamAScore: 21, teamBScore: 20 }],
+    });
+  });
+
+  test("pauses autosave until every score is entered", async () => {
+    vi.useFakeTimers();
+    const saveActiveMatchDraft = vi.fn(async () => ({
+      ok: true as const,
+      data: { draftId: "draft-1" },
+    }));
+
+    render(
+      <MatchRecorder
+        groupId="11111111-1111-4111-8111-111111111111"
+        players={demoPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 18 }],
+        }}
+        saveActiveMatchDraft={saveActiveMatchDraft}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(450);
+    });
+    expect(saveActiveMatchDraft).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "20" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(450);
+    });
+    expect(saveActiveMatchDraft).toHaveBeenCalledWith({
+      groupId: "11111111-1111-4111-8111-111111111111",
+      draftId: undefined,
+      format: "singles",
+      teamAUserIds: ["alice"],
+      teamBUserIds: ["bea"],
+      games: [{ teamAScore: 21, teamBScore: 20 }],
+    });
+  });
+
+  test("blocks submission while a score is blank", async () => {
+    const submitMatchAction = vi.fn(async () => ({
+      ok: true as const,
+      data: {
+        matchId: "match-1",
+        revisionId: "revision-1",
+        ratingJobId: "job-1",
+        ratingStatus: "queued" as const,
+      },
+    }));
+
+    render(
+      <MatchRecorder
+        players={demoPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 18 }],
+        }}
+        submitMatchAction={submitMatchAction}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    expect(await screen.findByText("Enter both scores for every set.")).toBeTruthy();
+    expect(submitMatchAction).not.toHaveBeenCalled();
+  });
+
+  test("does not restart autosave when a server refresh replaces the action reference", async () => {
+    vi.useFakeTimers();
+    const firstSave = vi.fn().mockResolvedValue({
+      ok: true as const,
+      data: { draftId: "draft-1" },
+    });
+    const replacementSave = vi.fn().mockResolvedValue({
+      ok: true as const,
+      data: { draftId: "draft-1" },
+    });
+    const initialMatch = {
+      format: "singles" as const,
+      teamAUserIds: ["alice"],
+      teamBUserIds: ["bea"],
+      games: [{ teamAScore: 21, teamBScore: 18 }],
+    };
+
+    const { rerender } = render(
+      <MatchRecorder
+        players={demoPlayers}
+        initialMatch={initialMatch}
+        saveActiveMatchDraft={firstSave}
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(450);
+    });
+    expect(firstSave).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <MatchRecorder
+        players={demoPlayers}
+        initialMatch={initialMatch}
+        saveActiveMatchDraft={replacementSave}
+      />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(450);
+    });
+
+    expect(replacementSave).not.toHaveBeenCalled();
+  });
+
+  test("preserves one client command ID across a submission retry", async () => {
+    const submitMatchAction = vi.fn()
+      .mockResolvedValueOnce({ ok: false as const, message: "Temporary network failure" })
+      .mockResolvedValueOnce({
+        ok: true as const,
+        data: { matchId: "match-1", revisionId: "revision-1", ratingJobId: "job-1", ratingStatus: "queued" as const },
+      });
+
+    render(
+      <MatchRecorder
+        players={demoPlayers}
+        initialMatch={{ format: "singles", teamAUserIds: ["alice"], teamBUserIds: ["bea"], games: [{ teamAScore: 21, teamBScore: 18 }] }}
+        submitMatchAction={submitMatchAction}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    await screen.findByText("Temporary network failure");
+    const firstCommandId = submitMatchAction.mock.calls[0][0].commandId;
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    await waitFor(() => expect(submitMatchAction).toHaveBeenCalledTimes(2));
+    expect(submitMatchAction.mock.calls[1][0].commandId).toBe(firstCommandId);
+    expect(screen.getByText("Match saved. Ratings updating…")).toBeTruthy();
+  });
+
+  test("renders selected-player drafts as read-only", () => {
+    render(
+      <MatchRecorder
+        canEdit={false}
+        players={demoPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 12, teamBScore: 12 }],
+        }}
+      />,
+    );
+
+    expect((screen.getByLabelText("Set 1 Team A score") as HTMLInputElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
+    expect(screen.queryByLabelText("Remove Alice from Team A")).toBeNull();
   });
 });
