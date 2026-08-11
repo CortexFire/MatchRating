@@ -442,25 +442,6 @@ describe("transactional match actions", () => {
     });
   });
 
-  test("disputes a revision without sending free-text metadata", async () => {
-    supabaseMocks.rpc.mockResolvedValue({
-      data: { revisionId: "33333333-3333-4333-8333-333333333333" },
-      error: null,
-    });
-
-    const result = await actions.disputeMatchRevision({
-      revisionId: "33333333-3333-4333-8333-333333333333",
-      commandId: "88888888-8888-4888-8888-888888888888",
-    });
-
-    expect(result.ok).toBe(true);
-    expect(supabaseMocks.rpc).toHaveBeenCalledWith("command_review_match", {
-      p_command_id: "88888888-8888-4888-8888-888888888888",
-      p_revision_id: "33333333-3333-4333-8333-333333333333",
-      p_action: "disputed",
-    });
-  });
-
   test("atomically disputes and revises without free-text metadata", async () => {
     const result = await actions.disputeAndReviseMatch({
       commandId: "88888888-8888-4888-8888-888888888888",

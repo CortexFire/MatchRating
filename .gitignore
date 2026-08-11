@@ -46,5 +46,10 @@ next-env.d.ts
 /supabase/.branches/
 /supabase/.temp/
 
+# local development and test artifacts
+/.dev-server.log
+/output/
+/test-results/
+
 # local git worktrees
 /.worktrees/

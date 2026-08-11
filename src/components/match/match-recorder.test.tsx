@@ -2,7 +2,7 @@
 
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { demoPlayers } from "../../lib/demo-data";
+import { matchRecorderPlayers } from "./match-recorder.test-fixtures";
 import { MobileShell } from "../app/mobile-shell";
 import { type AppPlayer } from "@/lib/app-data";
 import { MatchRecorder } from "./match-recorder";
@@ -19,7 +19,7 @@ const editableDoublesMatch = {
 };
 
 function openPlayerSelect(slotLabel = "Team B empty player slot 2") {
-  render(<MatchRecorder players={demoPlayers} initialMatch={editableDoublesMatch} />);
+  render(<MatchRecorder players={matchRecorderPlayers} initialMatch={editableDoublesMatch} />);
 
   fireEvent.click(screen.getByLabelText(slotLabel));
 }
@@ -52,7 +52,7 @@ describe("MatchRecorder", () => {
           { id: "downtown", name: "Downtown Rec" },
           { id: "wednesday", name: "Wednesday Club Ladder" },
         ]}
-        players={demoPlayers}
+        players={matchRecorderPlayers}
         initialMatch={editableDoublesMatch}
       />,
     );
@@ -77,7 +77,7 @@ describe("MatchRecorder", () => {
           { id: "downtown", name: "Downtown Rec" },
           { id: "wednesday", name: "Wednesday Club Ladder" },
         ]}
-        players={demoPlayers}
+        players={matchRecorderPlayers}
         initialMatch={editableDoublesMatch}
       />,
     );
@@ -217,7 +217,7 @@ describe("MatchRecorder", () => {
   test("renders a disputed match as the initial recording state", () => {
     render(
       <MatchRecorder
-        players={demoPlayers}
+        players={matchRecorderPlayers}
         initialMatch={{
           format: "doubles",
           teamAUserIds: ["bea", "gia"],
@@ -305,7 +305,7 @@ describe("MatchRecorder", () => {
   test("disables additional available players when a singles draft team is full", () => {
     render(
       <MatchRecorder
-        players={demoPlayers}
+        players={matchRecorderPlayers}
         initialMatch={{
           format: "singles",
           teamAUserIds: [],
@@ -373,7 +373,7 @@ describe("MatchRecorder", () => {
   test("keeps non-active players selectable while showing their status label", () => {
     render(
       <MatchRecorder
-        players={demoPlayers}
+        players={matchRecorderPlayers}
         initialMatch={{
           format: "doubles",
           teamAUserIds: ["cory"],
@@ -465,7 +465,7 @@ describe("MatchRecorder", () => {
 
     render(
       <MatchRecorder
-        players={demoPlayers}
+        players={matchRecorderPlayers}
         initialMatch={editableDoublesMatch}
         createGuestPlayers={createGuestPlayers}
       />,
@@ -520,7 +520,7 @@ describe("MatchRecorder", () => {
   test("keeps bottom navigation mounted while Player Select is open", () => {
     render(
       <MobileShell active="Record">
-        <MatchRecorder players={demoPlayers} initialMatch={editableDoublesMatch} />
+        <MatchRecorder players={matchRecorderPlayers} initialMatch={editableDoublesMatch} />
       </MobileShell>,
     );
 
@@ -532,7 +532,7 @@ describe("MatchRecorder", () => {
   });
 
   test("starts a fresh match with blank score placeholders and Team A selected", () => {
-    render(<MatchRecorder players={demoPlayers} />);
+    render(<MatchRecorder players={matchRecorderPlayers} />);
 
     const teamAScore = screen.getByLabelText("Set 1 Team A score") as HTMLInputElement;
     const teamBScore = screen.getByLabelText("Set 1 Team B score") as HTMLInputElement;
@@ -545,7 +545,7 @@ describe("MatchRecorder", () => {
   });
 
   test("adds a blank set with Team A selected", () => {
-    render(<MatchRecorder players={demoPlayers} />);
+    render(<MatchRecorder players={matchRecorderPlayers} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Add set" }));
 
@@ -565,21 +565,21 @@ describe("MatchRecorder", () => {
       ],
     };
     const { unmount } = render(
-      <MatchRecorder players={demoPlayers} initialMatch={initialMatch} />,
+      <MatchRecorder players={matchRecorderPlayers} initialMatch={initialMatch} />,
     );
 
     expect(screen.getByRole("button", { name: "Remove Set 1" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Remove Set 2" })).toBeTruthy();
 
     unmount();
-    render(<MatchRecorder canEdit={false} players={demoPlayers} initialMatch={initialMatch} />);
+    render(<MatchRecorder canEdit={false} players={matchRecorderPlayers} initialMatch={initialMatch} />);
     expect(screen.queryByRole("button", { name: /Remove Set/ })).toBeNull();
   });
 
   test("removes and renumbers sets while hiding removal for the final set", () => {
     render(
       <MatchRecorder
-        players={demoPlayers}
+        players={matchRecorderPlayers}
         initialMatch={{
           format: "singles",
           teamAUserIds: ["alice"],
@@ -615,7 +615,7 @@ describe("MatchRecorder", () => {
     render(
       <MatchRecorder
         groupId="11111111-1111-4111-8111-111111111111"
-        players={demoPlayers}
+        players={matchRecorderPlayers}
         initialMatch={{
           format: "singles",
           teamAUserIds: ["alice"],
@@ -645,7 +645,7 @@ describe("MatchRecorder", () => {
   });
 
   test("allows scores to be changed with number inputs", () => {
-    render(<MatchRecorder players={demoPlayers} />);
+    render(<MatchRecorder players={matchRecorderPlayers} />);
 
     const teamBScore = screen.getByLabelText("Set 1 Team B score") as HTMLInputElement;
     fireEvent.change(teamBScore, { target: { value: "22" } });
@@ -654,7 +654,7 @@ describe("MatchRecorder", () => {
   });
 
   test("switches the doubles winner without switching scores", () => {
-    render(<MatchRecorder players={demoPlayers} />);
+    render(<MatchRecorder players={matchRecorderPlayers} />);
 
     const teamAButton = screen.getByRole("button", { name: "Mark Set 1 Team A as winner" });
     const teamBButton = screen.getByRole("button", { name: "Mark Set 1 Team B as winner" });
@@ -678,7 +678,7 @@ describe("MatchRecorder", () => {
   test("switches the singles winner without switching scores", () => {
     render(
       <MatchRecorder
-        players={demoPlayers}
+        players={matchRecorderPlayers}
         initialMatch={{
           format: "singles",
           teamAUserIds: ["alice"],
@@ -695,7 +695,7 @@ describe("MatchRecorder", () => {
   });
 
   test("derives the winner after both blank scores are entered", () => {
-    render(<MatchRecorder players={demoPlayers} />);
+    render(<MatchRecorder players={matchRecorderPlayers} />);
 
     const teamAButton = screen.getByRole("button", { name: "Mark Set 1 Team A as winner" });
     const teamBButton = screen.getByRole("button", { name: "Mark Set 1 Team B as winner" });
@@ -719,7 +719,7 @@ describe("MatchRecorder", () => {
     render(
       <MatchRecorder
         groupId="11111111-1111-4111-8111-111111111111"
-        players={demoPlayers}
+        players={matchRecorderPlayers}
         initialMatch={{
           format: "singles",
           teamAUserIds: ["alice"],
@@ -758,7 +758,7 @@ describe("MatchRecorder", () => {
     render(
       <MatchRecorder
         groupId="11111111-1111-4111-8111-111111111111"
-        players={demoPlayers}
+        players={matchRecorderPlayers}
         initialMatch={{
           format: "singles",
           teamAUserIds: ["alice"],
@@ -801,7 +801,7 @@ describe("MatchRecorder", () => {
     render(
       <MatchRecorder
         groupId="11111111-1111-4111-8111-111111111111"
-        players={demoPlayers}
+        players={matchRecorderPlayers}
         initialMatch={{
           format: "singles",
           teamAUserIds: ["alice"],
@@ -845,7 +845,7 @@ describe("MatchRecorder", () => {
 
     render(
       <MatchRecorder
-        players={demoPlayers}
+        players={matchRecorderPlayers}
         initialMatch={{
           format: "singles",
           teamAUserIds: ["alice"],
@@ -882,7 +882,7 @@ describe("MatchRecorder", () => {
     render(
       <MatchRecorder
         groupId="11111111-1111-4111-8111-111111111111"
-        players={demoPlayers}
+        players={matchRecorderPlayers}
         initialMatch={{
           format: "singles",
           teamAUserIds: ["alice"],
@@ -926,7 +926,7 @@ describe("MatchRecorder", () => {
     render(
       <MatchRecorder
         groupId="11111111-1111-4111-8111-111111111111"
-        players={demoPlayers}
+        players={matchRecorderPlayers}
         initialMatch={{
           format: "singles",
           teamAUserIds: ["alice"],
@@ -975,7 +975,7 @@ describe("MatchRecorder", () => {
 
     const { rerender } = render(
       <MatchRecorder
-        players={demoPlayers}
+        players={matchRecorderPlayers}
         initialMatch={initialMatch}
         saveActiveMatchDraft={firstSave}
       />,
@@ -988,7 +988,7 @@ describe("MatchRecorder", () => {
 
     rerender(
       <MatchRecorder
-        players={demoPlayers}
+        players={matchRecorderPlayers}
         initialMatch={initialMatch}
         saveActiveMatchDraft={replacementSave}
       />,
@@ -1010,7 +1010,7 @@ describe("MatchRecorder", () => {
 
     render(
       <MatchRecorder
-        players={demoPlayers}
+        players={matchRecorderPlayers}
         initialMatch={{ format: "singles", teamAUserIds: ["alice"], teamBUserIds: ["bea"], games: [{ teamAScore: 21, teamBScore: 18 }] }}
         submitMatchAction={submitMatchAction}
       />,
@@ -1032,7 +1032,7 @@ describe("MatchRecorder", () => {
     render(
       <MatchRecorder
         canEdit={false}
-        players={demoPlayers}
+        players={matchRecorderPlayers}
         initialMatch={{
           format: "singles",
           teamAUserIds: ["alice"],

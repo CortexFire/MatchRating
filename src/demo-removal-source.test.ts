@@ -1,4 +1,4 @@
-﻿import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, test } from "vitest";
 
@@ -21,6 +21,10 @@ function source(path: string) {
 }
 
 describe("demo data removal contract", () => {
+  test("the removed demo data module does not exist", () => {
+    expect(existsSync(join(process.cwd(), "src/lib/demo-data.ts"))).toBe(false);
+  });
+
   test("production user and group UI no longer imports demo-data", () => {
     const offenders = productionFiles.filter((file) => source(file).includes("@/lib/demo-data"));
 

@@ -112,11 +112,6 @@ const claimGuestProfilesSchema = z.object({
   guestProfileIds: z.array(z.string().min(1)).min(1).max(12),
 });
 
-const disputeSchema = z.object({
-  revisionId: z.string().uuid(),
-  commandId: z.string().uuid(),
-});
-
 const confirmSchema = z.object({
   revisionId: z.string().uuid(),
   commandId: z.string().uuid(),
@@ -639,10 +634,6 @@ export async function getOrCreateInvite(groupId: string): Promise<ActionResult<{
   }
 }
 
-export async function createInvite(groupId: string): Promise<ActionResult<{ token: string; url: string }>> {
-  return getOrCreateInvite(groupId);
-}
-
 export async function joinGroupByInvite(token: string, metadata: CommandMetadata = {}): Promise<ActionResult<{ groupId: string; claimableProfileCount: number }>> {
   const parsed = inviteTokenSchema.safeParse(token);
   if (!parsed.success) return { ok: false, message: "This invite link is no longer valid." };
@@ -817,28 +808,10 @@ export async function confirmMatchRevision(input: z.infer<typeof confirmSchema>)
   if (!parsed.success) {
     return { ok: false, message: parsed.error.issues[0]?.message ?? "Could not confirm match." };
   }
-  return reviewMatchRevision(parsed.data.revisionId, parsed.data.commandId, "confirmed");
-}
-
-export async function disputeMatchRevision(input: {
-  revisionId: string;
-  commandId: string;
-}): Promise<ActionResult<{ revisionId: string }>> {
-  const parsed = disputeSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid dispute." };
-  }
-
-  return reviewMatchRevision(parsed.data.revisionId, parsed.data.commandId, "disputed");
-}
-
-async function reviewMatchRevision(
-  revisionId: string,
-  commandId: string,
-  action: "confirmed" | "disputed",
-): Promise<ActionResult<{ revisionId: string }>> {
   const result = await executeCommand<{ revisionId: string }>("command_review_match", {
-    p_command_id: commandId, p_revision_id: revisionId, p_action: action,
+    p_command_id: parsed.data.commandId,
+    p_revision_id: parsed.data.revisionId,
+    p_action: "confirmed",
   }, "Could not review match.");
   if (result.ok) {
     revalidatePath("/groups");

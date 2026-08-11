@@ -80,10 +80,6 @@ type RatingRow = {
   games_played: number;
 };
 
-type MatchGroupRow = {
-  group_id: string;
-};
-
 const getCurrentUserId = cache(requireUserId);
 const canCurrentUserReadGroupCached = cache(async (groupId: string) => {
   if (!isUuid(groupId)) return false;
@@ -218,21 +214,6 @@ export async function getGroup(groupId: string): Promise<AppGroup | null> {
     description: group.description,
     memberCount: members?.length ?? 0,
   };
-}
-
-export async function getMatchGroupId(matchId: string): Promise<string | null> {
-  const service = createSupabaseServiceClient();
-  const { data, error } = await service
-    .from("matches")
-    .select("group_id")
-    .eq("id", matchId)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  return (data as MatchGroupRow | null)?.group_id ?? null;
 }
 
 export async function listGroupMatches(groupId: string, options?: { limit?: number }): Promise<AppMatchSummary[]> {
