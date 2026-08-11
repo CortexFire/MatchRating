@@ -2,8 +2,8 @@
 
 import Script from "next/script";
 import { useRef, useState, useTransition } from "react";
-import { KeyRound, Mail, RefreshCw } from "lucide-react";
-import { signInWithOtp, verifyEmailOtp } from "@/app/actions";
+import { Mail } from "lucide-react";
+import { signInWithOtp } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DEFAULT_AUTH_NEXT_PATH, getSafeAuthNextPath } from "@/lib/auth/next-path";
@@ -48,30 +48,22 @@ async function createGoogleNonce() {
   return { nonce, hashedNonce };
 }
 
-export function LoginForm({ initialNextPath = DEFAULT_AUTH_NEXT_PATH, initialMessage = "Use Google or request a one-time email code to sign in.", onRedirect = redirectTo }: { initialNextPath?: string; initialMessage?: string; onRedirect?: (url: string) => void }) {
+export function LoginForm({ initialNextPath = DEFAULT_AUTH_NEXT_PATH, initialMessage = "Use Google or request a login link by email.", onRedirect = redirectTo }: { initialNextPath?: string; initialMessage?: string; onRedirect?: (url: string) => void }) {
   const nextPath = getSafeAuthNextPath(initialNextPath);
   const [email, setEmail] = useState("");
-  const [token, setToken] = useState("");
-  const [codeSent, setCodeSent] = useState(false);
   const [message, setMessage] = useState(initialMessage);
   const [isPending, startTransition] = useTransition();
   const googleButtonRef = useRef<HTMLDivElement>(null);
   const googleNonceRef = useRef("");
   const googleInitializedRef = useRef(false);
 
-  function sendEmailCode(nextEmail: string) {
+  function sendLoginLink(nextEmail: string) {
     startTransition(async () => {
       const result = await signInWithOtp(nextEmail, nextPath);
-      setMessage(result.message ?? (result.ok ? "Check your email for the sign-in code." : "Could not send code."));
+      setMessage(result.message ?? (result.ok ? "Check your email for the login link." : "Could not send login link."));
 
       if (result.ok && result.data.redirectTo) {
         onRedirect(getSafeAuthNextPath(result.data.redirectTo));
-        return;
-      }
-
-      if (result.ok) {
-        setCodeSent(true);
-        setToken("");
       }
     });
   }
@@ -143,29 +135,7 @@ export function LoginForm({ initialNextPath = DEFAULT_AUTH_NEXT_PATH, initialMes
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const nextEmail = email.trim();
-
-    if (!codeSent) {
-      sendEmailCode(nextEmail);
-      return;
-    }
-
-    const nextToken = token.replace(/\D/g, "").slice(0, 6);
-    setToken(nextToken);
-
-    if (nextToken.length !== 6) {
-      setMessage("Enter the 6-digit code from your email.");
-      return;
-    }
-
-    startTransition(async () => {
-      const result = await verifyEmailOtp({ email: nextEmail, token: nextToken });
-      setMessage(result.message ?? (result.ok ? "Signed in." : "Could not verify code."));
-
-      if (result.ok) {
-        onRedirect(nextPath);
-      }
-    });
+    sendLoginLink(email.trim());
   }
 
   return (
@@ -192,31 +162,10 @@ export function LoginForm({ initialNextPath = DEFAULT_AUTH_NEXT_PATH, initialMes
           required
         />
       </label>
-      {codeSent ? (
-        <label className="flex flex-col gap-2 text-sm font-semibold text-ink">
-          One-time code
-          <Input
-            type="text"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            maxLength={6}
-            value={token}
-            onChange={(event) => setToken(event.target.value.replace(/\D/g, "").slice(0, 6))}
-            placeholder="123456"
-            required
-          />
-        </label>
-      ) : null}
       <Button disabled={isPending} type="submit">
-        {codeSent ? <KeyRound className="size-4" /> : <Mail className="size-4" />}
-        {isPending ? (codeSent ? "Verifying" : "Sending") : codeSent ? "Verify code" : "Send one-time code"}
+        <Mail className="size-4" />
+        {isPending ? "Sending" : "Send login link"}
       </Button>
-      {codeSent ? (
-        <Button disabled={isPending} type="button" variant="ghost" onClick={() => sendEmailCode(email.trim())}>
-          <RefreshCw className="size-4" />
-          Resend code
-        </Button>
-      ) : null}
       <p className="min-h-10 text-sm leading-5 text-muted">{message}</p>
     </form>
   );

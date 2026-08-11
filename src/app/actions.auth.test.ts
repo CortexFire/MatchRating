@@ -60,7 +60,11 @@ describe("auth actions", () => {
   test("signInWithOtp sends a callback intent and arms its HTTPS cookie after a successful email send", async () => {
     const result = await actions.signInWithOtp("player@example.com");
 
-    expect(result.ok).toBe(true);
+    expect(result).toEqual({
+      ok: true,
+      data: { email: "player@example.com" },
+      message: "Check your email for the login link.",
+    });
     const redirectUrl = new URL(supabaseMocks.auth.signInWithOtp.mock.calls[0]?.[0].options.emailRedirectTo);
     const intent = redirectUrl.searchParams.get("auth_intent");
     expect(redirectUrl.searchParams.get("next")).toBe("/onboarding");
@@ -180,6 +184,18 @@ describe("auth actions", () => {
     expect(result).toEqual({
       ok: false,
       message: "Email provider is unavailable",
+    });
+    expect(cookieMocks.store.set).not.toHaveBeenCalled();
+  });
+
+  test("signInWithOtp uses login-link copy when an unknown send failure has no message", async () => {
+    supabaseMocks.auth.signInWithOtp.mockRejectedValueOnce("provider unavailable");
+
+    const result = await actions.signInWithOtp("player@example.com");
+
+    expect(result).toEqual({
+      ok: false,
+      message: "Could not send login link.",
     });
     expect(cookieMocks.store.set).not.toHaveBeenCalled();
   });

@@ -7,7 +7,6 @@ import { LoginForm } from "./login-form";
 
 const actionMocks = vi.hoisted(() => ({
   signInWithOtp: vi.fn(),
-  verifyEmailOtp: vi.fn(),
 }));
 
 const supabaseMocks = vi.hoisted(() => ({
@@ -82,12 +81,7 @@ describe("LoginForm", () => {
     actionMocks.signInWithOtp.mockResolvedValue({
       ok: true,
       data: { email: "player@example.com" },
-      message: "Check your email for the sign-in code.",
-    });
-    actionMocks.verifyEmailOtp.mockResolvedValue({
-      ok: true,
-      data: { email: "player@example.com" },
-      message: "Signed in.",
+      message: "Check your email for the login link.",
     });
   });
 
@@ -183,20 +177,21 @@ describe("LoginForm", () => {
     expect(googleMocks.initialize).not.toHaveBeenCalled();
   });
 
-  test("email submission sends a one-time code and shows code entry", async () => {
+  test("email submission sends a login link without showing code entry", async () => {
     render(<LoginForm onRedirect={() => undefined} />);
 
     fireEvent.change(screen.getByLabelText("Email"), {
       target: { value: "player@example.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Send one-time code" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send login link" }));
 
     await waitFor(() => {
       expect(actionMocks.signInWithOtp).toHaveBeenCalledWith("player@example.com", "/onboarding");
-      expect(screen.getByLabelText("One-time code")).toBeTruthy();
-      expect(screen.getByRole("button", { name: "Verify code" })).toBeTruthy();
-      expect(screen.getByRole("button", { name: "Resend code" })).toBeTruthy();
+      expect(screen.getByText("Check your email for the login link.")).toBeTruthy();
     });
+    expect(screen.queryByLabelText("One-time code")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Verify code" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Resend code" })).toBeNull();
   });
 
   test("email submission redirects immediately for demo login results", async () => {
@@ -214,7 +209,7 @@ describe("LoginForm", () => {
     fireEvent.change(screen.getByLabelText("Email"), {
       target: { value: "alice@demo.matchrating.app" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Send one-time code" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send login link" }));
 
     await waitFor(() => {
       expect(actionMocks.signInWithOtp).toHaveBeenCalledWith("alice@demo.matchrating.app", "/onboarding");
@@ -238,62 +233,49 @@ describe("LoginForm", () => {
     fireEvent.change(screen.getByLabelText("Email"), {
       target: { value: "alice@demo.matchrating.app" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Send one-time code" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send login link" }));
 
     await waitFor(() => {
       expect(redirects).toEqual(["/onboarding"]);
     });
   });
 
-  test("submits the email code to verifyEmailOtp", async () => {
-    const redirects: string[] = [];
-    render(<LoginForm onRedirect={(url) => redirects.push(url)} />);
+  test("allows another login-link request from the same button", async () => {
+    render(<LoginForm onRedirect={() => undefined} />);
 
     fireEvent.change(screen.getByLabelText("Email"), {
       target: { value: "player@example.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Send one-time code" }));
-    await screen.findByLabelText("One-time code");
+    fireEvent.click(screen.getByRole("button", { name: "Send login link" }));
+    await screen.findByText("Check your email for the login link.");
 
-    fireEvent.change(screen.getByLabelText("One-time code"), {
-      target: { value: "123456" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Verify code" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send login link" }));
 
     await waitFor(() => {
-      expect(actionMocks.verifyEmailOtp).toHaveBeenCalledWith({
-        email: "player@example.com",
-        token: "123456",
-      });
-      expect(redirects).toEqual(["/onboarding"]);
+      expect(actionMocks.signInWithOtp).toHaveBeenCalledTimes(2);
     });
   });
 
-  test("passes invite next paths through email code sign-in", async () => {
+  test("passes invite next paths through email link requests", async () => {
     const redirects: string[] = [];
     render(<LoginForm initialNextPath="/onboarding?invite=invite-token" onRedirect={(url) => redirects.push(url)} />);
 
     fireEvent.change(screen.getByLabelText("Email"), {
       target: { value: "player@example.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Send one-time code" }));
-    await screen.findByLabelText("One-time code");
-
-    fireEvent.change(screen.getByLabelText("One-time code"), {
-      target: { value: "123456" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Verify code" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send login link" }));
 
     await waitFor(() => {
       expect(actionMocks.signInWithOtp).toHaveBeenCalledWith("player@example.com", "/onboarding?invite=invite-token");
-      expect(redirects).toEqual(["/onboarding?invite=invite-token"]);
+      expect(screen.getByText("Check your email for the login link.")).toBeTruthy();
     });
+    expect(redirects).toEqual([]);
   });
 
-  test("keeps the user on the form when code verification fails", async () => {
-    actionMocks.verifyEmailOtp.mockResolvedValue({
+  test("keeps the user on the form when sending the login link fails", async () => {
+    actionMocks.signInWithOtp.mockResolvedValue({
       ok: false,
-      message: "Invalid code.",
+      message: "Email provider is unavailable.",
     });
     const redirects: string[] = [];
     render(<LoginForm onRedirect={(url) => redirects.push(url)} />);
@@ -301,16 +283,10 @@ describe("LoginForm", () => {
     fireEvent.change(screen.getByLabelText("Email"), {
       target: { value: "player@example.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Send one-time code" }));
-    await screen.findByLabelText("One-time code");
-
-    fireEvent.change(screen.getByLabelText("One-time code"), {
-      target: { value: "123456" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Verify code" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send login link" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Invalid code.")).toBeTruthy();
+      expect(screen.getByText("Email provider is unavailable.")).toBeTruthy();
       expect(redirects).toEqual([]);
     });
   });
@@ -318,11 +294,11 @@ describe("LoginForm", () => {
   test("shows a safe initial callback failure message", async () => {
     render(
       <LoginForm
-        initialMessage="That sign-in link is invalid or expired. Request a new link or enter the six-digit email code."
+        initialMessage="That sign-in link is invalid or expired. Request a new login link."
         onRedirect={() => undefined}
       />,
     );
 
-    expect(screen.getByText("That sign-in link is invalid or expired. Request a new link or enter the six-digit email code.")).toBeTruthy();
+    expect(screen.getByText("That sign-in link is invalid or expired. Request a new login link.")).toBeTruthy();
   });
 });

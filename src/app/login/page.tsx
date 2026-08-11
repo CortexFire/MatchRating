@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { getSafeAuthNextPath } from "@/lib/auth/next-path";
 
 const AUTH_CALLBACK_FAILURE_MESSAGE =
-  "That sign-in link is invalid or expired. Request a new link or enter the six-digit email code.";
+  "That sign-in link is invalid or expired. Request a new login link.";
 
 export default async function LoginPage({
   searchParams,

@@ -405,13 +405,15 @@ export async function signInWithOtp(email: string, nextPath = DEFAULT_AUTH_NEXT_
     const cookie = getAuthCallbackIntentCookieForTrustedPublicSite();
     (await cookies()).set({ ...cookie, value: intent });
 
-    return { ok: true, data: { email: parsedEmail }, message: "Check your email for the sign-in code." };
+    return { ok: true, data: { email: parsedEmail }, message: "Check your email for the login link." };
   } catch (error) {
-    return { ok: false, message: getActionErrorMessage(error, "Could not send sign-in code.") };
+    return { ok: false, message: getActionErrorMessage(error, "Could not send login link.") };
   }
 }
 
 
+// Retained for a potential future code-entry flow. This verifier is email-only;
+// an SMS flow must request and verify a phone OTP through separate phone-specific handling.
 export async function verifyEmailOtp(input: {
   email: string;
   token: string;

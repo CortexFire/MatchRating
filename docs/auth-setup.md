@@ -1,6 +1,6 @@
 # Supabase Auth Setup
 
-The login screen supports Google's prebuilt Sign in with Google button and email one-time codes through Supabase Auth.
+The login screen supports Google's prebuilt Sign in with Google button and email login links through Supabase Auth.
 
 ## Environment
 
@@ -22,7 +22,7 @@ Email auth links use `/auth/confirm`, which exchanges Supabase callback paramete
 
 ## Email Link Behavior
 
-Email sign-in links are bound to the browser that requested them for one hour. Requesting another link replaces the browser intent, so only the latest link can be used in that browser during the one-hour window. If you open a link on another device or in another browser, sign in with the six-digit code from the email instead; the code remains the cross-device fallback.
+Email sign-in links are bound to the browser that requested them for one hour. Requesting another link replaces the browser intent, so only the latest link can be used in that browser during the one-hour window. Open the link in the same browser that requested it. If the link is opened elsewhere or has expired, return to the login screen in the intended browser and request a new link.
 
 ## Google Provider
 
@@ -34,6 +34,8 @@ Email sign-in links are bound to the browser that requested them for one hour. R
 
 The browser may receive the client ID through `NEXT_PUBLIC_GOOGLE_CLIENT_ID`. Keep the client secret only in Google Cloud and Supabase; never commit it or expose it through a `NEXT_PUBLIC_` variable.
 
-## Email Code Template
+## Dormant Email OTP Support
 
-For one-time-code entry, update the Supabase email template to include `{{ .Token }}`. You may also include the confirmation link that uses `{{ .ConfirmationURL }}` so users can sign in by link if they prefer.
+The server retains an email-only `verifyEmailOtp` action for a possible future code-entry flow, but the current login screen does not expose code entry. Enabling email codes later would require adding `{{ .Token }}` to the Supabase email template and restoring a code-entry interface.
+
+This dormant email verifier is not a ready-made cell-phone flow. SMS verification would require separate phone-number collection plus phone-specific OTP request and verification handling.

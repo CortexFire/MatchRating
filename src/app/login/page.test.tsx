@@ -34,7 +34,7 @@ describe("login page", () => {
       await LoginPage({ searchParams: Promise.resolve({ error: "auth_callback_failed" }) }),
     );
 
-    expect(markup).toContain("That sign-in link is invalid or expired. Request a new link or enter the six-digit email code.");
+    expect(markup).toContain("That sign-in link is invalid or expired. Request a new login link.");
   });
 
   test("does not echo arbitrary callback error values", async () => {
