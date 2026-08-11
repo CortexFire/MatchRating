@@ -386,7 +386,7 @@ describe("MatchRecorder", () => {
     fireEvent.click(screen.getByLabelText("Team B empty player slot 2"));
     fireEvent.click(screen.getByRole("button", { name: "Filter Inactive" }));
 
-    expect(screen.getAllByText("Pending review").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Inactive").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Select Alice Tan" }));
 
     expect(screen.getByLabelText("Remove Alice Tan from draft Team B")).toBeTruthy();

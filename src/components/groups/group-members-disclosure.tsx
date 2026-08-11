@@ -19,7 +19,7 @@ export function GroupMembersDisclosure({ players, inviteHref }: { players: AppPl
             ))}
           </div>
         ) : (
-          <p className="text-sm text-muted">No active members yet.</p>
+          <p className="text-sm text-muted">No members yet.</p>
         )}
         <Button asChild variant="secondary" className="w-full">
           <Link href={inviteHref}>Invite members</Link>

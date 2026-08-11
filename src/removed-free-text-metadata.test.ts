@@ -21,6 +21,7 @@ test("match review and revision sources contain no removed free-text metadata", 
 
 function sourceFiles(directory: string): string[] {
   return readdirSync(directory).flatMap((entry) => {
+    if (entry === ".temp") return [];
     const path = join(directory, entry);
     if (statSync(path).isDirectory()) return sourceFiles(path);
     return [".ts", ".tsx", ".sql"].includes(extname(path)) ? [path] : [];

@@ -572,7 +572,7 @@ export async function createGuestPlayers(input: {
   }, "Could not create guest players.");
   if (!result.ok) return result;
   revalidatePath(`/groups/${parsed.data.groupId}`);
-  return { ok: true, data: { players: result.data.players.map((player) => ({ id: player.id, name: player.name, initials: initialsFor(player.name), role: "Member", rating: 1500, rd: 350, rank: 0, gamesPlayed: 0, status: "Active", isGuest: true })) } };
+  return { ok: true, data: { players: result.data.players.map((player) => ({ id: player.id, name: player.name, initials: initialsFor(player.name), role: "Member", rating: 1500, rd: 350, rank: 0, gamesPlayed: 0, status: "Inactive", isGuest: true })) } };
 }
 export async function createGroup(input: {
   name: string;

@@ -50,7 +50,7 @@ export type AppPlayer = {
   rd: number;
   rank: number;
   gamesPlayed: number;
-  status: "Active" | "Pending review";
+  status: "Active" | "Inactive";
   isGuest?: boolean;
 };
 
@@ -70,6 +70,7 @@ type ProfileRow = {
   id: string;
   display_name: string;
   is_guest?: boolean;
+  active_until?: string | null;
 };
 
 type RatingRow = {
@@ -544,7 +545,7 @@ export async function listGroupPlayers(groupId: string): Promise<AppPlayer[]> {
   }
 
   const [{ data: profiles, error: profilesError }, { data: ratings, error: ratingsError }] = await Promise.all([
-    service.from("profiles").select("id, display_name, is_guest").in("id", userIds),
+    service.from("profiles").select("id, display_name, is_guest, active_until").in("id", userIds),
     service
       .from("group_rating_states")
       .select("user_id, rating, rd, rank, games_played")
@@ -578,7 +579,10 @@ export async function listGroupPlayers(groupId: string): Promise<AppPlayer[]> {
         rd: Math.round(Number(rating?.rd ?? 350)),
         rank: rating?.rank ?? index + 1,
         gamesPlayed: rating?.games_played ?? 0,
-        status: "Active",
+        status:
+          profile?.active_until && new Date(profile.active_until).getTime() >= Date.now()
+            ? "Active"
+            : "Inactive",
         isGuest: profile?.is_guest ?? false,
       } satisfies AppPlayer;
     })
