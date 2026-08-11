@@ -173,18 +173,19 @@ export function PlayerSelectView({
               className="pl-9"
             />
           </label>
-          <button
+          <Button
             type="button"
             disabled={!canAddGuest}
             aria-label={guestAddLabel}
             onClick={() => onAddGuest(guestName)}
             className={cn(
-              "flex size-11 shrink-0 items-center justify-center rounded-lg border border-stroke bg-surface text-muted transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action",
-              canAddGuest ? "hover:bg-app-bg hover:text-ink" : "opacity-60",
+              "size-11 shrink-0 p-0",
+              !canAddGuest &&
+                "border border-stroke bg-surface text-muted hover:bg-surface disabled:opacity-60",
             )}
           >
             <UserPlus aria-hidden="true" className="size-5" />
-          </button>
+          </Button>
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto pb-1">

@@ -420,15 +420,25 @@ describe("MatchRecorder", () => {
 
     const addGuest = screen.getByRole("button", { name: "Add player" }) as HTMLButtonElement;
     expect(addGuest.disabled).toBe(true);
+    expect(addGuest.classList.contains("bg-surface")).toBe(true);
+    expect(addGuest.classList.contains("text-muted")).toBe(true);
 
     fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Noah Kim" } });
-    expect(screen.getByRole("button", { name: "Add guest player Noah Kim" })).toBeTruthy();
+    const enabledAddGuest = screen.getByRole("button", {
+      name: "Add guest player Noah Kim",
+    }) as HTMLButtonElement;
+    expect(enabledAddGuest.disabled).toBe(false);
+    expect(enabledAddGuest.classList.contains("bg-action")).toBe(true);
+    expect(enabledAddGuest.classList.contains("text-white")).toBe(true);
 
     fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Dev" } });
     fireEvent.click(screen.getByRole("button", { name: "Select Dev Okafor" }));
     fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Noah Kim" } });
 
-    expect((screen.getByRole("button", { name: "Add player" }) as HTMLButtonElement).disabled).toBe(true);
+    const fullTeamAddGuest = screen.getByRole("button", { name: "Add player" }) as HTMLButtonElement;
+    expect(fullTeamAddGuest.disabled).toBe(true);
+    expect(fullTeamAddGuest.classList.contains("bg-surface")).toBe(true);
+    expect(fullTeamAddGuest.classList.contains("text-muted")).toBe(true);
   });
 
   test("discards draft guests when Player Select is canceled", () => {
