@@ -493,19 +493,28 @@ describe("MatchRecorder", () => {
     expect(screen.queryByText("Noah")).toBeNull();
   });
 
-  test("enables Add players only after both draft teams are complete", () => {
-    openPlayerSelect();
+  test("enables Add players after the first draft selection and disables it when none remain", () => {
+    render(
+      <MatchRecorder
+        players={matchRecorderPlayers}
+        initialMatch={{
+          format: "doubles",
+          teamAUserIds: [],
+          teamBUserIds: [],
+          games: [{ teamAScore: 21, teamBScore: 18 }],
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Team A empty player slot 1"));
 
     const addPlayers = screen.getByRole("button", { name: "Add players" }) as HTMLButtonElement;
     expect(addPlayers.disabled).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "Select Dev Okafor" }));
-    expect(addPlayers.disabled).toBe(true);
-
-    fireEvent.click(screen.getByRole("button", { name: /Select Team A/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Select Henry Park" }));
-
     expect(addPlayers.disabled).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Dev Okafor from draft Team A" }));
+    expect(addPlayers.disabled).toBe(true);
   });
 
   test("disables additional available players when a doubles draft team is full", () => {
@@ -832,7 +841,7 @@ describe("MatchRecorder", () => {
     });
   });
 
-  test("blocks submission while a score is blank", async () => {
+  test("keeps Submit disabled until a singles roster and every visible set are valid", () => {
     const submitMatchAction = vi.fn(async () => ({
       ok: true as const,
       data: {
@@ -856,11 +865,132 @@ describe("MatchRecorder", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "" } });
-    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    const submit = screen.getByRole("button", { name: "Submit" }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(false);
 
-    expect(await screen.findByText("Enter both scores for every set.")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "" } });
+    expect(submit.disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "21" } });
+    expect(submit.disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "19" } });
+    expect(submit.disabled).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add set" }));
+    expect(submit.disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText("Set 2 Team A score"), { target: { value: "15" } });
+    expect(submit.disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText("Set 2 Team B score"), { target: { value: "13" } });
+    expect(submit.disabled).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Set 2" }));
+    expect(submit.disabled).toBe(false);
+
+    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "" } });
+    fireEvent.click(submit);
+
     expect(submitMatchAction).not.toHaveBeenCalled();
+  });
+
+  test("keeps Submit disabled until every doubles player slot is filled", () => {
+    render(
+      <MatchRecorder
+        players={matchRecorderPlayers}
+        initialMatch={{
+          format: "doubles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 18 }],
+        }}
+      />,
+    );
+
+    expect((screen.getByRole("button", { name: "Submit" }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(screen.getByLabelText("Team A empty player slot 2"));
+    fireEvent.click(screen.getByRole("button", { name: "Select Dev Okafor" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add players" }));
+    expect((screen.getByRole("button", { name: "Submit" }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(screen.getByLabelText("Team B empty player slot 2"));
+    fireEvent.click(screen.getByRole("button", { name: "Select Henry Park" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add players" }));
+    expect((screen.getByRole("button", { name: "Submit" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  test("keeps Submit disabled when a player appears on both teams", () => {
+    render(
+      <MatchRecorder
+        players={matchRecorderPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["alice"],
+          games: [{ teamAScore: 21, teamBScore: 18 }],
+        }}
+      />,
+    );
+
+    expect((screen.getByRole("button", { name: "Submit" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  test("disables Submit while a valid match is being submitted", async () => {
+    let resolveSubmission!: (result: {
+      ok: true;
+      data: {
+        matchId: string;
+        revisionId: string;
+        ratingJobId: string;
+        ratingStatus: "queued";
+      };
+    }) => void;
+    const submitMatchAction = vi.fn(
+      () =>
+        new Promise<{
+          ok: true;
+          data: {
+            matchId: string;
+            revisionId: string;
+            ratingJobId: string;
+            ratingStatus: "queued";
+          };
+        }>((resolve) => {
+          resolveSubmission = resolve;
+        }),
+    );
+
+    render(
+      <MatchRecorder
+        players={matchRecorderPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 18 }],
+        }}
+        submitMatchAction={submitMatchAction}
+      />,
+    );
+
+    const submit = screen.getByRole("button", { name: "Submit" }) as HTMLButtonElement;
+    fireEvent.click(submit);
+
+    await waitFor(() => expect(submit.disabled).toBe(true));
+
+    await act(async () => {
+      resolveSubmission({
+        ok: true,
+        data: {
+          matchId: "match-1",
+          revisionId: "revision-1",
+          ratingJobId: "job-1",
+          ratingStatus: "queued",
+        },
+      });
+    });
   });
 
   test("cancels a scheduled autosave when submitting immediately", async () => {

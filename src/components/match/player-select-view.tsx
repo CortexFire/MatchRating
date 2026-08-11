@@ -67,8 +67,7 @@ export function PlayerSelectView({
   const guestName = search.trim();
   const canAddGuest = guestName.length > 0 && !activeTeamFull;
   const guestAddLabel = canAddGuest ? `Add guest player ${guestName}` : "Add player";
-  const canCommit =
-    teamA.every(Boolean) && teamB.every(Boolean) && selectedIds.size === selectedPlayerIds.length;
+  const canCommit = selectedPlayerIds.length > 0 && selectedIds.size === selectedPlayerIds.length;
   const searchTerm = guestName.toLowerCase();
 
   const visiblePlayers = players.filter((player) => {

@@ -109,6 +109,14 @@ export function MatchRecorder({
 
   const teamASlots = buildTeamSlots(teamA, selectablePlayers, format);
   const teamBSlots = buildTeamSlots(teamB, selectablePlayers, format);
+  const teamAUserIds = compactTeam(teamA);
+  const teamBUserIds = compactTeam(teamB);
+  const selectedPlayerIds = [...teamAUserIds, ...teamBUserIds];
+  const canSubmit =
+    teamsComplete(format, teamAUserIds, teamBUserIds) &&
+    new Set(selectedPlayerIds).size === selectedPlayerIds.length &&
+    gamesReadyForSubmission(games) &&
+    !isSubmitting;
 
   useEffect(() => {
     saveActiveMatchDraftRef.current = saveActiveMatchDraft;
@@ -481,7 +489,7 @@ export function MatchRecorder({
           </p>
         ) : null}
         {canEdit ? (
-          <Button type="button" onClick={submitMatch} disabled={isSubmitting} className="w-full">
+          <Button type="button" onClick={submitMatch} disabled={!canSubmit} className="w-full">
             Submit
           </Button>
         ) : null}
@@ -541,6 +549,18 @@ function toCompleteGames(games: RecordedGame[]): MatchGameInput[] | null {
   }
 
   return completeGames;
+}
+
+function gamesReadyForSubmission(games: RecordedGame[]) {
+  return (
+    games.length > 0 &&
+    games.every(
+      (game) =>
+        game.teamAScore !== "" &&
+        game.teamBScore !== "" &&
+        game.teamAScore !== game.teamBScore,
+    )
+  );
 }
 
 function normalizeScoreValue(value: string): EditableScore {
