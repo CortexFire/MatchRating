@@ -53,25 +53,49 @@ export default async function JoinPage({
   }
 
   const service = createSupabaseServiceClient();
-  const { data: profile } = await service
-    .from("profiles")
-    .select("id")
-    .eq("id", userId)
-    .eq("is_guest", false)
-    .maybeSingle();
+  const [
+    { data: profile, error: profileError },
+    { data: membership, error: membershipError },
+  ] = await Promise.all([
+    service
+      .from("profiles")
+      .select("id")
+      .eq("id", userId)
+      .eq("is_guest", false)
+      .maybeSingle(),
+    service
+      .from("group_memberships")
+      .select("id")
+      .eq("group_id", summary.data.groupId)
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .is("left_at", null)
+      .maybeSingle(),
+  ]);
+
+  if (profileError) {
+    throw profileError;
+  }
+
+  if (membershipError) {
+    throw membershipError;
+  }
 
   if (!profile) {
     redirect(nextPath);
   }
 
+  const mode = membership ? "already-member" : "invite";
+
   return (
     <MobileShell showNav={false}>
-      <p className="-mb-2 text-base text-ink">Confirm Join</p>
       <section className="flex min-h-[calc(100dvh-64px)] flex-col justify-center">
         <Card>
           <CardContent className="flex flex-col gap-6 p-6">
-            <h1 className="text-center text-xl font-bold leading-7 text-muted">You&apos;ve been invited to join</h1>
-            <InviteDecisionForm token={token} summary={summary.data} />
+            <h1 className="text-center text-xl font-bold leading-7 text-muted">
+              {mode === "already-member" ? "You're already in" : "You've been invited to join"}
+            </h1>
+            <InviteDecisionForm token={token} summary={summary.data} mode={mode} />
           </CardContent>
         </Card>
       </section>
