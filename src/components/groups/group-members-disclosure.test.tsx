@@ -31,7 +31,7 @@ describe("GroupMembersDisclosure", () => {
     render(<GroupMembersDisclosure players={[]} inviteHref="/groups/group-1/invite" />);
 
     expect(screen.getByText("Members (0)")).toBeTruthy();
-    expect(screen.getByText("No active members yet.")).toBeTruthy();
+    expect(screen.getByText("No members yet.")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Invite members" })).toBeTruthy();
   });
 });

@@ -15,12 +15,13 @@ export default async function MembersPage({
   const { groupId } = await params;
   const [group, players] = await Promise.all([getGroup(groupId), listGroupPlayers(groupId)]);
   const recordHref = `/groups/${groupId}/matches/new`;
+  const activePlayerCount = players.filter((player) => player.status === "Active").length;
 
   return (
     <MobileShell active="Home" recordHref={recordHref}>
       <ScreenHeader
         title="Members"
-        subtitle={group ? `${group.memberCount} active players in this group.` : undefined}
+        subtitle={group ? `${activePlayerCount} active of ${group.memberCount} members.` : undefined}
         backHref={`/groups/${groupId}`}
         action={
           <Button asChild className="shrink-0 px-3 text-xs">
@@ -35,7 +36,7 @@ export default async function MembersPage({
           ))}
         </section>
       ) : (
-        <p className="rounded-lg border border-stroke bg-surface p-4 text-sm text-muted">No active members yet.</p>
+        <p className="rounded-lg border border-stroke bg-surface p-4 text-sm text-muted">No members yet.</p>
       )}
     </MobileShell>
   );

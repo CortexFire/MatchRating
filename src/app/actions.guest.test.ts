@@ -78,7 +78,7 @@ describe("guest player actions", () => {
             rd: 350,
             rank: 0,
             gamesPlayed: 0,
-            status: "Active",
+            status: "Inactive",
             isGuest: true,
           },
           {
@@ -90,7 +90,7 @@ describe("guest player actions", () => {
             rd: 350,
             rank: 0,
             gamesPlayed: 0,
-            status: "Active",
+            status: "Inactive",
             isGuest: true,
           },
         ],

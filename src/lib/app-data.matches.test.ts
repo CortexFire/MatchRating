@@ -213,6 +213,32 @@ describe("stored match reads", () => {
     expect(membershipAuthorizationQueries).toHaveLength(1);
   });
 
+  test("maps an inclusive activity expiry without an extra history query", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-11T12:00:00.000Z"));
+    rowsByTable.group_memberships = [
+      { id: "membership-1", group_id: GROUP_ONE, user_id: OPPONENT, role: "member", status: "active", left_at: null },
+      { id: "membership-2", group_id: GROUP_ONE, user_id: SUBMITTER, role: "owner", status: "active", left_at: null },
+    ];
+    rowsByTable.profiles = [
+      { id: SUBMITTER, display_name: "Alice Tan", is_guest: false, active_until: "2026-08-11T12:00:00.000Z" },
+      { id: OPPONENT, display_name: "Bea Rivera", is_guest: false, active_until: "2026-08-11T11:59:59.999Z" },
+    ];
+
+    try {
+      const players = await listGroupPlayers(GROUP_ONE);
+
+      expect(players.map(({ id, status }) => ({ id, status }))).toEqual([
+        { id: OPPONENT, status: "Inactive" },
+        { id: SUBMITTER, status: "Active" },
+      ]);
+      expect(queriesByTable.profiles[0].select).toHaveBeenCalledWith("id, display_name, is_guest, active_until");
+      expect(from.mock.calls.filter(([table]) => table === "matches" || table === "match_participants")).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("lists only pending matches the current user can still review", async () => {
     const matches = await listPendingReviewsForCurrentUser();
 
