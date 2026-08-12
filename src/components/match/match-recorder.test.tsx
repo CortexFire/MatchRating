@@ -1133,7 +1133,7 @@ describe("MatchRecorder", () => {
       fireEvent.click(screen.getByRole("button", { name: "Submit" }));
     });
 
-    expect(screen.getByText("Match saved. Ratings updating…")).toBeTruthy();
+    expect(screen.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.")).toBeTruthy();
     expect((screen.getByLabelText("Current group Downtown Rec") as HTMLSelectElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: "singles" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByLabelText("Set 1 Team A score") as HTMLInputElement).disabled).toBe(true);
@@ -1146,7 +1146,7 @@ describe("MatchRecorder", () => {
       await vi.advanceTimersByTimeAsync(2_999);
     });
 
-    expect(screen.getByText("Match saved. Ratings updating…")).toBeTruthy();
+    expect(screen.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.")).toBeTruthy();
     expect((screen.getByLabelText("Set 1 Team A score") as HTMLInputElement).value).toBe("21");
     expect(navigationMocks.replace).not.toHaveBeenCalled();
   });
@@ -1187,7 +1187,7 @@ describe("MatchRecorder", () => {
       await vi.advanceTimersByTimeAsync(3_000);
     });
 
-    expect(screen.queryByText("Match saved. Ratings updating…")).toBeNull();
+    expect(screen.queryByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.")).toBeNull();
     expect(screen.getByRole("button", { name: "doubles" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByLabelText("Team A empty player slot 1")).toBeTruthy();
     expect(screen.getByLabelText("Team A empty player slot 2")).toBeTruthy();
@@ -1298,7 +1298,7 @@ describe("MatchRecorder", () => {
 
     expect(submitMatchAction).toHaveBeenCalledWith(expect.objectContaining({ draftId: "draft-1" }));
     expect(saveActiveMatchDraft).not.toHaveBeenCalled();
-    expect(screen.getByText("Match saved. Ratings updating…")).toBeTruthy();
+    expect(screen.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.")).toBeTruthy();
   });
 
   test("waits for an in-flight autosave before submitting its returned draft id", async () => {
@@ -1347,7 +1347,7 @@ describe("MatchRecorder", () => {
     });
 
     expect(submitMatchAction).toHaveBeenCalledWith(expect.objectContaining({ draftId: "draft-created" }));
-    expect(screen.getByText("Match saved. Ratings updating…")).toBeTruthy();
+    expect(screen.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.")).toBeTruthy();
   });
 
   test("does not restart autosave when a server refresh replaces the action reference", async () => {
@@ -1419,7 +1419,7 @@ describe("MatchRecorder", () => {
 
     await waitFor(() => expect(submitMatchAction).toHaveBeenCalledTimes(2));
     expect(submitMatchAction.mock.calls[1][0].commandId).toBe(firstCommandId);
-    expect(screen.getByText("Match saved. Ratings updating…")).toBeTruthy();
+    expect(screen.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.")).toBeTruthy();
   });
 
   test("renders selected-player drafts as read-only", () => {

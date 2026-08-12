@@ -31,6 +31,7 @@ export type MatchResultConfirmationData = {
   winnerTeam: TeamKey;
   clubName: string;
   submittedAt: string;
+  disputeUntil: string;
   teamA: Team;
   teamB: Team;
   sets: SetScore[];
@@ -40,14 +41,16 @@ export function MatchResultConfirmation({
   groupId,
   groupName,
   reviewCount,
-  canReview,
+  canConfirm,
+  canDispute,
   canRevise,
   match,
 }: {
   groupId: string;
   groupName: string;
   reviewCount: number;
-  canReview: boolean;
+  canConfirm: boolean;
+  canDispute: boolean;
   canRevise: boolean;
   match: MatchResultConfirmationData;
 }) {
@@ -89,30 +92,37 @@ export function MatchResultConfirmation({
           ))}
         </div>
 
-        {canReview ? (
-          <MatchReviewActions groupId={groupId} matchId={match.id} revisionId={match.revisionId} />
-        ) : (
-          <div className="mt-12 flex items-center justify-between gap-3">
+        <div className="mt-12">
+          <div className="flex items-center justify-between gap-3">
             <Badge tone={match.status === "confirmed" ? "victory" : "neutral"}>{displayStatus(match.status)}</Badge>
-            {match.status === "disputed" && canRevise ? (
-              <Link
-                href={`/groups/${groupId}/matches/${match.id}/revise`}
-                className="inline-flex min-h-11 items-center justify-center rounded-lg border border-stroke bg-surface px-4 text-sm font-semibold text-ink"
-              >
-                Revise result
-              </Link>
-            ) : null}
+            {canDispute ? <p className="text-sm font-semibold text-muted">Dispute until {match.disputeUntil}</p> : null}
           </div>
-        )}
+          {canConfirm || canDispute ? (
+            <MatchReviewActions
+              groupId={groupId}
+              matchId={match.id}
+              revisionId={match.revisionId}
+              canConfirm={canConfirm}
+              canDispute={canDispute}
+            />
+          ) : match.status === "disputed" && canRevise ? (
+            <Link
+              href={`/groups/${groupId}/matches/${match.id}/revise`}
+              className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg border border-stroke bg-surface px-4 text-sm font-semibold text-ink"
+            >
+              Revise result
+            </Link>
+          ) : null}
+        </div>
       </article>
     </section>
   );
 }
 
 function displayStatus(status: MatchResultConfirmationData["status"]) {
-  if (status === "confirmed") return "Confirmed";
+  if (status === "confirmed") return "Accepted";
   if (status === "disputed") return "Disputed";
-  return "Pending confirmation";
+  return "Awaiting review";
 }
 
 function TeamSummary({ team, winner }: { team: Team; winner: boolean }) {

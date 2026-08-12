@@ -15,7 +15,7 @@ export default async function ReviseMatchPage({
   const match = await getGroupMatchDetail(groupId, matchId);
   if (!match) notFound();
 
-  const mode = match.status === "pending_confirmation" && match.canReview
+  const mode = (match.status === "pending_confirmation" || match.status === "confirmed") && match.canDispute
     ? "dispute"
     : match.status === "disputed" && match.canRevise
       ? "revise"

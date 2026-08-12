@@ -5,20 +5,26 @@ import { Plus } from "lucide-react";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { AvatarInitials } from "@/components/ui/avatar";
 import { PendingReviewList } from "@/components/match/pending-review-list";
+import { RecentMatchList } from "@/components/match/recent-match-list";
+import { CurrentRankingList } from "@/components/rankings/current-ranking-list";
 import {
   getCurrentProfile,
   listCurrentUserActiveMatchDrafts,
   listCurrentUserGroups,
+  listCurrentUserMatches,
+  listCurrentUserRankings,
   listPendingReviewsForCurrentUser,
 } from "@/lib/app-data";
 import { toPendingReviewMatch } from "@/lib/matches/pending-review";
 
 export default async function HomePage() {
-  const [profile, groups, activeDrafts, pendingReviews] = await Promise.all([
+  const [profile, groups, activeDrafts, pendingReviews, latestMatches, currentRankings] = await Promise.all([
     getCurrentProfile(),
     listCurrentUserGroups(),
     listCurrentUserActiveMatchDrafts(),
     listPendingReviewsForCurrentUser(),
+    listCurrentUserMatches({ limit: 3 }),
+    listCurrentUserRankings(),
   ]);
   const primaryGroup = groups[0];
   const primaryDraft = activeDrafts[0];
@@ -120,6 +126,9 @@ export default async function HomePage() {
             {pendingReviewMatches.length} waiting
           </span>
         </div>
+        <p className="px-2 text-sm leading-5 text-muted">
+          Confirmation is optional. Confirm if correct, dispute to correct it, or do nothing; matches are typically accepted automatically within 24–48 hours.
+        </p>
 
         {pendingReviewMatches.length ? (
           <PendingReviewList matches={pendingReviewMatches} />
@@ -129,6 +138,17 @@ export default async function HomePage() {
           </span>
         )}
       </section>
+
+      <RecentMatchList
+        matches={latestMatches}
+        historyHref="/matches/history"
+        title="Latest matches"
+        limit={3}
+        linkLabel="View full history"
+        showGroupName
+      />
+
+      <CurrentRankingList rankings={currentRankings} />
     </MobileShell>
   );
 }

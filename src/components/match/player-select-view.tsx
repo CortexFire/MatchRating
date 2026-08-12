@@ -70,19 +70,21 @@ export function PlayerSelectView({
   const canCommit = selectedPlayerIds.length > 0 && selectedIds.size === selectedPlayerIds.length;
   const searchTerm = guestName.toLowerCase();
 
-  const visiblePlayers = players.filter((player) => {
-    const selected = selectedIds.has(player.id);
-    const active = player.status === "Active";
-    const matchesFilter =
-      filter === "all" ||
-      (filter === "selected" && selected) ||
-      (filter === "active" && active) ||
-      (filter === "inactive" && !active);
-    const searchableText = `${player.name} ${player.initials}`.toLowerCase();
-    const matchesSearch = searchTerm.length === 0 || searchableText.includes(searchTerm);
+  const visiblePlayers = players
+    .filter((player) => {
+      const selected = selectedIds.has(player.id);
+      const active = player.status === "Active";
+      const matchesFilter =
+        filter === "all" ||
+        (filter === "selected" && selected) ||
+        (filter === "active" && active) ||
+        (filter === "inactive" && !active);
+      const searchableText = `${player.name} ${player.initials}`.toLowerCase();
+      const matchesSearch = searchTerm.length === 0 || searchableText.includes(searchTerm);
 
-    return matchesFilter && matchesSearch;
-  });
+      return matchesFilter && matchesSearch;
+    })
+    .sort(comparePlayersByFirstName);
 
   function removeFromActiveTeam(playerId: string) {
     onDraftTeamChange(
@@ -359,6 +361,14 @@ function describeSelection(selection: PlayerSelection, players: AppPlayer[]) {
 
 function compactSelection(selection: PlayerSelection): string[] {
   return selection.filter((playerId): playerId is string => Boolean(playerId));
+}
+
+function comparePlayersByFirstName(left: AppPlayer, right: AppPlayer) {
+  const leftFirstName = left.name.trim().split(/\s+/, 1)[0] ?? "";
+  const rightFirstName = right.name.trim().split(/\s+/, 1)[0] ?? "";
+  const firstNameOrder = leftFirstName.localeCompare(rightFirstName, undefined, { sensitivity: "base" });
+
+  return firstNameOrder || left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
 }
 
 function shortenName(name: string) {
