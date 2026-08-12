@@ -3,6 +3,9 @@ import { describe, expect, test, vi } from "vitest";
 import { MatchResultConfirmation } from "./match-result-confirmation";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock("@/lib/ratings/glicko2", () => ({
+  DEFAULT_RATING: { rating: 1777, rd: 222 },
+}));
 
 const match = {
   id: "match-1",
@@ -39,7 +42,6 @@ describe("MatchResultConfirmation", () => {
       <MatchResultConfirmation
         groupId="demo"
         groupName="Downtown Rec"
-        reviewCount={3}
         canConfirm={true}
         canDispute={true}
         canRevise={false}
@@ -47,8 +49,8 @@ describe("MatchResultConfirmation", () => {
       />,
     );
 
-    expect(html).toContain("Match Result Confirmation");
-    expect(html).toContain("3 matches to review");
+    expect(html).toContain("Match Result");
+    expect(html).not.toContain("matches to review");
     expect(html).toContain("Downtown Rec");
     expect(html).toContain("Downtown Rec Club");
     expect(html).toContain("Aug 2nd, 2026 @ 8:53pm");
@@ -67,7 +69,6 @@ describe("MatchResultConfirmation", () => {
       <MatchResultConfirmation
         groupId="demo"
         groupName="Downtown Rec"
-        reviewCount={3}
         canConfirm={true}
         canDispute={true}
         canRevise={false}
@@ -85,7 +86,6 @@ describe("MatchResultConfirmation", () => {
       <MatchResultConfirmation
         groupId="demo"
         groupName="Downtown Rec"
-        reviewCount={0}
         canConfirm={false}
         canDispute={true}
         canRevise={false}
@@ -97,5 +97,26 @@ describe("MatchResultConfirmation", () => {
     expect(html).toContain("Dispute until Sep 1, 2026");
     expect(html).toContain("Dispute");
     expect(html).not.toContain(">Confirm<");
+  });
+  test("renders completed and pending player rating changes", () => {
+    const html = renderToStaticMarkup(
+      <MatchResultConfirmation
+        groupId="demo"
+        groupName="Downtown Rec"
+        canConfirm={false}
+        canDispute={false}
+        canRevise={false}
+        match={{
+          ...match,
+          teamA: { label: "Team A", players: [{ id: "alice", initials: "AT", name: "Alice Tan", ratingChange: { previous: { rating: 1488, rd: 211 }, next: { rating: 1512, rd: 179 } } }] },
+          teamB: { label: "Team B", players: [{ id: "bea", initials: "BR", name: "Bea Rivera" }] },
+        }}
+      />,
+    );
+
+    expect(html).toContain("Previous 1488 ± 211");
+    expect(html).toContain("New 1512 ± 179");
+    expect(html).toContain("Previous 1777 ± 222");
+    expect(html).toContain("New Updating…");
   });
 });

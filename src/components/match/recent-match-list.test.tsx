@@ -59,23 +59,4 @@ describe("RecentMatchList", () => {
     expect(html).not.toContain("View all");
   });
 
-  test("supports the three-row cross-group Home presentation", () => {
-    const html = renderToStaticMarkup(
-      <RecentMatchList
-        matches={Array.from({ length: 4 }, (_, index) => match(`match-${index + 1}`))}
-        historyHref="/matches/history"
-        title="Latest matches"
-        limit={3}
-        linkLabel="View full history"
-        showGroupName
-      />,
-    );
-
-    expect(html).toContain("Latest matches");
-    expect((html.match(/href="\/groups\/group-1\/matches\//g) ?? [])).toHaveLength(3);
-    expect(html).not.toContain("match-4");
-    expect(html).toContain("Wednesday Club");
-    expect(html).toContain('href="/matches/history"');
-    expect(html).toContain("View full history");
-  });
 });

@@ -1,15 +1,15 @@
 import Link from "next/link";
-import type { PendingReviewMatch } from "@/lib/matches/pending-review";
+import type { MatchResultSummary } from "@/lib/matches/match-result-summary";
 
-export type { PendingReviewMatch } from "@/lib/matches/pending-review";
+export type { MatchResultSummary } from "@/lib/matches/match-result-summary";
 
-export function PendingReviewList({
+export function MatchResultList({
   matches,
 }: {
-  matches: PendingReviewMatch[];
+  matches: MatchResultSummary[];
 }) {
   return (
-    <section aria-label="Pending matches" className="mx-2.5 flex flex-col gap-3">
+    <section aria-label="Match results" className="mx-2.5 flex flex-col gap-3">
       {matches.map((match) => (
         <Link
           key={match.id}

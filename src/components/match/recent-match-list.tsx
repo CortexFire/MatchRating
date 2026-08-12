@@ -5,34 +5,26 @@ import { type AppMatchSummary } from "@/lib/app-data";
 export function RecentMatchList({
   matches,
   historyHref,
-  title = "Recent Matches",
-  limit = 5,
-  linkLabel = "View all",
-  showGroupName = false,
 }: {
   matches: AppMatchSummary[];
   historyHref: string;
-  title?: string;
-  limit?: number;
-  linkLabel?: string;
-  showGroupName?: boolean;
 }) {
-  const recentMatches = matches.slice(0, limit);
+  const recentMatches = matches.slice(0, 5);
 
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-lg font-bold text-ink">{title}</h2>
+        <h2 className="text-lg font-bold text-ink">Recent Matches</h2>
         {recentMatches.length ? (
           <Link href={historyHref} className="text-sm font-semibold text-action hover:underline">
-            {linkLabel}
+            View all
           </Link>
         ) : null}
       </div>
       {recentMatches.length ? (
         <div className="flex flex-col gap-2">
           {recentMatches.map((match) => (
-            <MatchRow key={match.id} match={match} showGroupName={showGroupName} />
+            <MatchRow key={match.id} match={match} />
           ))}
         </div>
       ) : (

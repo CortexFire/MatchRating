@@ -411,7 +411,7 @@ async function loadMatchViews(
     service.from("match_participants").select("revision_id, user_id, team, slot").in("revision_id", revisionIds),
     service.from("match_games").select("revision_id, game_number, team_a_score, team_b_score, winner_team").in("revision_id", revisionIds),
     service.from("match_confirmations").select("revision_id, user_id, action, created_at").in("revision_id", revisionIds),
-    service.from("rating_events").select("revision_id, user_id, before_rating, after_rating").in("revision_id", revisionIds),
+    service.from("rating_events").select("revision_id, user_id, sequence, before_rating, before_rd, after_rating, after_rd").in("revision_id", revisionIds),
   ]);
   const firstError = [groupsResult, revisionsResult, participantsResult, gamesResult, confirmationsResult, ratingEventsResult]
     .find((result) => result.error)?.error;

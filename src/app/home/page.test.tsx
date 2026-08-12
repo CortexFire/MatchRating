@@ -65,28 +65,6 @@ const appDataMocks = vi.hoisted(() => ({
       memberCount: 8,
     },
   ]),
-  listPendingReviewsForCurrentUser: vi.fn(async () => [
-    {
-      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      groupId: "11111111-1111-4111-8111-111111111111",
-      groupName: "Wednesday Club Ladder",
-      revisionId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-      submittedByUserId: "bea-id",
-      status: "pending_confirmation" as const,
-      submittedAt: "2026-08-07T20:00:00.000Z",
-      reviewStartedAt: "2026-08-07T20:00:00.000Z",
-      disputeUntil: "2026-09-06T20:00:00.000Z",
-      format: "singles" as const,
-      teamA: [{ id: "alice-id", name: "Alice Tan", initials: "AT" }],
-      teamB: [{ id: "bea-id", name: "Bea Rivera", initials: "BR" }],
-      games: [{ gameNumber: 1, teamAScore: 21, teamBScore: 18, winnerTeam: "A" as const }],
-      winnerTeam: "A" as const,
-      ratingSummary: "2 rating changes",
-      canConfirm: true,
-      canDispute: true,
-      canRevise: false,
-    },
-  ]),
 }));
 
 vi.mock("@/lib/app-data", () => appDataMocks);
@@ -127,37 +105,43 @@ describe("HomePage", () => {
     expect(html).not.toContain("Resume recording");
   });
 
-  test("renders real pending reviews with canonical grouped links", async () => {
-    const html = renderToStaticMarkup(await HomePage());
-
-    expect(html).toContain("Active match");
-    expect(html).toContain("Pending review");
-    expect(html).toContain("Resume recording");
-    expect(html).toContain("1 waiting");
-    expect(html).toContain("Confirmation is optional");
-    expect(html).toContain("accepted automatically within 24–48 hours");
-    expect(html).toContain("Alice def. Bea");
-    expect(html).toContain(
-      'href="/groups/11111111-1111-4111-8111-111111111111/matches/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"',
-    );
-  });
-
-  test("renders cross-group latest matches and current rankings after existing sections", async () => {
+  test("renders the three latest matches as result cards without rating summaries", async () => {
     const html = renderToStaticMarkup(await HomePage());
 
     const activeIndex = html.indexOf("Active match");
-    const pendingIndex = html.indexOf("Pending review");
     const latestIndex = html.indexOf("Latest matches");
     const rankingsIndex = html.indexOf("Current rankings");
     expect(activeIndex).toBeGreaterThan(-1);
-    expect(pendingIndex).toBeGreaterThan(activeIndex);
-    expect(latestIndex).toBeGreaterThan(pendingIndex);
+    expect(latestIndex).toBeGreaterThan(activeIndex);
     expect(rankingsIndex).toBeGreaterThan(latestIndex);
+    expect(html).not.toContain("Pending review");
+    expect(html).toContain("Alice def. Cory");
+    expect(html).toContain("Aug 8, 2026, 1:00 PM @ Weekend Club");
+    expect(html).toContain("1 - 0");
+    expect(html).toContain("Singles");
+    expect(html).not.toContain("2 rating changes");
     expect(html).toContain("Weekend Club");
     expect(html).toContain('href="/matches/history"');
     expect(html).toContain('href="/groups/11111111-1111-4111-8111-111111111111/rankings"');
     expect(html).toContain("#4 of 8");
     expect(html).toContain("1642");
+    expect(appDataMocks.listCurrentUserMatches).toHaveBeenCalledWith({ limit: 3 });
+  });
+
+  test("renders no more than three latest result cards when the data source returns extra matches", async () => {
+    const [latestMatch] = await appDataMocks.listCurrentUserMatches();
+    appDataMocks.listCurrentUserMatches.mockClear();
+    appDataMocks.listCurrentUserMatches.mockResolvedValueOnce(
+      Array.from({ length: 4 }, (_, index) => ({
+        ...latestMatch,
+        id: `latest-match-${index + 1}`,
+      })),
+    );
+
+    const html = renderToStaticMarkup(await HomePage());
+
+    expect((html.match(/href="\/groups\/22222222-2222-4222-8222-222222222222\/matches\/latest-match-/g) ?? [])).toHaveLength(3);
+    expect(html).not.toContain('href="/groups/22222222-2222-4222-8222-222222222222/matches/latest-match-4"');
   });
 
   test("renders empty states for players without matches or rankings", async () => {
