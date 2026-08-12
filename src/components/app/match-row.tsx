@@ -15,7 +15,7 @@ function toneForStatus(status: AppMatchSummary["status"]) {
   return "neutral" as const;
 }
 
-export function MatchRow({ match }: { match: AppMatchSummary }) {
+export function MatchRow({ match, showGroupName = false }: { match: AppMatchSummary; showGroupName?: boolean }) {
   return (
     <Link
       href={`/groups/${match.groupId}/matches/${match.id}`}
@@ -30,6 +30,7 @@ export function MatchRow({ match }: { match: AppMatchSummary }) {
           <p className="mt-1 truncate text-xs text-muted">
             {match.teamA.map((player) => player.name).join(" / ")} vs {match.teamB.map((player) => player.name).join(" / ")}
           </p>
+          {showGroupName ? <p className="mt-1 truncate text-xs text-muted">{match.groupName}</p> : null}
         </div>
         <p className="text-right text-sm font-bold text-ink">
           {match.games.map((game) => `${game.teamAScore}-${game.teamBScore}`).join(", ")}
@@ -44,8 +45,8 @@ export function MatchRow({ match }: { match: AppMatchSummary }) {
 }
 
 function displayStatus(status: AppMatchSummary["status"]) {
-  if (status === "pending_confirmation") return "Pending confirmation";
-  if (status === "confirmed") return "Confirmed";
+  if (status === "pending_confirmation") return "Awaiting review";
+  if (status === "confirmed") return "Accepted";
   return "Disputed";
 }
 

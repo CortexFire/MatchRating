@@ -5,11 +5,11 @@ import { AlertTriangle, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function ReviewPanel() {
-  const [message, setMessage] = useState("Confirmation is optional for ratings, but it keeps the score trusted.");
+  const [message, setMessage] = useState("Confirmation is optional. Unreviewed matches are accepted automatically.");
 
   return (
     <div className="grid grid-cols-2 gap-2">
-      <Button type="button" onClick={() => setMessage("Confirmed. The match is now marked trusted.")}>
+      <Button type="button" onClick={() => setMessage("Accepted. Participants can still correct it for 30 days.")}>
         <Check className="size-4" />
         Confirm
       </Button>

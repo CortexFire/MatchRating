@@ -29,6 +29,9 @@ export default async function ReviewMatchesPage() {
         </Link>
         <h1 className="text-center text-2xl font-bold leading-8 text-ink">Review Matches</h1>
       </header>
+      <p className="rounded-lg border border-stroke bg-surface p-4 text-sm leading-5 text-muted">
+        Confirmation is optional. Confirm if correct, dispute to correct it, or do nothing; matches are typically accepted automatically within 24–48 hours.
+      </p>
       {matches.length ? (
         <PendingReviewList matches={matches.map(toPendingReviewMatch)} />
       ) : (
