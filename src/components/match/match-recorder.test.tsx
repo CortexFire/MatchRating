@@ -211,7 +211,7 @@ describe("MatchRecorder", () => {
       format: "doubles",
       teamAUserIds: ["group-b-ada", "group-b-cara"],
       teamBUserIds: ["group-b-bea", "group-b-guest-0"],
-      games: [{ teamAScore: 21, teamBScore: 20 }],
+      games: [{ teamAScore: 21, teamBScore: 20, winnerTeam: "A" }],
     });
   });
   test("renders a disputed match as the initial recording state", () => {
@@ -659,7 +659,7 @@ describe("MatchRecorder", () => {
       format: "singles",
       teamAUserIds: ["alice"],
       teamBUserIds: ["bea"],
-      games: [{ teamAScore: 18, teamBScore: 21 }],
+      games: [{ teamAScore: 18, teamBScore: 21, winnerTeam: "B" }],
     });
   });
 
@@ -713,6 +713,82 @@ describe("MatchRecorder", () => {
     expect((screen.getByLabelText("Set 1 Team B score") as HTMLInputElement).value).toBe("18");
   });
 
+  test("preserves an explicit initial winner that conflicts with the scores", () => {
+    render(
+      <MatchRecorder
+        players={matchRecorderPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "B" }],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Mark Set 1 Team B as winner" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  test("retains a conflicting selected winner in autosave and submit payloads", async () => {
+    vi.useFakeTimers();
+    const saveActiveMatchDraft = vi.fn(async () => ({ ok: true as const, data: { draftId: "draft-1" } }));
+    const submitMatchAction = vi.fn(async () => ({
+      ok: true as const,
+      data: { matchId: "match-1", revisionId: "revision-1", ratingJobId: "job-1", ratingStatus: "queued" as const },
+    }));
+
+    render(
+      <MatchRecorder
+        players={matchRecorderPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "B" }],
+        }}
+        saveActiveMatchDraft={saveActiveMatchDraft}
+        submitMatchAction={submitMatchAction}
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(saveActiveMatchDraft).toHaveBeenLastCalledWith(expect.objectContaining({
+      games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "B" }],
+    }));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+      await Promise.resolve();
+    });
+    expect(submitMatchAction).toHaveBeenCalledTimes(1);
+    expect(submitMatchAction).toHaveBeenLastCalledWith(expect.objectContaining({
+      games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "B" }],
+    }));
+  });
+
+  test("re-derives unequal score edits while retaining a selected winner for tied scores", () => {
+    render(
+      <MatchRecorder
+        players={matchRecorderPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "B" }],
+        }}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "20" } });
+    expect(screen.getByRole("button", { name: "Mark Set 1 Team A as winner" }).getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark Set 1 Team B as winner" }));
+    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "21" } });
+    expect(screen.getByRole("button", { name: "Mark Set 1 Team B as winner" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
   test("derives the winner after both blank scores are entered", () => {
     render(<MatchRecorder players={matchRecorderPlayers} />);
 
@@ -761,7 +837,7 @@ describe("MatchRecorder", () => {
       format: "singles",
       teamAUserIds: ["alice"],
       teamBUserIds: ["bea"],
-      games: [{ teamAScore: 21, teamBScore: 20 }],
+      games: [{ teamAScore: 21, teamBScore: 20, winnerTeam: "A" }],
     });
   });
 
@@ -806,7 +882,7 @@ describe("MatchRecorder", () => {
     expect(saveActiveMatchDraft).toHaveBeenCalledTimes(2);
     expect(saveActiveMatchDraft).toHaveBeenLastCalledWith(expect.objectContaining({
       draftId: "draft-created",
-      games: [{ teamAScore: 21, teamBScore: 19 }],
+      games: [{ teamAScore: 21, teamBScore: 19, winnerTeam: "A" }],
     }));
   });
 
@@ -847,7 +923,7 @@ describe("MatchRecorder", () => {
       format: "singles",
       teamAUserIds: ["alice"],
       teamBUserIds: ["bea"],
-      games: [{ teamAScore: 21, teamBScore: 20 }],
+      games: [{ teamAScore: 21, teamBScore: 20, winnerTeam: "A" }],
     });
   });
 

@@ -19,6 +19,7 @@ const draftSchema = z.object({
       z.object({
         teamAScore: z.coerce.number().int().min(0).max(99),
         teamBScore: z.coerce.number().int().min(0).max(99),
+        winnerTeam: z.enum(["A", "B"]),
       }),
     )
     .min(1)

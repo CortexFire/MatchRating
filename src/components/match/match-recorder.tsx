@@ -14,13 +14,14 @@ import {
   validateMatchSubmission,
   type MatchFormat,
   type MatchGameInput,
+  type MatchScoreInput,
   type MatchSubmissionInput,
   type Team,
 } from "@/lib/matches/validation";
 import { type AppPlayer } from "@/lib/app-data";
 import { cn } from "@/lib/utils";
 
-type Score = { teamAScore: number; teamBScore: number };
+type Score = MatchScoreInput;
 type EditableScore = number | "";
 type RecordedGame = {
   teamAScore: EditableScore;
@@ -45,7 +46,7 @@ export type InitialMatchRecording = {
   format: MatchFormat;
   teamAUserIds: string[];
   teamBUserIds: string[];
-  games: Score[];
+  games: Array<Score & { winnerTeam?: Team }>;
 };
 
 export function MatchRecorder({
@@ -81,7 +82,7 @@ export function MatchRecorder({
   );
   const [games, setGames] = useState<RecordedGame[]>(() =>
     initialMatch
-      ? initialMatch.games.map((game) => ({ ...game, winnerTeam: winnerFromScore(game) }))
+      ? initialMatch.games.map((game) => ({ ...game, winnerTeam: game.winnerTeam ?? winnerFromScore(game) }))
       : [newBlankGame()],
   );
   const [playerSelectOpen, setPlayerSelectOpen] = useState(false);
@@ -545,6 +546,7 @@ function toCompleteGames(games: RecordedGame[]): MatchGameInput[] | null {
     completeGames.push({
       teamAScore: game.teamAScore,
       teamBScore: game.teamBScore,
+      winnerTeam: game.winnerTeam,
     });
   }
 

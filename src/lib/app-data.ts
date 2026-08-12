@@ -513,14 +513,28 @@ function isVisibleDraft(draft: ActiveMatchDraftRow, userId: string) {
 
 function parseDraftGames(value: unknown): MatchGameInput[] {
   if (!Array.isArray(value)) {
-    return [{ teamAScore: 0, teamBScore: 0 }];
+    return [{ teamAScore: 0, teamBScore: 0, winnerTeam: "A" }];
   }
 
   return value
-    .map((game) => ({
-      teamAScore: Number((game as { teamAScore?: unknown }).teamAScore ?? 0),
-      teamBScore: Number((game as { teamBScore?: unknown }).teamBScore ?? 0),
-    }))
+    .map((game) => {
+      const storedGame = game as { teamAScore?: unknown; teamBScore?: unknown; winnerTeam?: unknown };
+      const teamAScore = Number(storedGame.teamAScore ?? 0);
+      const teamBScore = Number(storedGame.teamBScore ?? 0);
+
+      const winnerTeam: "A" | "B" =
+        storedGame.winnerTeam === "A" || storedGame.winnerTeam === "B"
+          ? storedGame.winnerTeam
+          : teamAScore >= teamBScore
+            ? "A"
+            : "B";
+
+      return {
+        teamAScore,
+        teamBScore,
+        winnerTeam,
+      };
+    })
     .filter((game) => Number.isFinite(game.teamAScore) && Number.isFinite(game.teamBScore));
 }
 

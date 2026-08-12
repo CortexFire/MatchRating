@@ -79,7 +79,7 @@ const baseRows: Record<string, unknown[]> = {
     format: "singles",
     team_a_user_ids: [SUBMITTER],
     team_b_user_ids: [OPPONENT],
-    games: [{ teamAScore: 12, teamBScore: 12 }],
+    games: [{ teamAScore: 12, teamBScore: 12, winnerTeam: "B" }],
     expires_at: "2099-01-01T00:00:00.000Z",
     submitted_match_id: null,
   }],
@@ -245,7 +245,7 @@ describe("stored match reads", () => {
     expect(matches.map((match) => match.id)).toEqual([MATCH_NEW]);
   });
 
-  test("hydrates a visible non-creator draft as an editable participant", async () => {
+  test("preserves a stored draft winner when hydrating an editable participant", async () => {
     const draft = await getActiveMatchDraft("30303030-3030-4030-8030-303030303030");
 
     expect(draft).toMatchObject({
@@ -255,9 +255,17 @@ describe("stored match reads", () => {
         format: "singles",
         teamAUserIds: [SUBMITTER],
         teamBUserIds: [OPPONENT],
-        games: [{ teamAScore: 12, teamBScore: 12 }],
+        games: [{ teamAScore: 12, teamBScore: 12, winnerTeam: "B" }],
       },
     });
+  });
+
+  test("derives a missing legacy draft winner from scores", async () => {
+    (rowsByTable.active_match_drafts[0] as { games: unknown }).games = [{ teamAScore: 12, teamBScore: 12 }];
+
+    const draft = await getActiveMatchDraft("30303030-3030-4030-8030-303030303030");
+
+    expect(draft?.initialMatch.games).toEqual([{ teamAScore: 12, teamBScore: 12, winnerTeam: "A" }]);
   });
 
   test("hides current-user drafts after the user leaves their group", async () => {
