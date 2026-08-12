@@ -7,7 +7,7 @@ import { MobileShell } from "../app/mobile-shell";
 import { type AppPlayer } from "@/lib/app-data";
 import { MatchRecorder } from "./match-recorder";
 
-const navigationMocks = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
+const navigationMocks = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn(), replace: vi.fn() }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => navigationMocks }));
 
@@ -42,6 +42,7 @@ function groupPlayer(id: string, name: string, initials: string): AppPlayer {
 describe("MatchRecorder", () => {
   afterEach(() => {
     navigationMocks.push.mockReset();
+    navigationMocks.refresh.mockReset();
     navigationMocks.replace.mockReset();
     vi.useRealTimers();
   });
@@ -1139,6 +1140,7 @@ describe("MatchRecorder", () => {
     expect((screen.getByRole("button", { name: "Mark Set 1 Team A as winner" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByLabelText("Remove Alice from Team A")).toBeNull();
     expect(screen.queryByRole("button", { name: "Add set" })).toBeNull();
+    expect(navigationMocks.refresh).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_999);

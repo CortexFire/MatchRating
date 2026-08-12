@@ -5,6 +5,6 @@ export const DEMO_GROUP_ID = "11111111-1111-4111-8111-111111111111";
 export async function signInAsDemoPlayer(page: Page, email: string) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
-  await page.getByRole("button", { name: "Send one-time code" }).click();
+  await page.getByRole("button", { name: /Send (?:one-time code|login link)/i }).click();
   await expect(page).toHaveURL(new RegExp(`/groups/${DEMO_GROUP_ID}$`));
 }

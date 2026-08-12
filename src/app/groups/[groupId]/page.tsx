@@ -38,6 +38,7 @@ export default async function GroupPage({
       <ScreenHeader title={group.name} backHref="/groups" />
       <ActiveMatchDraftList drafts={activeDrafts} />
       <RatingRebuildStatus
+        key={ratingStatus.id ?? "no-rating-job"}
         groupId={groupId}
         jobId={ratingStatus.id}
         status={ratingStatus.status}

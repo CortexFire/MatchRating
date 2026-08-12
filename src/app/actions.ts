@@ -780,6 +780,12 @@ function revalidateDraftPaths(groupId: string) {
   revalidatePath(`/groups/${groupId}`);
 }
 
+function revalidateRatingPaths(groupId: string) {
+  revalidatePath(`/groups/${groupId}`);
+  revalidatePath(`/groups/${groupId}/members`);
+  revalidatePath(`/groups/${groupId}/rankings`);
+}
+
 export async function submitMatch(input: ActiveDraftInput & RequiredCommandMetadata): Promise<ActionResult<MatchCommandResult>> {
   if (!z.string().uuid().safeParse(input.commandId).success) {
     return { ok: false, message: "A command ID is required." };
@@ -808,6 +814,7 @@ export async function submitMatch(input: ActiveDraftInput & RequiredCommandMetad
     })),
   }, "Could not submit match.");
   scheduleReturnedRatingJob(result);
+  if (result.ok) revalidateRatingPaths(validated.groupId);
   return result;
 }
 
@@ -865,7 +872,7 @@ export async function disputeAndReviseMatch(input: z.infer<typeof reviseSchema>)
 
 function revalidateMatchPaths(groupId: string, matchId: string) {
   revalidatePath("/matches/review");
-  revalidatePath(`/groups/${groupId}`);
+  revalidateRatingPaths(groupId);
   revalidatePath(`/groups/${groupId}/history`);
   revalidatePath(`/groups/${groupId}/matches/${matchId}`);
   revalidatePath(`/groups/${groupId}/matches/${matchId}/revise`);

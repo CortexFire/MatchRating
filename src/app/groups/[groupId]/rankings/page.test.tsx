@@ -11,6 +11,7 @@ vi.mock("@/lib/app-data", () => ({
   getGroupRatingRebuildStatus: mocks.getGroupRatingRebuildStatus,
   listGroupPlayers: mocks.listGroupPlayers,
 }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 beforeEach(() => {
   vi.clearAllMocks();

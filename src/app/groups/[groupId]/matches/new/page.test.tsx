@@ -6,13 +6,15 @@ import NewMatchPage from "./page";
 const appDataMocks = vi.hoisted(() => ({
   getActiveMatchDraft: vi.fn(),
   getGroup: vi.fn(),
+  getGroupRatingRebuildStatus: vi.fn(),
   listCurrentUserGroups: vi.fn(),
   listGroupPlayers: vi.fn(),
 }));
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: vi.fn() }) }));
 vi.mock("@/app/actions", () => ({
   createGuestPlayers: vi.fn(),
+  retryRatingRebuild: vi.fn(),
   saveActiveMatchDraft: vi.fn(),
   submitMatch: vi.fn(),
 }));
@@ -33,13 +35,14 @@ describe("NewMatchPage", () => {
       { id: "22222222-2222-4222-8222-222222222222", name: "Downtown Rec", description: "", memberCount: 6 },
     ]);
     appDataMocks.listGroupPlayers.mockResolvedValue([]);
+    appDataMocks.getGroupRatingRebuildStatus.mockResolvedValue({ id: null, status: null, canRetry: false });
     appDataMocks.getActiveMatchDraft.mockResolvedValue(null);
 
     const page = await NewMatchPage({
       params: Promise.resolve({ groupId: routeGroup.id }),
       searchParams: Promise.resolve({}),
     });
-    const recorder = page.props.children as React.ReactElement<{
+    const recorder = (page.props.children as React.ReactElement[]).at(-1) as React.ReactElement<{
       groupOptions: Array<{ id: string; name: string }>;
       groupId: string;
     }>;
@@ -57,6 +60,7 @@ describe("NewMatchPage", () => {
     appDataMocks.getGroup.mockResolvedValue(routeGroup);
     appDataMocks.listCurrentUserGroups.mockResolvedValue([routeGroup]);
     appDataMocks.listGroupPlayers.mockResolvedValue([]);
+    appDataMocks.getGroupRatingRebuildStatus.mockResolvedValue({ id: null, status: null, canRetry: false });
     appDataMocks.getActiveMatchDraft.mockResolvedValue({
       id: "33333333-3333-4333-8333-333333333333",
       groupId: "22222222-2222-4222-8222-222222222222",
@@ -78,5 +82,24 @@ describe("NewMatchPage", () => {
     expect(html).toContain("Active match expired");
     expect(html).toContain("This active match expired. Start a new match.");
     expect(html).not.toContain("Match Recording");
+  });
+
+  test("surfaces a failed rating rebuild on the recorder route", async () => {
+    appDataMocks.getGroup.mockResolvedValue(routeGroup);
+    appDataMocks.getGroupRatingRebuildStatus.mockResolvedValue({
+      id: "44444444-4444-4444-8444-444444444444",
+      status: "failed",
+      canRetry: false,
+    });
+    appDataMocks.listCurrentUserGroups.mockResolvedValue([routeGroup]);
+    appDataMocks.listGroupPlayers.mockResolvedValue([]);
+    appDataMocks.getActiveMatchDraft.mockResolvedValue(null);
+
+    const html = renderToStaticMarkup(await NewMatchPage({
+      params: Promise.resolve({ groupId: routeGroup.id }),
+      searchParams: Promise.resolve({}),
+    }));
+
+    expect(html).toContain("Match saved, but ratings need attention.");
   });
 });

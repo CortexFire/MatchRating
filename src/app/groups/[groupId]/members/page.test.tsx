@@ -4,13 +4,16 @@ import MembersPage from "./page";
 
 const mocks = vi.hoisted(() => ({
   getGroup: vi.fn(),
+  getGroupRatingRebuildStatus: vi.fn(),
   listGroupPlayers: vi.fn(),
 }));
 
 vi.mock("@/lib/app-data", () => ({
   getGroup: mocks.getGroup,
+  getGroupRatingRebuildStatus: mocks.getGroupRatingRebuildStatus,
   listGroupPlayers: mocks.listGroupPlayers,
 }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const groupId = "11111111-1111-4111-8111-111111111111";
 const players = [
@@ -22,7 +25,16 @@ const players = [
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.getGroup.mockResolvedValue({ id: groupId, name: "Wednesday Club", description: "", memberCount: 3 });
+  mocks.getGroupRatingRebuildStatus.mockResolvedValue({ id: null, status: null, canRetry: false });
   mocks.listGroupPlayers.mockResolvedValue(players);
+});
+
+test("shows when member ratings are still rebuilding", async () => {
+  mocks.getGroupRatingRebuildStatus.mockResolvedValue({ id: "job-1", status: "running", canRetry: false });
+
+  const html = renderToStaticMarkup(await MembersPage({ params: Promise.resolve({ groupId }) }));
+
+  expect(html).toContain("Match saved. Ratings updating");
 });
 
 test("reports recency-active players separately from the full membership count", async () => {
