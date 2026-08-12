@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Medal, Plus, Trash2, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { type ActionResult, type MatchCommandResult } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import {
@@ -72,6 +73,7 @@ export function MatchRecorder({
   saveActiveMatchDraft?: SaveActiveMatchDraft;
   submitMatchAction?: SubmitMatchAction;
 }) {
+  const router = useRouter();
   const startingMatch = initialMatch ?? defaultMatchRecording;
   const [format, setFormat] = useState<MatchFormat>(startingMatch.format);
   const [teamA, setTeamA] = useState<TeamSelection>(() =>
@@ -101,6 +103,7 @@ export function MatchRecorder({
   const autosaveTimeout = useRef<number | null>(null);
   const autosaveQueue = useRef<Promise<void>>(Promise.resolve());
   const submissionInProgress = useRef(false);
+  const completionTimeout = useRef<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [guestPlayers, setGuestPlayers] = useState<AppPlayer[]>([]);
   const [draftGuestIds, setDraftGuestIds] = useState<string[]>([]);
@@ -118,6 +121,7 @@ export function MatchRecorder({
     new Set(selectedPlayerIds).size === selectedPlayerIds.length &&
     gamesReadyForSubmission(games) &&
     !isSubmitting;
+  const recorderEditable = canEdit && !isSubmitting;
 
   useEffect(() => {
     saveActiveMatchDraftRef.current = saveActiveMatchDraft;
@@ -126,6 +130,13 @@ export function MatchRecorder({
   useEffect(() => {
     activeDraftId.current = draftId;
   }, [draftId]);
+
+  useEffect(() => () => {
+    if (completionTimeout.current !== null) {
+      window.clearTimeout(completionTimeout.current);
+      completionTimeout.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     if (!canEdit || !saveActiveMatchDraftRef.current || submissionInProgress.current) {
@@ -358,6 +369,30 @@ export function MatchRecorder({
     setMessage("");
   }
 
+  function completeSubmission(successMessage: string) {
+    setMessage(successMessage);
+    completionTimeout.current = window.setTimeout(() => {
+      completionTimeout.current = null;
+      setFormat(defaultMatchRecording.format);
+      setTeamA(normalizeTeamSlots(defaultMatchRecording.teamAUserIds, defaultMatchRecording.format));
+      setTeamB(normalizeTeamSlots(defaultMatchRecording.teamBUserIds, defaultMatchRecording.format));
+      setGames([newBlankGame()]);
+      setPlayerSelectOpen(false);
+      setActiveSelectTeam("A");
+      setDraftTeamA(resizeTeamSlots(defaultMatchRecording.teamAUserIds, defaultMatchRecording.format));
+      setDraftTeamB(resizeTeamSlots(defaultMatchRecording.teamBUserIds, defaultMatchRecording.format));
+      setDraftGuestIds([]);
+      setPlayerFilter("all");
+      setPlayerSearch("");
+      setMessage("");
+      activeDraftId.current = undefined;
+      submitCommandId.current = null;
+      submissionInProgress.current = false;
+      setIsSubmitting(false);
+      router.replace(`/groups/${groupId}/matches/new`, { scroll: false });
+    }, 3_000);
+  }
+
   async function submitMatch() {
     if (!canEdit || submissionInProgress.current) {
       return;
@@ -393,7 +428,7 @@ export function MatchRecorder({
       if (submitMatchAction) {
         const result = await submitMatchAction(input);
         if (result.ok) {
-          setMessage("Match saved. Ratings updating…");
+          completeSubmission("Match saved. Ratings updating…");
         } else {
           submissionInProgress.current = false;
           setIsSubmitting(false);
@@ -402,7 +437,7 @@ export function MatchRecorder({
         return;
       }
 
-      setMessage(`Submitted. Team ${validated.matchWinnerTeam} wins; ratings update immediately.`);
+      completeSubmission(`Submitted. Team ${validated.matchWinnerTeam} wins; ratings update immediately.`);
     } catch (error) {
       submissionInProgress.current = false;
       setIsSubmitting(false);
@@ -437,10 +472,10 @@ export function MatchRecorder({
     <section className="flex min-h-full flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-[22px] font-bold leading-7 text-ink">Match Recording</h1>
-        <GroupSwitcher groups={groupOptions} currentGroupId={groupId} />
+        <GroupSwitcher groups={groupOptions} currentGroupId={groupId} disabled={!recorderEditable} />
       </div>
 
-      <FormatToggle value={format} onChange={updateFormat} disabled={!canEdit} />
+      <FormatToggle value={format} onChange={updateFormat} disabled={!recorderEditable} />
 
       <div className="grid grid-cols-2 gap-6 px-3">
         <TeamSummaryCard
@@ -448,14 +483,14 @@ export function MatchRecorder({
           slots={teamASlots}
           onOpenPicker={() => openPlayerSelect("A")}
           onRemove={(slotIndex) => removePlayer("A", slotIndex)}
-          editable={canEdit}
+          editable={recorderEditable}
         />
         <TeamSummaryCard
           label="Team B"
           slots={teamBSlots}
           onOpenPicker={() => openPlayerSelect("B")}
           onRemove={(slotIndex) => removePlayer("B", slotIndex)}
-          editable={canEdit}
+          editable={recorderEditable}
         />
       </div>
 
@@ -467,11 +502,11 @@ export function MatchRecorder({
             index={index}
             onWinnerChange={(winner) => setWinner(index, winner)}
             onScoreChange={(team, value) => updateScore(index, team, value)}
-            onRemove={canEdit && games.length > 1 ? () => removeSet(index) : undefined}
-            editable={canEdit}
+            onRemove={recorderEditable && games.length > 1 ? () => removeSet(index) : undefined}
+            editable={recorderEditable}
           />
         ))}
-        {canEdit ? (
+        {recorderEditable ? (
           <button
             type="button"
             onClick={addSet}

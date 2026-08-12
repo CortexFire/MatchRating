@@ -9,9 +9,11 @@ export type GroupOption = Pick<AppGroup, "id" | "name">;
 export function GroupSwitcher({
   groups,
   currentGroupId,
+  disabled = false,
 }: {
   groups: GroupOption[];
   currentGroupId: string;
+  disabled?: boolean;
 }) {
   const router = useRouter();
   const currentGroup = groups.find((group) => group.id === currentGroupId);
@@ -32,7 +34,7 @@ export function GroupSwitcher({
         aria-label={`Current group ${currentGroup?.name ?? "Group"}`}
         className={`min-h-11 appearance-none bg-transparent py-2 pl-4 ${groups.length > 1 ? "pr-10" : "pr-4"} focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action disabled:cursor-default`}
         value={currentGroupId}
-        disabled={groups.length <= 1}
+        disabled={disabled || groups.length <= 1}
         onChange={(event) => switchGroup(event.target.value)}
       >
         {groups.map((group) => (
