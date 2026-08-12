@@ -94,7 +94,7 @@ describe("GroupPage", () => {
     });
   });
 
-  test("renders preserved status content, all-status recents, and collapsed members", async () => {
+  test("renders pending and disputed recents without confirmed or rating-change labels", async () => {
     const html = renderToStaticMarkup(await GroupPage({ params: Promise.resolve({ groupId }) }));
 
     expect(html).toContain("Active matches");
@@ -102,8 +102,9 @@ describe("GroupPage", () => {
     expect(html).toContain("Match saved. Ratings updating");
     expect(html).toContain("Recent Matches");
     expect(html).toContain("Awaiting review");
-    expect(html).toContain("Accepted");
     expect(html).toContain("Disputed");
+    expect(html).not.toContain("Accepted");
+    expect(html).not.toContain("2 rating changes");
     expect(html).toContain("Members (1)");
     const ratingStatusPosition = html.indexOf("Match saved. Ratings updating");
     const membersPosition = html.indexOf("Members (1)");

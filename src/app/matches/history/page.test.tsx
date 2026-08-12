@@ -40,12 +40,14 @@ beforeEach(() => {
 });
 
 describe("player match history", () => {
-  test("renders cross-group matches with canonical detail and navigation links", async () => {
+  test("renders cross-group matches with participant headings, no accepted pill, and navigation links", async () => {
     const html = renderToStaticMarkup(await HistoryPage());
 
     expect(html).toContain("Match history");
     expect(html).toContain("Wednesday Club");
     expect(html).toContain("Alice Tan vs Bea Rivera");
+    expect(html).not.toContain(">singles<");
+    expect(html).not.toContain(">Accepted<");
     expect(html).toContain('href="/groups/group-1/matches/match-1"');
     expect(html).toContain('href="/home"');
     expect(html).toContain('href="/groups/group-1/matches/new"');

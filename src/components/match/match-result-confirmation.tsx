@@ -137,12 +137,12 @@ function TeamSummary({ team, winner }: { team: Team; winner: boolean }) {
       </div>
       <div
         className={cn(
-          "flex min-h-[112px] w-full flex-col justify-center gap-4 rounded-lg border px-5 py-4",
+          "flex min-h-[112px] w-full flex-col justify-center gap-4 rounded-lg border px-3 py-4",
           winner ? "border-victory-stroke bg-victory" : "border-stroke bg-surface",
         )}
       >
         {team.players.map((player, index) => (
-          <div key={`${team.label}-${player.name}-${index}`} className="flex items-center gap-3">
+          <div key={`${team.label}-${player.name}-${index}`} className="flex items-center gap-2">
             <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-app-bg text-sm font-bold text-ink">
               {player.initials}
             </span>
@@ -161,10 +161,9 @@ function RatingChange({ ratingChange }: { ratingChange?: Player["ratingChange"] 
   const previous = ratingChange?.previous ?? DEFAULT_RATING;
 
   return (
-    <div className="mt-1 text-xs leading-4 tabular-nums text-muted">
-      <p>Previous {previous.rating} ± {previous.rd}</p>
-      <p>{ratingChange ? `New ${ratingChange.next.rating} ± ${ratingChange.next.rd}` : "New Updating…"}</p>
-    </div>
+    <p className="mt-1 whitespace-nowrap text-[11px] leading-4 tabular-nums text-muted">
+      {previous.rating} → {ratingChange ? ratingChange.next.rating : "…"}
+    </p>
   );
 }
 

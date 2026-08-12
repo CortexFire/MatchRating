@@ -41,6 +41,20 @@ describe("MatchRow", () => {
 });
 
 describe("RecentMatchList", () => {
+  test("omits rating changes and accepted status while retaining review statuses", () => {
+    const html = renderToStaticMarkup(
+      <RecentMatchList
+        matches={[match("confirmed"), match("pending", "pending_confirmation"), match("disputed", "disputed")]}
+        historyHref="/groups/group-1/history"
+      />,
+    );
+
+    expect(html).not.toContain("2 rating changes");
+    expect(html).not.toContain("Accepted");
+    expect(html).toContain("Awaiting review");
+    expect(html).toContain("Disputed");
+  });
+
   test("shows at most five match links and a View all link", () => {
     const html = renderToStaticMarkup(
       <RecentMatchList matches={Array.from({ length: 6 }, (_, index) => match(`match-${index + 1}`))} historyHref="/groups/group-1/history" />,

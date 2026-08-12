@@ -8,14 +8,22 @@ const submittedAtFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: "America/Los_Angeles",
 });
 
-function toneForStatus(status: AppMatchSummary["status"]) {
-  if (status === "confirmed") {
-    return "victory" as const;
-  }
-  return "neutral" as const;
-}
+export function MatchRow({
+  match,
+  showGroupName = false,
+  heading = "format",
+  showRatingSummary = true,
+}: {
+  match: AppMatchSummary;
+  showGroupName?: boolean;
+  heading?: "format" | "participants";
+  showRatingSummary?: boolean;
+}) {
+  const participants = `${match.teamA.map((player) => player.name).join(" / ")} vs ${match.teamB
+    .map((player) => player.name)
+    .join(" / ")}`;
+  const status = displayStatus(match.status);
 
-export function MatchRow({ match, showGroupName = false }: { match: AppMatchSummary; showGroupName?: boolean }) {
   return (
     <Link
       href={`/groups/${match.groupId}/matches/${match.id}`}
@@ -23,22 +31,22 @@ export function MatchRow({ match, showGroupName = false }: { match: AppMatchSumm
     >
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="text-sm font-semibold capitalize text-ink">{match.format}</p>
-            <Badge tone={toneForStatus(match.status)}>{displayStatus(match.status)}</Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className={`text-sm font-semibold text-ink${heading === "format" ? " capitalize" : ""}`}>
+              {heading === "participants" ? participants : match.format}
+            </p>
+            {status ? <Badge className="shrink-0 whitespace-nowrap">{status}</Badge> : null}
           </div>
-          <p className="mt-1 truncate text-xs text-muted">
-            {match.teamA.map((player) => player.name).join(" / ")} vs {match.teamB.map((player) => player.name).join(" / ")}
-          </p>
+          {heading === "format" ? <p className="mt-1 truncate text-xs text-muted">{participants}</p> : null}
           {showGroupName ? <p className="mt-1 truncate text-xs text-muted">{match.groupName}</p> : null}
         </div>
-        <p className="text-right text-sm font-bold text-ink">
+        <p className="shrink-0 whitespace-nowrap text-right text-sm font-bold tabular-nums text-ink">
           {match.games.map((game) => `${game.teamAScore}-${game.teamBScore}`).join(", ")}
         </p>
       </div>
       <div className="mt-3 flex items-center justify-between text-xs text-muted">
         <span>{formatSubmittedAt(match.submittedAt)}</span>
-        <span>{match.ratingSummary}</span>
+        {showRatingSummary ? <span>{match.ratingSummary}</span> : null}
       </div>
     </Link>
   );
@@ -46,8 +54,8 @@ export function MatchRow({ match, showGroupName = false }: { match: AppMatchSumm
 
 function displayStatus(status: AppMatchSummary["status"]) {
   if (status === "pending_confirmation") return "Awaiting review";
-  if (status === "confirmed") return "Accepted";
-  return "Disputed";
+  if (status === "disputed") return "Disputed";
+  return null;
 }
 
 function formatSubmittedAt(value: string) {

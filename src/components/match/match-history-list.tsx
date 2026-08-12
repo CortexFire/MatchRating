@@ -19,6 +19,7 @@ export function MatchHistoryList({ matches, showGroupName = false }: { matches: 
       if (!query) return true;
       return [
         match.format,
+        match.status,
         displayStatus(match.status),
         ...(showGroupName ? [match.groupName] : []),
         ...match.teamA.map((player) => player.name),
@@ -41,7 +42,7 @@ export function MatchHistoryList({ matches, showGroupName = false }: { matches: 
       {visibleMatches.length ? (
         <div className="flex flex-col gap-3">
           {visibleMatches.map((match) => (
-            <MatchRow key={match.id} match={match} showGroupName={showGroupName} />
+            <MatchRow key={match.id} match={match} showGroupName={showGroupName} heading="participants" />
           ))}
         </div>
       ) : (
