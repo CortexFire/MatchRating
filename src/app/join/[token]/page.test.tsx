@@ -115,6 +115,24 @@ describe("JoinPage", () => {
     );
   });
 
+  test("uses singular player wording for a one-player signed-out invite", async () => {
+    mocks.getClaims.mockResolvedValue({ data: { claims: null } });
+    mocks.getInviteSummary.mockResolvedValue({
+      ok: true,
+      data: {
+        groupId: "group-1",
+        groupName: "Downtown Rec Club",
+        memberCount: 1,
+        lastActiveText: "No matches yet",
+      },
+    });
+
+    render(await JoinPage({ params: Promise.resolve({ token: "invite-token" }) }));
+
+    expect(screen.getByText("1 player")).toBeTruthy();
+    expect(screen.queryByText("1 players")).toBeNull();
+  });
+
   test("surfaces membership lookup errors instead of choosing an invite state", async () => {
     mocks.memberships.maybeSingle.mockResolvedValue({
       data: null,

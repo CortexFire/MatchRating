@@ -41,7 +41,9 @@ export default async function JoinPage({
               <div className="rounded-lg border border-stroke bg-white px-4 py-7 text-center">
                 <h2 className="text-2xl font-bold leading-8 text-ink">{summary.data.groupName}</h2>
                 <p className="mt-7 text-xs text-muted">{summary.data.lastActiveText}</p>
-                <p className="mt-3 text-xs text-muted">{summary.data.memberCount} players</p>
+                <p className="mt-3 text-xs text-muted">
+                  {summary.data.memberCount} {summary.data.memberCount === 1 ? "player" : "players"}
+                </p>
               </div>
               <p className="text-sm text-muted">Sign in to continue.</p>
               <Button asChild>
