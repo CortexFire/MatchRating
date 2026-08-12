@@ -193,6 +193,31 @@ describe("invite actions", () => {
     expect(result).toEqual({ ok: false, message: "duplicate active invite" });
   });
 
+  test("returns the invite created concurrently after a duplicate insert", async () => {
+    supabaseMocks.inviteLookup.maybeSingle
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({
+        data: { id: "44444444-4444-4444-8444-444444444444" },
+        error: null,
+      });
+    supabaseMocks.inviteInsertResult.single.mockResolvedValue({
+      data: null,
+      error: Object.assign(new Error("duplicate active invite"), { code: "23505" }),
+    });
+
+    const result = await (actions as typeof actions & {
+      getOrCreateInvite: (groupId: string) => Promise<actions.ActionResult<{ token: string; url: string }>>;
+    }).getOrCreateInvite("group-1");
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        token: "44444444-4444-4444-8444-444444444444",
+        url: "https://matches.example.com/join/44444444-4444-4444-8444-444444444444",
+      },
+    });
+  });
+
   test("loads invite summaries by invite id", async () => {
     supabaseMocks.inviteLookup.maybeSingle.mockResolvedValue({
       data: {

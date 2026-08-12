@@ -623,6 +623,25 @@ export async function getOrCreateInvite(groupId: string): Promise<ActionResult<{
       .single();
 
     if (insertError) {
+      if ((insertError as { code?: string }).code === "23505") {
+        const { data: concurrentInvite, error: concurrentLookupError } = await service
+          .from("group_invites")
+          .select("id")
+          .eq("group_id", groupId)
+          .is("revoked_at", null)
+          .maybeSingle();
+
+        if (concurrentLookupError) {
+          throw concurrentLookupError;
+        }
+
+        if (concurrentInvite?.id) {
+          return {
+            ok: true,
+            data: { token: concurrentInvite.id, url: `${origin}/join/${concurrentInvite.id}` },
+          };
+        }
+      }
       throw insertError;
     }
 

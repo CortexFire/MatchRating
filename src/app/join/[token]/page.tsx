@@ -38,6 +38,11 @@ export default async function JoinPage({
           <Card>
             <CardContent className="flex flex-col gap-4 p-5 text-center">
               <h1 className="text-xl font-bold text-ink">You have been invited to join</h1>
+              <div className="rounded-lg border border-stroke bg-white px-4 py-7 text-center">
+                <h2 className="text-2xl font-bold leading-8 text-ink">{summary.data.groupName}</h2>
+                <p className="mt-7 text-xs text-muted">{summary.data.lastActiveText}</p>
+                <p className="mt-3 text-xs text-muted">{summary.data.memberCount} players</p>
+              </div>
               <p className="text-sm text-muted">Sign in to continue.</p>
               <Button asChild>
                 <Link href={`/login?next=${encodeURIComponent(nextPath)}`}>Sign in</Link>
