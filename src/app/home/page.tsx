@@ -118,13 +118,16 @@ export default async function HomePage() {
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-bold text-ink">Latest matches</h2>
           {latestMatchResults.length ? (
-            <Link href="/matches/history" className="text-sm font-semibold text-action hover:underline">
+            <Link
+              href="/matches/history"
+              className="inline-flex min-h-11 items-center rounded-lg px-2 text-sm font-semibold text-action transition hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+            >
               View full history
             </Link>
           ) : null}
         </div>
         {latestMatchResults.length ? (
-          <MatchResultList matches={latestMatchResults} />
+          <MatchResultList matches={latestMatchResults} presentation="latest" />
         ) : (
           <p className="rounded-lg border border-stroke bg-surface p-4 text-sm text-muted">No matches recorded yet.</p>
         )}

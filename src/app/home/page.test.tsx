@@ -116,12 +116,16 @@ describe("HomePage", () => {
     expect(rankingsIndex).toBeGreaterThan(latestIndex);
     expect(html).not.toContain("Pending review");
     expect(html).toContain("Alice def. Cory");
-    expect(html).toContain("Aug 8, 2026, 1:00 PM @ Weekend Club");
-    expect(html).toContain("1 - 0");
+    expect(html).toContain("Aug 8, 2026, 1:00 PM");
+    expect(html).toContain("Weekend Club");
+    expect(html).toContain("21 - 16");
+    expect(html).not.toContain("1 - 0");
     expect(html).toContain("Singles");
     expect(html).not.toContain("2 rating changes");
     expect(html).toContain("Weekend Club");
     expect(html).toContain('href="/matches/history"');
+    expect(html).toContain("min-h-11");
+    expect(html).toContain("focus-visible:outline-action");
     expect(html).toContain('href="/groups/11111111-1111-4111-8111-111111111111/rankings"');
     expect(html).toContain("#4 of 8");
     expect(html).toContain("1642");
