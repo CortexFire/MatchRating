@@ -35,7 +35,11 @@ export default async function ReviseMatchPage({
           format: match.format,
           teamAUserIds: match.teamA.map((player) => player.id),
           teamBUserIds: match.teamB.map((player) => player.id),
-          games: match.games.map((game) => ({ teamAScore: game.teamAScore, teamBScore: game.teamBScore })),
+          games: match.games.map((game) => ({
+            teamAScore: game.teamAScore,
+            teamBScore: game.teamBScore,
+            winnerTeam: game.winnerTeam,
+          })),
         }}
       />
     </MobileShell>

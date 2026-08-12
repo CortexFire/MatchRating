@@ -42,7 +42,7 @@ test("submits a pending correction through the atomic action without free-text m
     format: "singles",
     teamAUserIds: ["alice"],
     teamBUserIds: ["bea"],
-    games: [{ teamAScore: 21, teamBScore: 18 }],
+    games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "A" }],
   }));
   expect(navigationMocks.push).toHaveBeenCalledWith("/groups/group-1/matches/match-1");
   expect(screen.queryByRole("textbox")).toBeNull();

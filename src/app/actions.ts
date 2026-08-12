@@ -142,6 +142,7 @@ const activeDraftSchema = z.object({
     z.object({
       teamAScore: z.number().int().min(0).max(99),
       teamBScore: z.number().int().min(0).max(99),
+      winnerTeam: z.enum(["A", "B"]),
     }),
   ),
 });
@@ -162,6 +163,7 @@ const reviseSchema = z
         z.object({
           teamAScore: z.number().int().min(0).max(99),
           teamBScore: z.number().int().min(0).max(99),
+          winnerTeam: z.enum(["A", "B"]),
         }),
       ),
     }),
@@ -799,7 +801,7 @@ export async function submitMatch(input: ActiveDraftInput & RequiredCommandMetad
   const result = await executeCommand<MatchCommandResult>("command_submit_match", {
     p_command_id: input.commandId, p_group_id: validated.groupId, p_draft_id: parsed.data.draftId ?? null,
     p_format: validated.format, p_team_a: validated.teamAUserIds, p_team_b: validated.teamBUserIds,
-    p_games: validated.games.map(({ teamAScore, teamBScore }) => ({ teamAScore, teamBScore })),
+    p_games: validated.games.map(({ gameNumber: _gameNumber, ...game }) => game),
   }, "Could not submit match.");
   scheduleReturnedRatingJob(result);
   return result;
@@ -828,7 +830,7 @@ export async function reviseMatch(input: z.infer<typeof reviseSchema>): Promise<
   const result = await executeCommand<MatchCommandResult>("command_revise_match", {
     p_command_id: parsed.data.commandId, p_match_id: parsed.data.matchId, p_expected_revision_id: parsed.data.expectedRevisionId,
     p_format: validated.format, p_team_a: validated.teamAUserIds,
-    p_team_b: validated.teamBUserIds, p_games: validated.games.map(({ teamAScore, teamBScore }) => ({ teamAScore, teamBScore })),
+    p_team_b: validated.teamBUserIds, p_games: validated.games.map(({ gameNumber: _gameNumber, ...game }) => game),
   }, "Could not revise match.");
   scheduleReturnedRatingJob(result);
   if (result.ok) revalidateMatchPaths(parsed.data.groupId, parsed.data.matchId);
@@ -842,7 +844,7 @@ export async function disputeAndReviseMatch(input: z.infer<typeof reviseSchema>)
   const result = await executeCommand<MatchCommandResult>("command_dispute_and_revise_match", {
     p_command_id: parsed.data.commandId, p_match_id: parsed.data.matchId, p_expected_revision_id: parsed.data.expectedRevisionId,
     p_format: validated.format, p_team_a: validated.teamAUserIds, p_team_b: validated.teamBUserIds,
-    p_games: validated.games.map(({ teamAScore, teamBScore }) => ({ teamAScore, teamBScore })),
+    p_games: validated.games.map(({ gameNumber: _gameNumber, ...game }) => game),
   }, "Could not correct match.");
   scheduleReturnedRatingJob(result);
   if (result.ok) revalidateMatchPaths(parsed.data.groupId, parsed.data.matchId);

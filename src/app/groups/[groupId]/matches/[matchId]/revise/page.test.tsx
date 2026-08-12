@@ -23,7 +23,7 @@ beforeEach(() => {
     id: "match-1", groupId: "group-1", groupName: "Club", revisionId: "revision-1", submittedByUserId: "alice",
     status: "pending_confirmation", submittedAt: "2026-08-07T20:00:00.000Z", format: "singles",
     teamA: [{ id: "alice", name: "Alice Tan", initials: "AT" }], teamB: [{ id: "bea", name: "Bea Rivera", initials: "BR" }],
-    games: [{ gameNumber: 1, teamAScore: 21, teamBScore: 18, winnerTeam: "A" }], winnerTeam: "A",
+    games: [{ gameNumber: 1, teamAScore: 21, teamBScore: 18, winnerTeam: "B" }], winnerTeam: "B",
     ratingSummary: "2 rating changes", canReview: true, canRevise: true,
   });
   mocks.listGroupPlayers.mockResolvedValue([
@@ -41,6 +41,7 @@ test("prefills the stored revision without an auxiliary text field", async () =>
   expect(html).toContain(">Alice<");
   expect(html).toContain(">Bea<");
   expect(html).not.toContain("textarea");
+  expect(html).toContain('aria-pressed="true" aria-label="Mark Set 1 Team B as winner"');
 });
 
 test("does not fetch group players when the match is inaccessible", async () => {

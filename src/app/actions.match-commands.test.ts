@@ -121,6 +121,21 @@ describe("transactional match actions", () => {
     });
   });
 
+  test("forwards the selected winner with a submitted game", async () => {
+    await actions.submitMatch({
+      commandId: "55555555-5555-4555-8555-555555555555",
+      groupId: "66666666-6666-4666-8666-666666666666",
+      format: "singles",
+      teamAUserIds: ["11111111-1111-4111-8111-111111111111"],
+      teamBUserIds: ["77777777-7777-4777-8777-777777777777"],
+      games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "B" }],
+    });
+
+    expect(supabaseMocks.rpc).toHaveBeenCalledWith("command_submit_match", expect.objectContaining({
+      p_games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "B" }],
+    }));
+  });
+
   test("returns a committed match when post-response rating dispatch fails", async () => {
     const scheduled: Array<() => void | Promise<void>> = [];
     nextServerMocks.after.mockImplementation((callback: () => void | Promise<void>) => {
@@ -135,7 +150,7 @@ describe("transactional match actions", () => {
       format: "singles",
       teamAUserIds: ["11111111-1111-4111-8111-111111111111"],
       teamBUserIds: ["77777777-7777-4777-8777-777777777777"],
-      games: [{ teamAScore: 21, teamBScore: 18 }],
+      games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "A" }],
     });
 
     expect(result).toEqual({
@@ -168,7 +183,7 @@ describe("transactional match actions", () => {
       format: "singles",
       teamAUserIds: ["11111111-1111-4111-8111-111111111111"],
       teamBUserIds: ["77777777-7777-4777-8777-777777777777"],
-      games: [{ teamAScore: 21, teamBScore: 18 }],
+      games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "A" }],
     });
 
     expect(result.ok).toBe(true);
@@ -189,7 +204,7 @@ describe("transactional match actions", () => {
       format: "singles",
       teamAUserIds: ["11111111-1111-4111-8111-111111111111"],
       teamBUserIds: ["77777777-7777-4777-8777-777777777777"],
-      games: [{ teamAScore: 21, teamBScore: 18 }],
+      games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "A" }],
     });
 
     expect(result.ok).toBe(true);
@@ -202,7 +217,7 @@ describe("transactional match actions", () => {
       format: "singles",
       teamAUserIds: ["11111111-1111-4111-8111-111111111111"],
       teamBUserIds: ["77777777-7777-4777-8777-777777777777"],
-      games: [{ teamAScore: 21, teamBScore: 18 }],
+      games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "A" }],
     } as Parameters<typeof actions.submitMatch>[0]);
 
     expect(result).toEqual({ ok: false, message: "A command ID is required." });
@@ -234,7 +249,7 @@ describe("transactional match actions", () => {
       format: "singles",
       teamAUserIds: [actor],
       teamBUserIds: [opponent],
-      games: [{ teamAScore: 21, teamBScore: 19 }],
+      games: [{ teamAScore: 21, teamBScore: 19, winnerTeam: "A" }],
     });
 
     expect(result).toEqual({
@@ -242,6 +257,38 @@ describe("transactional match actions", () => {
       data: { draftId: "33333333-3333-4333-8333-333333333333" },
     });
     expect(update).toHaveBeenCalledWith(expect.not.objectContaining({ created_by_user_id: expect.anything() }));
+  });
+
+  test("preserves the selected winner in an active draft", async () => {
+    const actor = "11111111-1111-4111-8111-111111111111";
+    const opponent = "77777777-7777-4777-8777-777777777777";
+    const groupId = "66666666-6666-4666-8666-666666666666";
+    const { service, update } = draftService({
+      draft: {
+        id: "33333333-3333-4333-8333-333333333333",
+        group_id: groupId,
+        created_by_user_id: actor,
+        team_a_user_ids: [actor],
+        team_b_user_ids: [opponent],
+        expires_at: "2099-01-01T00:00:00.000Z",
+        submitted_match_id: null,
+      },
+      activeMemberIds: [actor, opponent],
+    });
+    supabaseMocks.createSupabaseServiceClient.mockReturnValue(service);
+
+    await actions.saveActiveMatchDraft({
+      draftId: "33333333-3333-4333-8333-333333333333",
+      groupId,
+      format: "singles",
+      teamAUserIds: [actor],
+      teamBUserIds: [opponent],
+      games: [{ teamAScore: 21, teamBScore: 19, winnerTeam: "B" }],
+    });
+
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      games: [{ teamAScore: 21, teamBScore: 19, winnerTeam: "B" }],
+    }));
   });
 
   test("rejects a stale save after submission without deleting the submitted draft", async () => {
@@ -269,7 +316,7 @@ describe("transactional match actions", () => {
       format: "singles",
       teamAUserIds: [actor],
       teamBUserIds: [opponent],
-      games: [{ teamAScore: 21, teamBScore: 19 }],
+      games: [{ teamAScore: 21, teamBScore: 19, winnerTeam: "A" }],
     });
 
     expect(result).toEqual({ ok: false, message: "This active match was already submitted." });
@@ -302,7 +349,7 @@ describe("transactional match actions", () => {
       format: "singles",
       teamAUserIds: [actor],
       teamBUserIds: [opponent],
-      games: [{ teamAScore: 21, teamBScore: 19 }],
+      games: [{ teamAScore: 21, teamBScore: 19, winnerTeam: "A" }],
     });
 
     expect(result).toEqual({ ok: false, message: "This active match expired. Start a new match." });
@@ -337,7 +384,7 @@ describe("transactional match actions", () => {
       format: "singles",
       teamAUserIds: [teamAPlayer],
       teamBUserIds: [teamBPlayer],
-      games: [{ teamAScore: 21, teamBScore: 19 }],
+      games: [{ teamAScore: 21, teamBScore: 19, winnerTeam: "A" }],
     });
 
     expect(result).toEqual({
@@ -373,7 +420,7 @@ describe("transactional match actions", () => {
       format: "singles",
       teamAUserIds: [actor],
       teamBUserIds: [opponent],
-      games: [{ teamAScore: 21, teamBScore: 19 }],
+      games: [{ teamAScore: 21, teamBScore: 19, winnerTeam: "A" }],
     });
 
     expect(result).toEqual({
@@ -409,7 +456,7 @@ describe("transactional match actions", () => {
       format: "singles",
       teamAUserIds: ["11111111-1111-4111-8111-111111111111"],
       teamBUserIds: ["77777777-7777-4777-8777-777777777777"],
-      games: [{ teamAScore: 21, teamBScore: 18 }],
+      games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "A" }],
     });
 
     expect(result).toEqual({ ok: false, message: "This active match belongs to another group." });
@@ -442,6 +489,23 @@ describe("transactional match actions", () => {
     });
   });
 
+  test("forwards the selected winner with a revised game", async () => {
+    await actions.reviseMatch({
+      commandId: "88888888-8888-4888-8888-888888888888",
+      groupId: "66666666-6666-4666-8666-666666666666",
+      matchId: "22222222-2222-4222-8222-222222222222",
+      expectedRevisionId: "33333333-3333-4333-8333-333333333333",
+      format: "singles",
+      teamAUserIds: ["11111111-1111-4111-8111-111111111111"],
+      teamBUserIds: ["77777777-7777-4777-8777-777777777777"],
+      games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "B" }],
+    });
+
+    expect(supabaseMocks.rpc).toHaveBeenCalledWith("command_revise_match", expect.objectContaining({
+      p_games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "B" }],
+    }));
+  });
+
   test("atomically disputes and revises without free-text metadata", async () => {
     const result = await actions.disputeAndReviseMatch({
       commandId: "88888888-8888-4888-8888-888888888888",
@@ -451,7 +515,7 @@ describe("transactional match actions", () => {
       format: "singles",
       teamAUserIds: ["11111111-1111-4111-8111-111111111111"],
       teamBUserIds: ["77777777-7777-4777-8777-777777777777"],
-      games: [{ teamAScore: 21, teamBScore: 18 }],
+      games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "B" }],
     });
 
     expect(result.ok).toBe(true);
@@ -462,8 +526,42 @@ describe("transactional match actions", () => {
       p_format: "singles",
       p_team_a: ["11111111-1111-4111-8111-111111111111"],
       p_team_b: ["77777777-7777-4777-8777-777777777777"],
-      p_games: [{ teamAScore: 21, teamBScore: 18 }],
+      p_games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "B" }],
     });
+  });
+
+  test.each([
+    ["submission", () => actions.submitMatch({
+      commandId: "55555555-5555-4555-8555-555555555555",
+      groupId: "66666666-6666-4666-8666-666666666666",
+      format: "singles",
+      teamAUserIds: ["11111111-1111-4111-8111-111111111111"],
+      teamBUserIds: ["77777777-7777-4777-8777-777777777777"],
+      games: [{ teamAScore: 21, teamBScore: 18 }],
+    } as Parameters<typeof actions.submitMatch>[0])],
+    ["revision", () => actions.reviseMatch({
+      commandId: "88888888-8888-4888-8888-888888888888",
+      groupId: "66666666-6666-4666-8666-666666666666",
+      matchId: "22222222-2222-4222-8222-222222222222",
+      expectedRevisionId: "33333333-3333-4333-8333-333333333333",
+      format: "singles",
+      teamAUserIds: ["11111111-1111-4111-8111-111111111111"],
+      teamBUserIds: ["77777777-7777-4777-8777-777777777777"],
+      games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "C" }],
+    } as unknown as Parameters<typeof actions.reviseMatch>[0])],
+    ["dispute-and-revision", () => actions.disputeAndReviseMatch({
+      commandId: "88888888-8888-4888-8888-888888888888",
+      groupId: "66666666-6666-4666-8666-666666666666",
+      matchId: "22222222-2222-4222-8222-222222222222",
+      expectedRevisionId: "33333333-3333-4333-8333-333333333333",
+      format: "singles",
+      teamAUserIds: ["11111111-1111-4111-8111-111111111111"],
+      teamBUserIds: ["77777777-7777-4777-8777-777777777777"],
+      games: [{ teamAScore: 21, teamBScore: 18 }],
+    } as Parameters<typeof actions.disputeAndReviseMatch>[0])],
+  ])("rejects malformed winners before invoking the %s command", async (_command, run) => {
+    await expect(run()).resolves.toMatchObject({ ok: false });
+    expect(supabaseMocks.rpc).not.toHaveBeenCalled();
   });
 
   test("queues an admin retry with the supplied command ID", async () => {
