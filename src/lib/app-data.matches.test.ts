@@ -408,6 +408,15 @@ describe("stored match reads", () => {
     await expect(getGroupMatchDetail(GROUP_TWO, MATCH_NEW)).resolves.toBeNull();
   });
 
+  test("hydrates every rating-event field needed for a match result", async () => {
+    rowsByTable.rating_events = [{ revision_id: REVISION_NEW, user_id: SUBMITTER, sequence: "1", before_rating: "1500", before_rd: "350", after_rating: "1512", after_rd: "280" }];
+
+    await expect(getGroupMatchDetail(GROUP_ONE, MATCH_NEW)).resolves.toMatchObject({
+      teamA: [{ id: SUBMITTER, ratingChange: { previous: { rating: 1500, rd: 350 }, next: { rating: 1512, rd: 280 } } }],
+    });
+    expect(queriesByTable.rating_events[0].select).toHaveBeenCalledWith("revision_id, user_id, sequence, before_rating, before_rd, after_rating, after_rd");
+  });
+
   test("preserves authorization on every exported group reader", async () => {
     rowsByTable.group_memberships = [];
 

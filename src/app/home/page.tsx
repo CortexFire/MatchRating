@@ -4,8 +4,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { AvatarInitials } from "@/components/ui/avatar";
-import { PendingReviewList } from "@/components/match/pending-review-list";
-import { RecentMatchList } from "@/components/match/recent-match-list";
+import { MatchResultList } from "@/components/match/match-result-list";
 import { CurrentRankingList } from "@/components/rankings/current-ranking-list";
 import {
   getCurrentProfile,
@@ -13,22 +12,20 @@ import {
   listCurrentUserGroups,
   listCurrentUserMatches,
   listCurrentUserRankings,
-  listPendingReviewsForCurrentUser,
 } from "@/lib/app-data";
-import { toPendingReviewMatch } from "@/lib/matches/pending-review";
+import { toMatchResultSummary } from "@/lib/matches/match-result-summary";
 
 export default async function HomePage() {
-  const [profile, groups, activeDrafts, pendingReviews, latestMatches, currentRankings] = await Promise.all([
+  const [profile, groups, activeDrafts, latestMatches, currentRankings] = await Promise.all([
     getCurrentProfile(),
     listCurrentUserGroups(),
     listCurrentUserActiveMatchDrafts(),
-    listPendingReviewsForCurrentUser(),
     listCurrentUserMatches({ limit: 3 }),
     listCurrentUserRankings(),
   ]);
   const primaryGroup = groups[0];
   const primaryDraft = activeDrafts[0];
-  const pendingReviewMatches = pendingReviews.map(toPendingReviewMatch);
+  const latestMatchResults = latestMatches.slice(0, 3).map(toMatchResultSummary);
 
   return (
     <MobileShell
@@ -117,36 +114,21 @@ export default async function HomePage() {
         )}
       </section>
 
-      <section className="flex flex-col gap-3 rounded-lg border border-stroke bg-surface p-2 pb-4">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-bold text-ink pl-2">Pending review</h2>
-          </div>
-          <span className="rounded-full bg-surface px-3 py-1 text-xs font-semibold text-muted">
-            {pendingReviewMatches.length} waiting
-          </span>
+      <section className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-bold text-ink">Latest matches</h2>
+          {latestMatchResults.length ? (
+            <Link href="/matches/history" className="text-sm font-semibold text-action hover:underline">
+              View full history
+            </Link>
+          ) : null}
         </div>
-        <p className="px-2 text-sm leading-5 text-muted">
-          Confirmation is optional. Confirm if correct, dispute to correct it, or do nothing; matches are typically accepted automatically within 24–48 hours.
-        </p>
-
-        {pendingReviewMatches.length ? (
-          <PendingReviewList matches={pendingReviewMatches} />
+        {latestMatchResults.length ? (
+          <MatchResultList matches={latestMatchResults} />
         ) : (
-          <span className="flex flex-col items-center p-6">
-            <p className="text-sm text-muted">No matches pending review</p>
-          </span>
+          <p className="rounded-lg border border-stroke bg-surface p-4 text-sm text-muted">No matches recorded yet.</p>
         )}
       </section>
-
-      <RecentMatchList
-        matches={latestMatches}
-        historyHref="/matches/history"
-        title="Latest matches"
-        limit={3}
-        linkLabel="View full history"
-        showGroupName
-      />
 
       <CurrentRankingList rankings={currentRankings} />
     </MobileShell>

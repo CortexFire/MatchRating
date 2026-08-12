@@ -6,6 +6,10 @@ export type MatchPlayer = {
   id: string;
   name: string;
   initials: string;
+  ratingChange?: {
+    previous: { rating: number; rd: number };
+    next: { rating: number; rd: number };
+  };
 };
 
 export type MatchGame = {
@@ -44,7 +48,15 @@ export type MatchReadRows = {
   participants: Array<{ revision_id: string; user_id: string; team: TeamCode; slot: number }>;
   games: Array<{ revision_id: string; game_number: number; team_a_score: number; team_b_score: number; winner_team: TeamCode }>;
   confirmations: Array<{ revision_id: string; user_id: string; action: "confirmed" | "disputed"; created_at: string }>;
-  ratingEvents: Array<{ revision_id: string; user_id: string; before_rating: number | string; after_rating: number | string }>;
+  ratingEvents: Array<{
+    revision_id: string;
+    user_id: string;
+    sequence: number | string;
+    before_rating: number | string;
+    before_rd: number | string;
+    after_rating: number | string;
+    after_rd: number | string;
+  }>;
   profiles: Array<{ id: string; display_name: string }>;
 };
 
@@ -69,9 +81,32 @@ export function buildMatchViews(rows: MatchReadRows): MatchView[] {
         teamBScore: game.team_b_score,
         winnerTeam: game.winner_team,
       }));
+    const ratingEventsByUser = new Map<string, { first: MatchReadRows["ratingEvents"][number]; last: MatchReadRows["ratingEvents"][number] }>();
+    for (const event of rows.ratingEvents) {
+      if (event.revision_id !== revision.id) continue;
+      const current = ratingEventsByUser.get(event.user_id);
+      const sequence = Number(event.sequence);
+      if (!current) {
+        ratingEventsByUser.set(event.user_id, { first: event, last: event });
+      } else {
+        if (sequence < Number(current.first.sequence)) current.first = event;
+        if (sequence > Number(current.last.sequence)) current.last = event;
+      }
+    }
     const toPlayer = (participant: MatchReadRows["participants"][number]): MatchPlayer => {
       const name = profiles.get(participant.user_id) ?? "Unknown player";
-      return { id: participant.user_id, name, initials: initialsFor(name) };
+      const events = ratingEventsByUser.get(participant.user_id);
+      return {
+        id: participant.user_id,
+        name,
+        initials: initialsFor(name),
+        ...(events ? {
+          ratingChange: {
+            previous: { rating: Math.round(Number(events.first.before_rating)), rd: Math.round(Number(events.first.before_rd)) },
+            next: { rating: Math.round(Number(events.last.after_rating)), rd: Math.round(Number(events.last.after_rd)) },
+          },
+        } : {}),
+      };
     };
     const submitterTeam = revisionParticipants.find((participant) => participant.user_id === revision.submitted_by_user_id)?.team;
     const currentParticipant = revisionParticipants.find((participant) => participant.user_id === rows.currentUserId);

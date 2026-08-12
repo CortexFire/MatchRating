@@ -3,6 +3,7 @@ import Link from "next/link";
 import { cn } from "../../lib/utils";
 import { MatchReviewActions } from "./match-review-actions";
 import { Badge } from "@/components/ui/badge";
+import { DEFAULT_RATING } from "@/lib/ratings/glicko2";
 
 type TeamKey = "A" | "B";
 
@@ -10,6 +11,10 @@ type Player = {
   id: string;
   initials: string;
   name: string;
+  ratingChange?: {
+    previous: { rating: number; rd: number };
+    next: { rating: number; rd: number };
+  };
 };
 
 type Team = {
@@ -40,7 +45,6 @@ export type MatchResultConfirmationData = {
 export function MatchResultConfirmation({
   groupId,
   groupName,
-  reviewCount,
   canConfirm,
   canDispute,
   canRevise,
@@ -48,7 +52,6 @@ export function MatchResultConfirmation({
 }: {
   groupId: string;
   groupName: string;
-  reviewCount: number;
   canConfirm: boolean;
   canDispute: boolean;
   canRevise: boolean;
@@ -58,12 +61,7 @@ export function MatchResultConfirmation({
     <section className="flex min-h-full flex-col gap-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="max-w-[230px] text-[26px] font-bold leading-[30px] text-ink">
-            Match Result Confirmation
-          </h1>
-          <p className="mt-1 text-base leading-6 text-muted">
-            {reviewCount} matches to review
-          </p>
+          <h1 className="max-w-[230px] text-[26px] font-bold leading-[30px] text-ink">Match Result</h1>
         </div>
         <button
           type="button"
@@ -148,12 +146,24 @@ function TeamSummary({ team, winner }: { team: Team; winner: boolean }) {
             <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-app-bg text-sm font-bold text-ink">
               {player.initials}
             </span>
-            <span className="min-w-0 truncate text-lg font-bold leading-6 text-ink">
-              {player.name}
-            </span>
+            <div className="min-w-0">
+              <p className="truncate text-lg font-bold leading-6 text-ink">{player.name}</p>
+              <RatingChange ratingChange={player.ratingChange} />
+            </div>
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function RatingChange({ ratingChange }: { ratingChange?: Player["ratingChange"] }) {
+  const previous = ratingChange?.previous ?? DEFAULT_RATING;
+
+  return (
+    <div className="mt-1 text-xs leading-4 tabular-nums text-muted">
+      <p>Previous {previous.rating} ± {previous.rd}</p>
+      <p>{ratingChange ? `New ${ratingChange.next.rating} ± ${ratingChange.next.rd}` : "New Updating…"}</p>
     </div>
   );
 }

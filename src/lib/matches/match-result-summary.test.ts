@@ -1,14 +1,14 @@
 import { describe, expect, test } from "vitest";
-import { toPendingReviewMatch } from "./pending-review";
+import { toMatchResultSummary } from "./match-result-summary";
 import type { MatchView } from "./read-model";
 
-const baseMatch = {
+const match = {
   id: "match-1",
   groupId: "group-1",
   groupName: "Club",
   revisionId: "revision-1",
   submittedByUserId: "alice",
-  status: "pending_confirmation",
+  status: "confirmed",
   submittedAt: "2026-08-07T20:00:00.000Z",
   reviewStartedAt: "2026-08-07T20:00:00.000Z",
   disputeUntil: "2026-09-06T20:00:00.000Z",
@@ -22,14 +22,14 @@ const baseMatch = {
   ],
   winnerTeam: "B",
   ratingSummary: "2 rating changes",
-  canConfirm: true,
-  canDispute: true,
-  canRevise: false,
+  canConfirm: false,
+  canDispute: false,
+  canRevise: true,
 } satisfies MatchView;
 
-describe("toPendingReviewMatch", () => {
-  test("preserves the group route and formats the winning match summary", () => {
-    expect(toPendingReviewMatch(baseMatch)).toEqual({
+describe("toMatchResultSummary", () => {
+  test("creates the canonical linked winner result summary for any match status", () => {
+    expect(toMatchResultSummary(match)).toEqual({
       id: "match-1",
       groupId: "group-1",
       summary: "Bea def. Alice",
@@ -39,16 +39,9 @@ describe("toPendingReviewMatch", () => {
     });
   });
 
-  test("uses an em dash when a pending match has no games", () => {
-    expect(
-      toPendingReviewMatch({
-        ...baseMatch,
-        format: "singles",
-        games: [],
-      }),
-    ).toMatchObject({
+  test("uses an em dash when a result has no games", () => {
+    expect(toMatchResultSummary({ ...match, games: [] })).toMatchObject({
       score: "—",
-      format: "Singles",
     });
   });
 });

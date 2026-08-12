@@ -1,6 +1,6 @@
 import type { MatchView } from "./read-model";
 
-export type PendingReviewMatch = {
+export type MatchResultSummary = {
   id: string;
   groupId: string;
   summary: string;
@@ -9,7 +9,7 @@ export type PendingReviewMatch = {
   format: string;
 };
 
-export function toPendingReviewMatch(match: MatchView): PendingReviewMatch {
+export function toMatchResultSummary(match: MatchView): MatchResultSummary {
   const winning = match.winnerTeam === "A" ? match.teamA : match.teamB;
   const losing = match.winnerTeam === "A" ? match.teamB : match.teamA;
   const winningGames = match.games.filter(
