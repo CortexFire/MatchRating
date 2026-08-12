@@ -11,6 +11,11 @@ import { signInAsDemoPlayer } from "./demo-auth";
 
 test.setTimeout(60_000);
 
+const UUID_PATH_SEGMENT = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const GROUP_URL_PATTERN = new RegExp(`/groups/${UUID_PATH_SEGMENT}$`, "i");
+const GROUP_ID_PATH_PATTERN = new RegExp(`^/groups/(${UUID_PATH_SEGMENT})$`, "i");
+const JOIN_URL_PATTERN = new RegExp(`^/join/${UUID_PATH_SEGMENT}$`, "i");
+
 function projectContextOptions(testInfo: TestInfo): BrowserContextOptions {
   const projectUse = testInfo.project.use as typeof testInfo.project.use & Pick<BrowserContextOptions, "screen">;
   const { baseURL, viewport, screen, userAgent, deviceScaleFactor, isMobile, hasTouch } = projectUse;
@@ -29,10 +34,10 @@ async function createGroupAndInvite(page: Page, testInfo: TestInfo) {
   await page.goto("/groups/new");
   await page.getByLabel("Group name").fill(groupName);
   await page.getByRole("button", { name: "Create group" }).click();
-  await expect(page).toHaveURL(/\/groups\/[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL(GROUP_URL_PATTERN);
 
   const groupPath = new URL(page.url()).pathname;
-  const groupId = groupPath.match(/^\/groups\/([0-9a-f-]{36})$/i)?.[1];
+  const groupId = groupPath.match(GROUP_ID_PATH_PATTERN)?.[1];
   if (!groupId) throw new Error(`Expected a new group URL, received ${page.url()}`);
 
   await page.getByText("Members (1)", { exact: true }).click();
@@ -47,7 +52,7 @@ async function createGroupAndInvite(page: Page, testInfo: TestInfo) {
       : `${new URL(inviteOrigin).protocol}//${displayedInviteUrl}`,
   );
   expect(inviteUrl.origin).toBe(inviteOrigin);
-  expect(inviteUrl.pathname).toMatch(/^\/join\/[0-9a-f-]{36}$/i);
+  expect(inviteUrl.pathname).toMatch(JOIN_URL_PATTERN);
 
   return { groupId, groupName, inviteUrl };
 }
