@@ -51,6 +51,23 @@ describe("Glicko-2 rating engine", () => {
     );
   });
 
+  it("uses the selected Team B winner when a historical score favors Team A", () => {
+    const rebuilt = rebuildGroupRatingsFromMatches([
+      {
+        id: "m-score-conflict",
+        revisionId: "r-score-conflict",
+        submittedAt: "2026-01-01T00:00:00.000Z",
+        format: "singles",
+        teamAUserIds: ["alice"],
+        teamBUserIds: ["bea"],
+        games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "B" }],
+      },
+    ]);
+
+    expect(rebuilt.ratings.get("alice")?.rating).toBeLessThan(DEFAULT_RATING.rating);
+    expect(rebuilt.ratings.get("bea")?.rating).toBeGreaterThan(DEFAULT_RATING.rating);
+  });
+
   it("rebuilds isolated group ratings from active match history", () => {
     const rebuilt = rebuildGroupRatingsFromMatches([
       {
@@ -60,7 +77,7 @@ describe("Glicko-2 rating engine", () => {
         format: "singles",
         teamAUserIds: ["alice"],
         teamBUserIds: ["bea"],
-        games: [{ teamAScore: 21, teamBScore: 18 }],
+        games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "A" }],
       },
       {
         id: "m2",
@@ -70,9 +87,9 @@ describe("Glicko-2 rating engine", () => {
         teamAUserIds: ["alice", "cory"],
         teamBUserIds: ["bea", "dev"],
         games: [
-          { teamAScore: 19, teamBScore: 21 },
-          { teamAScore: 21, teamBScore: 17 },
-          { teamAScore: 21, teamBScore: 15 },
+          { teamAScore: 19, teamBScore: 21, winnerTeam: "B" },
+          { teamAScore: 21, teamBScore: 17, winnerTeam: "A" },
+          { teamAScore: 21, teamBScore: 15, winnerTeam: "A" },
         ],
       },
     ]);

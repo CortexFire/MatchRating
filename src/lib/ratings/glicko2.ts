@@ -30,7 +30,7 @@ export type HistoricalMatch = {
   format: MatchFormat;
   teamAUserIds: string[];
   teamBUserIds: string[];
-  games: Array<{ teamAScore: number; teamBScore: number }>;
+  games: Array<{ teamAScore: number; teamBScore: number; winnerTeam: "A" | "B" }>;
 };
 
 export type RatingEvent = {

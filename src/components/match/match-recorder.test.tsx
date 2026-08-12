@@ -729,6 +729,23 @@ describe("MatchRecorder", () => {
     expect(screen.getByRole("button", { name: "Mark Set 1 Team B as winner" }).getAttribute("aria-pressed")).toBe("true");
   });
 
+  test("uses Team A for a legacy tied-score initial recording without a selected winner", () => {
+    render(
+      <MatchRecorder
+        players={matchRecorderPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 12, teamBScore: 12 }],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Mark Set 1 Team A as winner" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Mark Set 1 Team B as winner" }).getAttribute("aria-pressed")).toBe("false");
+  });
+
   test("retains a conflicting selected winner in autosave and submit payloads", async () => {
     vi.useFakeTimers();
     const saveActiveMatchDraft = vi.fn(async () => ({ ok: true as const, data: { draftId: "draft-1" } }));

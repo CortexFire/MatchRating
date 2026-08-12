@@ -21,6 +21,30 @@ describe("active match drafts", () => {
     expect(draft.games).toEqual([{ teamAScore: 12, teamBScore: 12, winnerTeam: "B" }]);
   });
 
+  test("rejects drafts with a missing game winner", () => {
+    expect(() =>
+      validateActiveMatchDraft({
+        groupId,
+        format: "singles",
+        teamAUserIds: [alice],
+        teamBUserIds: [bea],
+        games: [{ teamAScore: 12, teamBScore: 12 }],
+      } as unknown as Parameters<typeof validateActiveMatchDraft>[0]),
+    ).toThrow(/winnerTeam/);
+  });
+
+  test("rejects drafts with an invalid game winner", () => {
+    expect(() =>
+      validateActiveMatchDraft({
+        groupId,
+        format: "singles",
+        teamAUserIds: [alice],
+        teamBUserIds: [bea],
+        games: [{ teamAScore: 12, teamBScore: 12, winnerTeam: "C" }],
+      } as unknown as Parameters<typeof validateActiveMatchDraft>[0]),
+    ).toThrow(/winnerTeam/);
+  });
+
   test("rejects incomplete and duplicate player drafts", () => {
     expect(() =>
       validateActiveMatchDraft(
