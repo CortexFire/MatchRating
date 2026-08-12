@@ -7,7 +7,7 @@ import { GroupMembersDisclosure } from "./group-members-disclosure";
 
 const players: AppPlayer[] = [
   { id: "alice", name: "Alice Tan", initials: "AT", role: "Owner", rating: 1640, rd: 72, rank: 1, gamesPlayed: 18, status: "Active" },
-  { id: "bea", name: "Bea Rivera", initials: "BR", role: "Member", rating: 1580, rd: 81, rank: 2, gamesPlayed: 14, status: "Active" },
+  { id: "bea", name: "Bea Rivera", initials: "BR", role: "Guest", rating: 1580, rd: 81, rank: 2, gamesPlayed: 14, status: "Active", isGuest: true },
 ];
 
 describe("GroupMembersDisclosure", () => {
@@ -24,6 +24,7 @@ describe("GroupMembersDisclosure", () => {
     expect(screen.getByText("Alice Tan")).toBeTruthy();
     expect(screen.getByText("1640")).toBeTruthy();
     expect(screen.getByText("Bea Rivera")).toBeTruthy();
+    expect(screen.getByText("Guest")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Invite members" }).getAttribute("href")).toBe("/groups/group-1/invite");
   });
 
