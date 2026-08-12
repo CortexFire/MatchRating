@@ -34,14 +34,65 @@ describe("toMatchResultSummary", () => {
       groupId: "group-1",
       summary: "Bea def. Alice",
       details: "Aug 7, 2026, 1:00 PM @ Club",
+      submittedAt: "Aug 7, 2026, 1:00 PM",
+      groupName: "Club",
       score: "2 - 1",
       format: "Doubles",
     });
+  });
+
+  test("provides the actual one-set score in winner-first order when team A wins", () => {
+    expect(
+      toMatchResultSummary({
+        ...match,
+        games: [
+          {
+            gameNumber: 1,
+            teamAScore: 21,
+            teamBScore: 18,
+            winnerTeam: "A",
+          },
+        ],
+        winnerTeam: "A",
+      }),
+    ).toMatchObject({
+      summary: "Alice def. Bea",
+      score: "1 - 0",
+      singleGameScore: "21 - 18",
+    });
+  });
+
+  test("provides the actual one-set score in winner-first order when team B wins", () => {
+    expect(
+      toMatchResultSummary({
+        ...match,
+        games: [
+          {
+            gameNumber: 1,
+            teamAScore: 18,
+            teamBScore: 21,
+            winnerTeam: "B",
+          },
+        ],
+        winnerTeam: "B",
+      }),
+    ).toMatchObject({
+      summary: "Bea def. Alice",
+      score: "1 - 0",
+      singleGameScore: "21 - 18",
+    });
+  });
+
+  test("does not provide a single-game score for multi-set results", () => {
+    expect(toMatchResultSummary(match)).not.toHaveProperty("singleGameScore");
   });
 
   test("uses an em dash when a result has no games", () => {
     expect(toMatchResultSummary({ ...match, games: [] })).toMatchObject({
       score: "—",
     });
+    expect(toMatchResultSummary({ ...match, games: [] })).not.toHaveProperty(
+      "singleGameScore",
+    );
   });
 });
