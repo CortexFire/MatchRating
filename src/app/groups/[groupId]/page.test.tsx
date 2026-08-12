@@ -102,6 +102,14 @@ describe("GroupPage", () => {
     expect(html).toContain("Confirmed");
     expect(html).toContain("Disputed");
     expect(html).toContain("Members (1)");
+    const ratingStatusPosition = html.indexOf("Match saved. Ratings updating");
+    const membersPosition = html.indexOf("Members (1)");
+    const activeMatchesPosition = html.indexOf("Active matches");
+    const recentMatchesPosition = html.indexOf("Recent Matches");
+
+    expect(ratingStatusPosition).toBeLessThan(membersPosition);
+    expect(membersPosition).toBeLessThan(activeMatchesPosition);
+    expect(activeMatchesPosition).toBeLessThan(recentMatchesPosition);
     expect(html).toContain('href="/groups/11111111-1111-4111-8111-111111111111/invite"');
     expect(html).not.toContain('href="/groups/11111111-1111-4111-8111-111111111111/members"');
     expect(html).not.toContain('href="/groups/11111111-1111-4111-8111-111111111111/rankings"');
