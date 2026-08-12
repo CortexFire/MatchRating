@@ -26,10 +26,12 @@ beforeEach(() => {
   }]);
 });
 
-test("renders stored group matches", async () => {
+test("renders stored group matches with participant headings and no accepted pill", async () => {
   const html = renderToStaticMarkup(await HistoryPage({ params: Promise.resolve({ groupId: "group-1" }) }));
 
   expect(html).toContain("Alice Tan vs Bea Rivera");
+  expect(html).not.toContain(">singles<");
+  expect(html).not.toContain(">Accepted<");
   expect(html).toContain('href="/groups/group-1/matches/match-1"');
   expect(html).not.toContain("No matches recorded yet");
 });

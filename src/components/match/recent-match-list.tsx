@@ -24,7 +24,7 @@ export function RecentMatchList({
       {recentMatches.length ? (
         <div className="flex flex-col gap-2">
           {recentMatches.map((match) => (
-            <MatchRow key={match.id} match={match} />
+            <MatchRow key={match.id} match={match} showRatingSummary={false} />
           ))}
         </div>
       ) : (

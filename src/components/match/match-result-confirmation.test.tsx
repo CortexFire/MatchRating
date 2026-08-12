@@ -98,7 +98,7 @@ describe("MatchResultConfirmation", () => {
     expect(html).toContain("Dispute");
     expect(html).not.toContain(">Confirm<");
   });
-  test("renders completed and pending player rating changes", () => {
+  test("renders compact completed and pending player rating changes without deviations", () => {
     const html = renderToStaticMarkup(
       <MatchResultConfirmation
         groupId="demo"
@@ -114,9 +114,15 @@ describe("MatchResultConfirmation", () => {
       />,
     );
 
-    expect(html).toContain("Previous 1488 ± 211");
-    expect(html).toContain("New 1512 ± 179");
-    expect(html).toContain("Previous 1777 ± 222");
-    expect(html).toContain("New Updating…");
+    expect(html).toContain("1488 → 1512");
+    expect(html).toContain("1777 → …");
+    expect(html).toContain("whitespace-nowrap");
+    expect(html).not.toContain("Previous");
+    expect(html).not.toContain("New 1512");
+    expect(html).not.toContain("±");
+    expect(html).not.toContain("211");
+    expect(html).not.toContain("179");
+    expect(html).not.toContain("222");
+    expect(html).not.toContain("Updating…");
   });
 });
