@@ -229,14 +229,45 @@ describe("stored match reads", () => {
       const players = await listGroupPlayers(GROUP_ONE);
 
       expect(players.map(({ id, status }) => ({ id, status }))).toEqual([
-        { id: OPPONENT, status: "Inactive" },
         { id: SUBMITTER, status: "Active" },
+        { id: OPPONENT, status: "Inactive" },
       ]);
       expect(queriesByTable.profiles[0].select).toHaveBeenCalledWith("id, display_name, is_guest, active_until");
       expect(from.mock.calls.filter(([table]) => table === "matches" || table === "match_participants")).toHaveLength(0);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  test("ranks every member by displayed rating regardless of membership row order", async () => {
+    const unplayedId = "33333333-3333-4333-8333-333333333333";
+    const ratedAtDefaultId = "44444444-4444-4444-8444-444444444444";
+    rowsByTable.group_memberships = [
+      { id: "membership-1", group_id: GROUP_ONE, user_id: unplayedId, role: "member", status: "active", left_at: null },
+      { id: "membership-2", group_id: GROUP_ONE, user_id: OPPONENT, role: "member", status: "active", left_at: null },
+      { id: "membership-3", group_id: GROUP_ONE, user_id: SUBMITTER, role: "owner", status: "active", left_at: null },
+      { id: "membership-4", group_id: GROUP_ONE, user_id: ratedAtDefaultId, role: "member", status: "active", left_at: null },
+    ];
+    rowsByTable.profiles = [
+      { id: unplayedId, display_name: "Charlie Unplayed", is_guest: false, active_until: null },
+      { id: OPPONENT, display_name: "Zoe Low", is_guest: false, active_until: null },
+      { id: SUBMITTER, display_name: "Alice High", is_guest: false, active_until: null },
+      { id: ratedAtDefaultId, display_name: "Bea Rated", is_guest: false, active_until: null },
+    ];
+    rowsByTable.group_rating_states = [
+      { group_id: GROUP_ONE, user_id: SUBMITTER, rating: "1600.4", rd: "120", rank: 1, games_played: 3 },
+      { group_id: GROUP_ONE, user_id: ratedAtDefaultId, rating: "1500.2", rd: "140", rank: 2, games_played: 1 },
+      { group_id: GROUP_ONE, user_id: OPPONENT, rating: "1400.4", rd: "160", rank: 3, games_played: 2 },
+    ];
+
+    const players = await listGroupPlayers(GROUP_ONE);
+
+    expect(players.map(({ id, rating, rank }) => ({ id, rating, rank }))).toEqual([
+      { id: SUBMITTER, rating: 1600, rank: 1 },
+      { id: ratedAtDefaultId, rating: 1500, rank: 2 },
+      { id: unplayedId, rating: 1500, rank: 3 },
+      { id: OPPONENT, rating: 1400, rank: 4 },
+    ]);
   });
 
   test("lists only pending matches the current user can still review", async () => {

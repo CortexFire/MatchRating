@@ -77,7 +77,6 @@ type RatingRow = {
   user_id: string;
   rating: number | string;
   rd: number | string;
-  rank: number | null;
   games_played: number;
 };
 
@@ -562,7 +561,7 @@ export async function listGroupPlayers(groupId: string): Promise<AppPlayer[]> {
     service.from("profiles").select("id, display_name, is_guest, active_until").in("id", userIds),
     service
       .from("group_rating_states")
-      .select("user_id, rating, rd, rank, games_played")
+      .select("user_id, rating, rd, games_played")
       .eq("group_id", groupId)
       .in("user_id", userIds),
   ]);
@@ -578,29 +577,30 @@ export async function listGroupPlayers(groupId: string): Promise<AppPlayer[]> {
   const profilesById = new Map((profiles ?? []).map((profile: ProfileRow) => [profile.id, profile]));
   const ratingsByUserId = new Map((ratings ?? []).map((rating: RatingRow) => [rating.user_id, rating]));
 
-  return memberRows
-    .map((membership, index) => {
-      const profile = profilesById.get(membership.user_id);
-      const rating = ratingsByUserId.get(membership.user_id);
-      const name = profile?.display_name ?? "Unknown player";
+  const players = memberRows.map((membership) => {
+    const profile = profilesById.get(membership.user_id);
+    const rating = ratingsByUserId.get(membership.user_id);
+    const name = profile?.display_name ?? "Unknown player";
 
-      return {
-        id: membership.user_id,
-        name,
-        initials: initialsFor(name),
-        role: displayRole(membership.role),
-        rating: Math.round(Number(rating?.rating ?? 1500)),
-        rd: Math.round(Number(rating?.rd ?? 350)),
-        rank: rating?.rank ?? index + 1,
-        gamesPlayed: rating?.games_played ?? 0,
-        status:
-          profile?.active_until && new Date(profile.active_until).getTime() >= Date.now()
-            ? "Active"
-            : "Inactive",
-        isGuest: profile?.is_guest ?? false,
-      } satisfies AppPlayer;
-    })
-    .sort((a, b) => a.rank - b.rank || b.rating - a.rating || a.name.localeCompare(b.name));
+    return {
+      id: membership.user_id,
+      name,
+      initials: initialsFor(name),
+      role: displayRole(membership.role),
+      rating: Math.round(Number(rating?.rating ?? 1500)),
+      rd: Math.round(Number(rating?.rd ?? 350)),
+      gamesPlayed: rating?.games_played ?? 0,
+      status:
+        profile?.active_until && new Date(profile.active_until).getTime() >= Date.now()
+          ? "Active"
+          : "Inactive",
+      isGuest: profile?.is_guest ?? false,
+    } satisfies Omit<AppPlayer, "rank">;
+  });
+
+  return players
+    .sort((a, b) => b.rating - a.rating || a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+    .map((player, index) => ({ ...player, rank: index + 1 }));
 }
 
 async function ensureCurrentUserCanReadGroup(groupId: string) {
