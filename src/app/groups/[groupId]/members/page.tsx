@@ -4,8 +4,9 @@ import Link from "next/link";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { PlayerRow } from "@/components/app/player-row";
 import { ScreenHeader } from "@/components/app/screen-header";
+import { RatingRebuildStatus } from "@/components/match/rating-rebuild-status";
 import { Button } from "@/components/ui/button";
-import { getGroup, listGroupPlayers } from "@/lib/app-data";
+import { getGroup, getGroupRatingRebuildStatus, listGroupPlayers } from "@/lib/app-data";
 
 export default async function MembersPage({
   params,
@@ -13,7 +14,11 @@ export default async function MembersPage({
   params: Promise<{ groupId: string }>;
 }) {
   const { groupId } = await params;
-  const [group, players] = await Promise.all([getGroup(groupId), listGroupPlayers(groupId)]);
+  const [group, players, ratingStatus] = await Promise.all([
+    getGroup(groupId),
+    listGroupPlayers(groupId),
+    getGroupRatingRebuildStatus(groupId),
+  ]);
   const recordHref = `/groups/${groupId}/matches/new`;
   const activePlayerCount = players.filter((player) => player.status === "Active").length;
 
@@ -28,6 +33,13 @@ export default async function MembersPage({
             <Link href={`/groups/${groupId}/invite`}>Invite Members</Link>
           </Button>
         }
+      />
+      <RatingRebuildStatus
+        key={ratingStatus.id ?? "no-rating-job"}
+        groupId={groupId}
+        jobId={ratingStatus.id}
+        status={ratingStatus.status}
+        canRetry={ratingStatus.canRetry}
       />
       {players.length ? (
         <section className="flex flex-col gap-2">

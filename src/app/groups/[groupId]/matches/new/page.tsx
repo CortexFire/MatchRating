@@ -4,7 +4,14 @@ import Link from "next/link";
 import { createGuestPlayers, saveActiveMatchDraft, submitMatch } from "@/app/actions";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { MatchRecorder, type InitialMatchRecording } from "@/components/match/match-recorder";
-import { getActiveMatchDraft, getGroup, listCurrentUserGroups, listGroupPlayers } from "@/lib/app-data";
+import { RatingRebuildStatus } from "@/components/match/rating-rebuild-status";
+import {
+  getActiveMatchDraft,
+  getGroup,
+  getGroupRatingRebuildStatus,
+  listCurrentUserGroups,
+  listGroupPlayers,
+} from "@/lib/app-data";
 import { type MatchFormat } from "@/lib/matches/validation";
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
@@ -19,17 +26,26 @@ export default async function NewMatchPage({
   const { groupId } = await params;
   const resolvedSearchParams = await searchParams;
   const draftId = firstValue(resolvedSearchParams.draftId);
-  const [group, groups, players, activeDraft] = await Promise.all([
+  const [group, groups, players, activeDraft, ratingStatus] = await Promise.all([
     getGroup(groupId),
     listCurrentUserGroups(),
     listGroupPlayers(groupId),
     draftId ? getActiveMatchDraft(draftId) : Promise.resolve(null),
+    getGroupRatingRebuildStatus(groupId),
   ]);
   const matchingDraft = activeDraft?.groupId === groupId ? activeDraft : null;
   const initialMatch = matchingDraft?.initialMatch ?? parseInitialMatch(resolvedSearchParams, players.map((player) => player.id));
 
   return (
     <MobileShell active="Record" recordHref={`/groups/${groupId}/matches/new`}>
+      <RatingRebuildStatus
+        key={ratingStatus.id ?? "no-rating-job"}
+        groupId={groupId}
+        jobId={ratingStatus.id}
+        status={ratingStatus.status}
+        canRetry={ratingStatus.canRetry}
+        showPending={false}
+      />
       {draftId && !matchingDraft ? (
         <section className="flex min-h-full flex-col gap-4">
           <h1 className="text-[22px] font-bold leading-7 text-ink">Active match expired</h1>

@@ -20,10 +20,21 @@ test("records, corrects, confirms, and reads one stored match across two users",
   await alice.getByLabel("Set 1 Team A score").fill("21");
   await alice.getByLabel("Set 1 Team B score").fill("18");
   await expect(alice.getByText("Draft saved.")).toBeVisible();
+
+  await signInAsDemoPlayer(bea, "bea@demo.matchrating.app");
+  await bea.goto(`/groups/${DEMO_GROUP_ID}/members`);
+  const aliceMemberRow = bea.getByRole("article").filter({ hasText: "Alice Tan" });
+  await expect(aliceMemberRow).toBeVisible();
+  const aliceRatingBefore = await aliceMemberRow.textContent();
+
   await alice.getByRole("button", { name: "Submit" }).click();
   await expect(alice.getByText("Match saved. Ratings updating…")).toBeVisible();
 
-  await signInAsDemoPlayer(bea, "bea@demo.matchrating.app");
+  await expect.poll(
+    () => aliceMemberRow.textContent(),
+    { timeout: 30_000, message: "the open members list should refresh after ratings finish" },
+  ).not.toBe(aliceRatingBefore);
+
   await bea.goto("/matches/review");
   await bea.getByRole("link", { name: /Alice def\. Bea/i }).first().click();
   await expect(bea).toHaveURL(new RegExp(`/groups/${DEMO_GROUP_ID}/matches/[^/]+$`));

@@ -194,7 +194,7 @@ describe("transactional match actions", () => {
     errorSpy.mockRestore();
   });
 
-  test("does not revalidate server pages before the retired draft recorder shows submission success", async () => {
+  test("invalidates rating-bearing group views without revalidating the active recorder", async () => {
     const groupId = "66666666-6666-4666-8666-666666666666";
     nextServerMocks.after.mockImplementation(() => undefined);
 
@@ -208,7 +208,10 @@ describe("transactional match actions", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(nextCacheMocks.revalidatePath).not.toHaveBeenCalled();
+    expect(nextCacheMocks.revalidatePath).toHaveBeenCalledWith(`/groups/${groupId}`);
+    expect(nextCacheMocks.revalidatePath).toHaveBeenCalledWith(`/groups/${groupId}/members`);
+    expect(nextCacheMocks.revalidatePath).toHaveBeenCalledWith(`/groups/${groupId}/rankings`);
+    expect(nextCacheMocks.revalidatePath).not.toHaveBeenCalledWith(`/groups/${groupId}/matches/new`);
   });
 
   test("rejects match submission without a client command ID", async () => {
@@ -504,6 +507,12 @@ describe("transactional match actions", () => {
     expect(supabaseMocks.rpc).toHaveBeenCalledWith("command_revise_match", expect.objectContaining({
       p_games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "B" }],
     }));
+    expect(nextCacheMocks.revalidatePath).toHaveBeenCalledWith(
+      "/groups/66666666-6666-4666-8666-666666666666/members",
+    );
+    expect(nextCacheMocks.revalidatePath).toHaveBeenCalledWith(
+      "/groups/66666666-6666-4666-8666-666666666666/rankings",
+    );
   });
 
   test("atomically disputes and revises without free-text metadata", async () => {

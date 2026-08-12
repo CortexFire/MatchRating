@@ -429,6 +429,7 @@ export function MatchRecorder({
         const result = await submitMatchAction(input);
         if (result.ok) {
           completeSubmission("Match saved. Ratings updating…");
+          router.refresh();
         } else {
           submissionInProgress.current = false;
           setIsSubmitting(false);

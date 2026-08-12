@@ -20,7 +20,10 @@ vi.mock("@/lib/app-data", () => ({
   listGroupMatches: mocks.listGroupMatches,
   listGroupPlayers: mocks.listGroupPlayers,
 }));
-vi.mock("next/navigation", () => ({ notFound: mocks.notFound }));
+vi.mock("next/navigation", () => ({
+  notFound: mocks.notFound,
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
 
 const groupId = "11111111-1111-4111-8111-111111111111";
 const group = {

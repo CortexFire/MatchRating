@@ -4,12 +4,14 @@ import ReviseMatchPage from "./page";
 
 const mocks = vi.hoisted(() => ({
   getGroupMatchDetail: vi.fn(),
+  getGroupRatingRebuildStatus: vi.fn(),
   listGroupPlayers: vi.fn(),
   notFound: vi.fn(() => { throw new Error("NEXT_NOT_FOUND"); }),
 }));
 
 vi.mock("@/lib/app-data", () => ({
   getGroupMatchDetail: mocks.getGroupMatchDetail,
+  getGroupRatingRebuildStatus: mocks.getGroupRatingRebuildStatus,
   listGroupPlayers: mocks.listGroupPlayers,
 }));
 vi.mock("next/navigation", () => ({
@@ -30,6 +32,21 @@ beforeEach(() => {
     { id: "alice", name: "Alice Tan", initials: "AT", role: "Member", rating: 1500, rd: 350, rank: 1, gamesPlayed: 1, status: "Active" },
     { id: "bea", name: "Bea Rivera", initials: "BR", role: "Member", rating: 1500, rd: 350, rank: 2, gamesPlayed: 1, status: "Active" },
   ]);
+  mocks.getGroupRatingRebuildStatus.mockResolvedValue({ id: null, status: null, canRetry: false });
+});
+
+test("surfaces a failed rating rebuild on the revision route", async () => {
+  mocks.getGroupRatingRebuildStatus.mockResolvedValue({
+    id: "44444444-4444-4444-8444-444444444444",
+    status: "failed",
+    canRetry: false,
+  });
+
+  const html = renderToStaticMarkup(await ReviseMatchPage({
+    params: Promise.resolve({ groupId: "group-1", matchId: "match-1" }),
+  }));
+
+  expect(html).toContain("Match saved, but ratings need attention.");
 });
 
 test("prefills the stored revision without an auxiliary text field", async () => {

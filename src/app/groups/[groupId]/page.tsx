@@ -37,6 +37,7 @@ export default async function GroupPage({
     <MobileShell active="Group" recordHref={recordHref}>
       <ScreenHeader title={group.name} backHref="/groups" />
       <RatingRebuildStatus
+        key={ratingStatus.id ?? "no-rating-job"}
         groupId={groupId}
         jobId={ratingStatus.id}
         status={ratingStatus.status}
