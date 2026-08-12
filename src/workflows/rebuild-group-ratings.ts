@@ -10,7 +10,7 @@ type RebuildInput = {
   history: HistoricalMatch[];
 };
 
-async function loadRebuildInput(jobId: string, dispatchToken: string): Promise<RebuildInput | null> {
+export async function loadRebuildInput(jobId: string, dispatchToken: string): Promise<RebuildInput | null> {
   "use step";
   const { data, error } = await createSupabaseServiceClient().rpc("begin_rating_rebuild", {
     p_job_id: jobId,
@@ -20,13 +20,17 @@ async function loadRebuildInput(jobId: string, dispatchToken: string): Promise<R
   return data as RebuildInput | null;
 }
 
-async function calculateProjection(input: RebuildInput) {
+export async function calculateProjection(input: RebuildInput) {
   "use step";
-  const rebuilt = rebuildGroupRatingsFromMatches(input.history);
-  return toRatingProjection(rebuilt.ratings, rebuilt.events);
+  try {
+    const rebuilt = rebuildGroupRatingsFromMatches(input.history);
+    return toRatingProjection(rebuilt.ratings, rebuilt.events);
+  } catch (error) {
+    throw new FatalError(errorMessage(error));
+  }
 }
 
-async function applyProjection(input: RebuildInput, projection: Awaited<ReturnType<typeof calculateProjection>>) {
+export async function applyProjection(input: RebuildInput, projection: Awaited<ReturnType<typeof calculateProjection>>) {
   "use step";
   const { data, error } = await createSupabaseServiceClient().rpc("apply_rating_rebuild", {
     p_job_id: input.jobId,
@@ -47,6 +51,14 @@ export async function markFailed(jobId: string, message: string) {
   if (error) throw error;
 }
 
+function errorMessage(error: unknown): string {
+  if (typeof error !== "object" || error === null) return "Rating rebuild failed";
+
+  const { message, cause } = error as { message?: unknown; cause?: unknown };
+  if (typeof message === "string" && message.length > 0) return message;
+  return errorMessage(cause);
+}
+
 export async function rebuildGroupRatingsWorkflow(jobId: string, dispatchToken: string) {
   "use workflow";
 
@@ -60,7 +72,7 @@ export async function rebuildGroupRatingsWorkflow(jobId: string, dispatchToken: 
       if (applied.status === "completed") return applied;
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Rating rebuild failed";
+    const message = errorMessage(error);
     await markFailed(jobId, message);
     throw new FatalError(message);
   }
