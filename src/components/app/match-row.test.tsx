@@ -12,14 +12,17 @@ const match: AppMatchSummary = {
   format: "singles",
   status: "confirmed",
   submittedAt: "2026-08-07T20:00:00.000Z",
+  reviewStartedAt: "2026-08-07T20:00:00.000Z",
+  disputeUntil: "2026-09-06T20:00:00.000Z",
   submittedByUserId: "11111111-1111-4111-8111-111111111111",
   teamA: [{ id: "11111111-1111-4111-8111-111111111111", name: "Alice Tan", initials: "AT" }],
   teamB: [{ id: "22222222-2222-4222-8222-222222222222", name: "Bea Rivera", initials: "BR" }],
   games: [{ gameNumber: 1, teamAScore: 21, teamBScore: 18, winnerTeam: "A" }],
   winnerTeam: "A",
   ratingSummary: "Ratings applied",
-  canReview: false,
-  canRevise: true,
+  canConfirm: false,
+  canDispute: true,
+  canRevise: false,
 };
 
 afterEach(() => {
@@ -45,5 +48,12 @@ describe("MatchRow", () => {
     rerender(<MatchRow match={match} />);
 
     expect(formatterCalls).toBe(1);
+  });
+
+  test("labels a confirmed match as accepted", async () => {
+    const { MatchRow } = await import("./match-row");
+    const { getByText } = render(<MatchRow match={match} />);
+
+    expect(getByText("Accepted")).toBeTruthy();
   });
 });

@@ -5,6 +5,8 @@ import {
   getGroup,
   getGroupMatchDetail,
   listCurrentUserGroups,
+  listCurrentUserMatches,
+  listCurrentUserRankings,
   listCurrentUserActiveMatchDrafts,
   listGroupActiveMatchDrafts,
   listGroupMatches,
@@ -56,9 +58,9 @@ const baseRows: Record<string, unknown[]> = {
   group_memberships: [{ id: "membership-1", group_id: GROUP_ONE, user_id: OPPONENT, role: "member", status: "active", left_at: null }],
   groups: [{ id: GROUP_ONE, name: "Wednesday Club" }, { id: GROUP_TWO, name: "Other Club" }],
   matches: [
-    { id: MATCH_OLD, group_id: GROUP_ONE, active_revision_id: REVISION_OLD, status: "pending_confirmation", submitted_at: "2026-08-06T20:00:00.000Z" },
-    { id: MATCH_OTHER, group_id: GROUP_TWO, active_revision_id: REVISION_OTHER, status: "pending_confirmation", submitted_at: "2026-08-08T20:00:00.000Z" },
-    { id: MATCH_NEW, group_id: GROUP_ONE, active_revision_id: REVISION_NEW, status: "pending_confirmation", submitted_at: "2026-08-07T20:00:00.000Z" },
+    { id: MATCH_OLD, group_id: GROUP_ONE, active_revision_id: REVISION_OLD, status: "pending_confirmation", submitted_at: "2026-08-06T20:00:00.000Z", review_started_at: "2026-08-06T20:00:00.000Z" },
+    { id: MATCH_OTHER, group_id: GROUP_TWO, active_revision_id: REVISION_OTHER, status: "pending_confirmation", submitted_at: "2026-08-08T20:00:00.000Z", review_started_at: "2026-08-08T20:00:00.000Z" },
+    { id: MATCH_NEW, group_id: GROUP_ONE, active_revision_id: REVISION_NEW, status: "pending_confirmation", submitted_at: "2026-08-07T20:00:00.000Z", review_started_at: "2026-08-07T20:00:00.000Z" },
   ],
   match_revisions: [
     { id: REVISION_NEW, match_id: MATCH_NEW, submitted_by_user_id: SUBMITTER, format: "singles" },
@@ -183,7 +185,7 @@ describe("stored match reads", () => {
 
   test("limits the constrained newest-first match rows before hydration", async () => {
     rowsByTable.matches = [
-      { id: "99999999-9999-4999-8999-999999999999", group_id: GROUP_ONE, active_revision_id: null, status: "confirmed", submitted_at: "2026-08-09T20:00:00.000Z" },
+      { id: "99999999-9999-4999-8999-999999999999", group_id: GROUP_ONE, active_revision_id: null, status: "confirmed", submitted_at: "2026-08-09T20:00:00.000Z", review_started_at: "2026-08-09T20:00:00.000Z" },
       ...rowsByTable.matches,
     ];
 
@@ -202,9 +204,9 @@ describe("stored match reads", () => {
 
   test("includes every stored match status for the group with equal-timestamp IDs descending", async () => {
     rowsByTable.matches = [
-      { id: MATCH_OLD, group_id: GROUP_ONE, active_revision_id: REVISION_OLD, status: "confirmed", submitted_at: "2026-08-07T20:00:00.000Z" },
-      { id: MATCH_OTHER, group_id: GROUP_ONE, active_revision_id: REVISION_OTHER, status: "disputed", submitted_at: "2026-08-07T20:00:00.000Z" },
-      { id: MATCH_NEW, group_id: GROUP_ONE, active_revision_id: REVISION_NEW, status: "pending_confirmation", submitted_at: "2026-08-07T20:00:00.000Z" },
+      { id: MATCH_OLD, group_id: GROUP_ONE, active_revision_id: REVISION_OLD, status: "confirmed", submitted_at: "2026-08-07T20:00:00.000Z", review_started_at: "2026-08-07T20:00:00.000Z" },
+      { id: MATCH_OTHER, group_id: GROUP_ONE, active_revision_id: REVISION_OTHER, status: "disputed", submitted_at: "2026-08-07T20:00:00.000Z", review_started_at: "2026-08-07T20:00:00.000Z" },
+      { id: MATCH_NEW, group_id: GROUP_ONE, active_revision_id: REVISION_NEW, status: "pending_confirmation", submitted_at: "2026-08-07T20:00:00.000Z", review_started_at: "2026-08-07T20:00:00.000Z" },
     ];
 
     const matches = await listGroupMatches(GROUP_ONE);
@@ -385,10 +387,55 @@ describe("stored match reads", () => {
     ]);
   });
 
-  test("lists only pending matches the current user can still review", async () => {
+  test("returns the current user's rank and active member count for every group alphabetically", async () => {
+    rowsByTable.group_memberships = [
+      { id: "membership-1", group_id: GROUP_ONE, user_id: OPPONENT, role: "member", status: "active", left_at: null },
+      { id: "membership-2", group_id: GROUP_ONE, user_id: SUBMITTER, role: "owner", status: "active", left_at: null },
+      { id: "membership-3", group_id: GROUP_TWO, user_id: OPPONENT, role: "member", status: "active", left_at: null },
+      { id: "membership-4", group_id: GROUP_TWO, user_id: SUBMITTER, role: "owner", status: "active", left_at: null },
+    ];
+    rowsByTable.profiles = [
+      { id: OPPONENT, display_name: "Bea Rivera", is_guest: false, active_until: null },
+      { id: SUBMITTER, display_name: "Alice Tan", is_guest: false, active_until: null },
+    ];
+    rowsByTable.group_rating_states = [
+      { group_id: GROUP_ONE, user_id: OPPONENT, rating: "1400.4", rd: "160", games_played: 2 },
+      { group_id: GROUP_ONE, user_id: SUBMITTER, rating: "1600.4", rd: "120", games_played: 3 },
+      { group_id: GROUP_TWO, user_id: OPPONENT, rating: "1700.4", rd: "100", games_played: 5 },
+      { group_id: GROUP_TWO, user_id: SUBMITTER, rating: "1500.4", rd: "140", games_played: 1 },
+    ];
+
+    await expect(listCurrentUserRankings()).resolves.toEqual([
+      { groupId: GROUP_TWO, groupName: "Other Club", rating: 1700, rank: 1, memberCount: 2 },
+      { groupId: GROUP_ONE, groupName: "Wednesday Club", rating: 1400, rank: 2, memberCount: 2 },
+    ]);
+  });
+
+  test("ranks missing rating states at the displayed default rating", async () => {
+    rowsByTable.group_memberships = [
+      { id: "membership-1", group_id: GROUP_ONE, user_id: OPPONENT, role: "member", status: "active", left_at: null },
+      { id: "membership-2", group_id: GROUP_ONE, user_id: SUBMITTER, role: "owner", status: "active", left_at: null },
+    ];
+    rowsByTable.profiles = [
+      { id: OPPONENT, display_name: "Bea Rivera", is_guest: false, active_until: null },
+      { id: SUBMITTER, display_name: "Alice Tan", is_guest: false, active_until: null },
+    ];
+    rowsByTable.group_rating_states = [];
+
+    await expect(listCurrentUserRankings()).resolves.toEqual([
+      { groupId: GROUP_ONE, groupName: "Wednesday Club", rating: 1500, rank: 2, memberCount: 2 },
+    ]);
+  });
+
+  test("lists only confirmable matches with the oldest review first", async () => {
+    rowsByTable.match_confirmations = [];
     const matches = await listPendingReviewsForCurrentUser();
 
-    expect(matches.map((match) => match.id)).toEqual([MATCH_NEW]);
+    expect(matches.map((match) => match.id)).toEqual([MATCH_OLD, MATCH_NEW]);
+    expect(queriesByTable.matches[0].order.mock.calls).toEqual([
+      ["review_started_at", { ascending: true }],
+      ["id", { ascending: true }],
+    ]);
   });
 
   test("preserves a stored draft winner when hydrating an editable participant", async () => {

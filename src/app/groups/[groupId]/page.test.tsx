@@ -47,10 +47,10 @@ const players = [
 ];
 const recentMatches = ["pending_confirmation", "confirmed", "disputed"].map((status, index) => ({
   id: `match-${index + 1}`, groupId, groupName: group.name, revisionId: `revision-${index + 1}`, submittedByUserId: "alice",
-  status: status as "pending_confirmation" | "confirmed" | "disputed", submittedAt: `2026-08-0${7 - index}T20:00:00.000Z`, format: "singles" as const,
+  status: status as "pending_confirmation" | "confirmed" | "disputed", submittedAt: `2026-08-0${7 - index}T20:00:00.000Z`, reviewStartedAt: `2026-08-0${7 - index}T20:00:00.000Z`, disputeUntil: `2026-09-0${6 - index}T20:00:00.000Z`, format: "singles" as const,
   teamA: [{ id: "alice", name: "Alice Tan", initials: "AT" }], teamB: [{ id: "bea", name: "Bea Rivera", initials: "BR" }],
   games: [{ gameNumber: 1, teamAScore: 21, teamBScore: 18, winnerTeam: "A" as const }], winnerTeam: "A" as const,
-  ratingSummary: "2 rating changes", canReview: false, canRevise: true,
+  ratingSummary: "2 rating changes", canConfirm: false, canDispute: status !== "disputed", canRevise: status === "disputed",
 }));
 
 describe("GroupPage", () => {
@@ -101,8 +101,8 @@ describe("GroupPage", () => {
     expect(html).toContain("Alice Tan vs Bea Chen");
     expect(html).toContain("Match saved. Ratings updating");
     expect(html).toContain("Recent Matches");
-    expect(html).toContain("Pending confirmation");
-    expect(html).toContain("Confirmed");
+    expect(html).toContain("Awaiting review");
+    expect(html).toContain("Accepted");
     expect(html).toContain("Disputed");
     expect(html).toContain("Members (1)");
     const ratingStatusPosition = html.indexOf("Match saved. Ratings updating");

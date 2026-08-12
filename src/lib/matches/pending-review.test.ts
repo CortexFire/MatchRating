@@ -10,6 +10,8 @@ const baseMatch = {
   submittedByUserId: "alice",
   status: "pending_confirmation",
   submittedAt: "2026-08-07T20:00:00.000Z",
+  reviewStartedAt: "2026-08-07T20:00:00.000Z",
+  disputeUntil: "2026-09-06T20:00:00.000Z",
   format: "doubles",
   teamA: [{ id: "alice", name: "Alice Tan", initials: "AT" }],
   teamB: [{ id: "bea", name: "Bea Rivera", initials: "BR" }],
@@ -20,8 +22,9 @@ const baseMatch = {
   ],
   winnerTeam: "B",
   ratingSummary: "2 rating changes",
-  canReview: true,
-  canRevise: true,
+  canConfirm: true,
+  canDispute: true,
+  canRevise: false,
 } satisfies MatchView;
 
 describe("toPendingReviewMatch", () => {

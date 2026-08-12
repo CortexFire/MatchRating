@@ -11,6 +11,7 @@ const match = {
   winnerTeam: "A" as const,
   clubName: "Downtown Rec Club",
   submittedAt: "Aug 2nd, 2026 @ 8:53pm",
+  disputeUntil: "Sep 1, 2026",
   teamA: {
     label: "Team A",
     players: [
@@ -39,8 +40,9 @@ describe("MatchResultConfirmation", () => {
         groupId="demo"
         groupName="Downtown Rec"
         reviewCount={3}
-        canReview={true}
-        canRevise={true}
+        canConfirm={true}
+        canDispute={true}
+        canRevise={false}
         match={match}
       />,
     );
@@ -57,6 +59,7 @@ describe("MatchResultConfirmation", () => {
     expect(html).toContain("Set 3");
     expect(html).toContain("Confirm");
     expect(html).toContain("Dispute");
+    expect(html).toContain("Dispute until Sep 1, 2026");
   });
 
   test("links dispute to a prefilled new match route", () => {
@@ -65,8 +68,9 @@ describe("MatchResultConfirmation", () => {
         groupId="demo"
         groupName="Downtown Rec"
         reviewCount={3}
-        canReview={true}
-        canRevise={true}
+        canConfirm={true}
+        canDispute={true}
+        canRevise={false}
         match={match}
       />,
     );
@@ -74,5 +78,24 @@ describe("MatchResultConfirmation", () => {
     expect(html).toContain(
       'href="/groups/demo/matches/match-1/revise"',
     );
+  });
+
+  test("shows accepted status with the rolling dispute action", () => {
+    const html = renderToStaticMarkup(
+      <MatchResultConfirmation
+        groupId="demo"
+        groupName="Downtown Rec"
+        reviewCount={0}
+        canConfirm={false}
+        canDispute={true}
+        canRevise={false}
+        match={{ ...match, status: "confirmed" }}
+      />,
+    );
+
+    expect(html).toContain("Accepted");
+    expect(html).toContain("Dispute until Sep 1, 2026");
+    expect(html).toContain("Dispute");
+    expect(html).not.toContain(">Confirm<");
   });
 });
