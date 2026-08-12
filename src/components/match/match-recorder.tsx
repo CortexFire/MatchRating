@@ -842,7 +842,7 @@ function toGuestPlayer(id: string, name: string): AppPlayer {
     id,
     name,
     initials: initialsFor(name),
-    role: "Member",
+    role: "Guest",
     rating: 1500,
     rd: 350,
     rank: 0,

@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import * as actions from "@/app/actions";
 
+const visibilityMocks = vi.hoisted(() => ({
+  listVisibleGroupMemberships: vi.fn(),
+}));
+
+vi.mock("@/lib/group-membership-visibility", () => visibilityMocks);
+
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
 }));
@@ -14,6 +20,10 @@ const supabaseMocks = vi.hoisted(() => {
   const profileInsertResult = {
     select: vi.fn(),
   };
+  const ratingSelect = {
+    eq: vi.fn(() => ratingSelect),
+    in: vi.fn(),
+  };
   const tables = {
     group_memberships: {
       select: vi.fn(() => membershipSelect),
@@ -24,6 +34,7 @@ const supabaseMocks = vi.hoisted(() => {
     },
     group_rating_states: {
       insert: vi.fn(),
+      select: vi.fn(() => ratingSelect),
     },
   };
   const service = {
@@ -37,6 +48,7 @@ const supabaseMocks = vi.hoisted(() => {
     requireUserId: vi.fn(),
     membershipSelect,
     profileInsertResult,
+    ratingSelect,
     service,
     rpc,
     tables,
@@ -57,6 +69,24 @@ describe("guest player actions", () => {
       data: { players: [{ id: "guest-1", name: "Mary Jane Watson" }, { id: "guest-2", name: "Prince" }] },
       error: null,
     });
+    visibilityMocks.listVisibleGroupMemberships.mockResolvedValue([
+      {
+        groupId: "group-1",
+        userId: "guest-1",
+        role: "member",
+        profile: { id: "guest-1", displayName: "Visible Guest", isGuest: true, activeUntil: null },
+      },
+      {
+        groupId: "group-1",
+        userId: "member-1",
+        role: "member",
+        profile: { id: "member-1", displayName: "Full Member", isGuest: false, activeUntil: null },
+      },
+    ]);
+    supabaseMocks.ratingSelect.in.mockResolvedValue({
+      data: [{ user_id: "guest-1", rating: 1525, rank: 4 }],
+      error: null,
+    });
   });
 
   test("creates guest profiles, memberships, and rating states", async () => {
@@ -73,7 +103,7 @@ describe("guest player actions", () => {
             id: "guest-1",
             name: "Mary Jane Watson",
             initials: "MJ",
-            role: "Member",
+            role: "Guest",
             rating: 1500,
             rd: 350,
             rank: 0,
@@ -85,7 +115,7 @@ describe("guest player actions", () => {
             id: "guest-2",
             name: "Prince",
             initials: "P",
-            role: "Member",
+            role: "Guest",
             rating: 1500,
             rd: 350,
             rank: 0,
@@ -117,5 +147,16 @@ describe("guest player actions", () => {
 
     expect(result).toEqual({ ok: false, code: "NOT_GROUP_MEMBER", message: "You are not an active member of this group." });
     expect(supabaseMocks.tables.profiles.insert).not.toHaveBeenCalled();
+  });
+
+  test("offers only visible associated guests for profile claiming", async () => {
+    const result = await actions.listClaimableGuestProfiles("group-1");
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        profiles: [{ id: "guest-1", name: "Visible Guest", rating: 1525, rank: 4 }],
+      },
+    });
   });
 });

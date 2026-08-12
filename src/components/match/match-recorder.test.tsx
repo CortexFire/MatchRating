@@ -114,6 +114,7 @@ describe("MatchRecorder", () => {
       data: {
         players: names.map((name, index) => ({
           ...groupPlayer(`${groupId}-guest-${index}`, name, "GG"),
+          role: "Guest" as const,
           isGuest: true,
         })),
       },
@@ -464,7 +465,7 @@ describe("MatchRecorder", () => {
             id: "guest-mina",
             name: "Mina Ray",
             initials: "MR",
-            role: "Member" as const,
+            role: "Guest" as const,
             rating: 1500,
             rd: 350,
             rank: 0,

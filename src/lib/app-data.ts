@@ -6,6 +6,7 @@ import {
   type MatchReadRows,
   type MatchView,
 } from "@/lib/matches/read-model";
+import { listVisibleGroupMemberships } from "@/lib/group-membership-visibility";
 
 export type AppGroup = {
   id: string;
@@ -45,7 +46,7 @@ export type AppPlayer = {
   id: string;
   name: string;
   initials: string;
-  role: "Owner" | "Admin" | "Member";
+  role: "Owner" | "Admin" | "Member" | "Guest";
   rating: number;
   rd: number;
   rank: number;
@@ -168,25 +169,19 @@ export async function listCurrentUserGroups(): Promise<AppGroup[]> {
     return [];
   }
 
-  const [{ data: groups, error: groupsError }, { data: memberRows, error: membersError }] = await Promise.all([
+  const [{ data: groups, error: groupsError }, visibleMemberships] = await Promise.all([
     service.from("groups").select("id, name, description").in("id", groupIds).is("archived_at", null),
-    service
-      .from("group_memberships")
-      .select("group_id")
-      .in("group_id", groupIds)
-      .eq("status", "active")
-      .is("left_at", null),
+    listVisibleGroupMemberships(groupIds, service),
   ]);
 
   if (groupsError) {
     throw groupsError;
   }
 
-  if (membersError) {
-    throw membersError;
-  }
-
-  const memberCounts = countBy(memberRows ?? [], "group_id");
+  const memberCounts = countBy(
+    visibleMemberships.map((membership) => ({ group_id: membership.groupId })),
+    "group_id",
+  );
   return (groups ?? []).map((group: GroupRow) => ({
     id: group.id,
     name: group.name,
@@ -198,22 +193,13 @@ export async function listCurrentUserGroups(): Promise<AppGroup[]> {
 export async function getGroup(groupId: string): Promise<AppGroup | null> {
   await ensureCurrentUserCanReadGroup(groupId);
   const service = createSupabaseServiceClient();
-  const [{ data: group, error }, { data: members, error: membersError }] = await Promise.all([
+  const [{ data: group, error }, visibleMemberships] = await Promise.all([
     service.from("groups").select("id, name, description").eq("id", groupId).is("archived_at", null).maybeSingle(),
-    service
-      .from("group_memberships")
-      .select("user_id")
-      .eq("group_id", groupId)
-      .eq("status", "active")
-      .is("left_at", null),
+    listVisibleGroupMemberships([groupId], service),
   ]);
 
   if (error) {
     throw error;
-  }
-
-  if (membersError) {
-    throw membersError;
   }
 
   if (!group) {
@@ -224,7 +210,7 @@ export async function getGroup(groupId: string): Promise<AppGroup | null> {
     id: group.id,
     name: group.name,
     description: group.description,
-    memberCount: members?.length ?? 0,
+    memberCount: visibleMemberships.length,
   };
 }
 
@@ -646,61 +632,42 @@ function parseDraftGames(value: unknown): MatchGameInput[] {
 export async function listGroupPlayers(groupId: string): Promise<AppPlayer[]> {
   await ensureCurrentUserCanReadGroup(groupId);
   const service = createSupabaseServiceClient();
-  const { data: memberships, error } = await service
-    .from("group_memberships")
-    .select("user_id, role")
-    .eq("group_id", groupId)
-    .eq("status", "active")
-    .is("left_at", null);
-
-  if (error) {
-    throw error;
-  }
-
-  const memberRows = (memberships ?? []) as MembershipRow[];
-  const userIds = memberRows.map((membership) => membership.user_id);
+  const memberRows = await listVisibleGroupMemberships([groupId], service);
+  const userIds = memberRows.map((membership) => membership.userId);
   if (!userIds.length) {
     return [];
   }
 
-  const [{ data: profiles, error: profilesError }, { data: ratings, error: ratingsError }] = await Promise.all([
-    service.from("profiles").select("id, display_name, is_guest, active_until").in("id", userIds),
-    service
-      .from("group_rating_states")
-      .select("user_id, rating, rd, games_played")
-      .eq("group_id", groupId)
-      .in("user_id", userIds),
-  ]);
-
-  if (profilesError) {
-    throw profilesError;
-  }
+  const { data: ratings, error: ratingsError } = await service
+    .from("group_rating_states")
+    .select("user_id, rating, rd, games_played")
+    .eq("group_id", groupId)
+    .in("user_id", userIds);
 
   if (ratingsError) {
     throw ratingsError;
   }
 
-  const profilesById = new Map((profiles ?? []).map((profile: ProfileRow) => [profile.id, profile]));
   const ratingsByUserId = new Map((ratings ?? []).map((rating: RatingRow) => [rating.user_id, rating]));
 
   const players = memberRows.map((membership) => {
-    const profile = profilesById.get(membership.user_id);
-    const rating = ratingsByUserId.get(membership.user_id);
-    const name = profile?.display_name ?? "Unknown player";
+    const profile = membership.profile;
+    const rating = ratingsByUserId.get(membership.userId);
+    const name = profile?.displayName ?? "Unknown player";
 
     return {
-      id: membership.user_id,
+      id: membership.userId,
       name,
       initials: initialsFor(name),
-      role: displayRole(membership.role),
+      role: profile?.isGuest ? "Guest" : displayRole(membership.role),
       rating: Math.round(Number(rating?.rating ?? 1500)),
       rd: Math.round(Number(rating?.rd ?? 350)),
       gamesPlayed: rating?.games_played ?? 0,
       status:
-        profile?.active_until && new Date(profile.active_until).getTime() >= Date.now()
+        profile?.activeUntil && new Date(profile.activeUntil).getTime() >= Date.now()
           ? "Active"
           : "Inactive",
-      isGuest: profile?.is_guest ?? false,
+      isGuest: profile?.isGuest ?? false,
     } satisfies Omit<AppPlayer, "rank">;
   });
 

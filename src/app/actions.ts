@@ -25,6 +25,7 @@ import {
   type MatchSubmissionInput,
 } from "@/lib/matches/validation";
 import { draftExpiresAt, validateActiveMatchDraft } from "@/lib/matches/drafts";
+import { listVisibleGroupMemberships } from "@/lib/group-membership-visibility";
 import { type CommandResult, toCommandError } from "@/lib/commands/result";
 import { dispatchRatingRebuild } from "@/lib/ratings/rebuild-dispatch";
 import {
@@ -288,42 +289,31 @@ function formatLastActive(value?: string | null) {
 }
 
 async function getClaimableGuestProfiles(groupId: string, service: SupabaseService): Promise<ClaimableGuestProfile[]> {
-  const { data: memberships, error: membershipError } = await service
-    .from("group_memberships")
-    .select("user_id")
-    .eq("group_id", groupId)
-    .eq("status", "active")
-    .is("left_at", null);
-
-  if (membershipError) {
-    throw membershipError;
-  }
-
-  const userIds = (memberships ?? []).map((row: { user_id: string }) => row.user_id);
+  const visibleGuests = (await listVisibleGroupMemberships([groupId], service)).filter(
+    (membership) => membership.profile?.isGuest,
+  );
+  const userIds = visibleGuests.map((membership) => membership.userId);
   if (!userIds.length) {
     return [];
   }
 
-  const [{ data: profiles, error: profilesError }, { data: ratings, error: ratingsError }] = await Promise.all([
-    service.from("profiles").select("id, display_name").in("id", userIds).eq("is_guest", true),
-    service.from("group_rating_states").select("user_id, rating, rank").eq("group_id", groupId).in("user_id", userIds),
-  ]);
-
-  if (profilesError) {
-    throw profilesError;
-  }
+  const { data: ratings, error: ratingsError } = await service
+    .from("group_rating_states")
+    .select("user_id, rating, rank")
+    .eq("group_id", groupId)
+    .in("user_id", userIds);
 
   if (ratingsError) {
     throw ratingsError;
   }
 
   const ratingsByUserId = new Map((ratings ?? []).map((rating: { user_id: string }) => [rating.user_id, rating]));
-  return (profiles ?? [])
-    .map((profile: { id: string; display_name: string }) => {
-      const rating = ratingsByUserId.get(profile.id) as { rating?: number | string; rank?: number | null } | undefined;
+  return visibleGuests
+    .map((membership) => {
+      const rating = ratingsByUserId.get(membership.userId) as { rating?: number | string; rank?: number | null } | undefined;
       return {
-        id: profile.id,
-        name: profile.display_name,
+        id: membership.userId,
+        name: membership.profile?.displayName ?? "Unknown player",
         rating: Math.round(Number(rating?.rating ?? 1500)),
         rank: rating?.rank ?? 0,
       };
@@ -493,14 +483,9 @@ export async function getInviteSummary(token: string): Promise<ActionResult<Invi
   try {
     const service = createSupabaseServiceClient();
     const invite = await getInviteByToken(token, service);
-    const [{ data: group, error: groupError }, { data: members, error: membersError }, { data: latestMatch }] = await Promise.all([
+    const [{ data: group, error: groupError }, visibleMemberships, { data: latestMatch }] = await Promise.all([
       service.from("groups").select("id, name").eq("id", invite.group_id).maybeSingle(),
-      service
-        .from("group_memberships")
-        .select("user_id")
-        .eq("group_id", invite.group_id)
-        .eq("status", "active")
-        .is("left_at", null),
+      listVisibleGroupMemberships([invite.group_id], service),
       service
         .from("matches")
         .select("submitted_at")
@@ -514,10 +499,6 @@ export async function getInviteSummary(token: string): Promise<ActionResult<Invi
       throw groupError;
     }
 
-    if (membersError) {
-      throw membersError;
-    }
-
     if (!group) {
       throw new Error("This invite link is no longer valid.");
     }
@@ -527,7 +508,7 @@ export async function getInviteSummary(token: string): Promise<ActionResult<Invi
       data: {
         groupId: group.id,
         groupName: group.name,
-        memberCount: members?.length ?? 0,
+        memberCount: visibleMemberships.length,
         lastActiveText: formatLastActive(latestMatch?.submitted_at),
       },
     };
@@ -574,7 +555,7 @@ export async function createGuestPlayers(input: {
   }, "Could not create guest players.");
   if (!result.ok) return result;
   revalidatePath(`/groups/${parsed.data.groupId}`);
-  return { ok: true, data: { players: result.data.players.map((player) => ({ id: player.id, name: player.name, initials: initialsFor(player.name), role: "Member", rating: 1500, rd: 350, rank: 0, gamesPlayed: 0, status: "Inactive", isGuest: true })) } };
+  return { ok: true, data: { players: result.data.players.map((player) => ({ id: player.id, name: player.name, initials: initialsFor(player.name), role: "Guest", rating: 1500, rd: 350, rank: 0, gamesPlayed: 0, status: "Inactive", isGuest: true })) } };
 }
 export async function createGroup(input: {
   name: string;
