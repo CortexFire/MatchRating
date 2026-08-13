@@ -249,7 +249,7 @@ describe("LoginForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send login link" }));
     await screen.findByText("Check your email for the login link.");
 
-    fireEvent.click(screen.getByRole("button", { name: "Send login link" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Send login link" }));
 
     await waitFor(() => {
       expect(actionMocks.signInWithOtp).toHaveBeenCalledTimes(2);

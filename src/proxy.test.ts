@@ -14,4 +14,11 @@ describe("proxy matcher", () => {
   test("continues intercepting application routes", () => {
     expect(unstable_doesProxyMatch({ config, nextConfig: {}, url: "/groups/group-1" })).toBe(true);
   });
+
+  test.each([
+    "/api/groups/group-1/rating-status",
+    "/api/internal/maintenance",
+  ])("does not intercept API endpoint %s", (url) => {
+    expect(unstable_doesProxyMatch({ config, nextConfig: {}, url })).toBe(false);
+  });
 });

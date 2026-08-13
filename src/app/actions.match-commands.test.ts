@@ -14,6 +14,7 @@ const nextCacheMocks = vi.hoisted(() => ({
 }));
 
 const supabaseMocks = vi.hoisted(() => ({
+  requireAuthenticatedSupabaseClient: vi.fn(),
   requireUserId: vi.fn(),
   rpc: vi.fn(),
   createSupabaseServerClient: vi.fn(),
@@ -109,6 +110,10 @@ describe("transactional match actions", () => {
     vi.clearAllMocks();
     supabaseMocks.requireUserId.mockResolvedValue("11111111-1111-4111-8111-111111111111");
     supabaseMocks.createSupabaseServerClient.mockResolvedValue({ rpc: supabaseMocks.rpc });
+    supabaseMocks.requireAuthenticatedSupabaseClient.mockResolvedValue({
+      client: { rpc: supabaseMocks.rpc },
+      userId: "11111111-1111-4111-8111-111111111111",
+    });
     supabaseMocks.createSupabaseServiceClient.mockReturnValue({});
     supabaseMocks.rpc.mockResolvedValue({
       data: {
@@ -472,11 +477,15 @@ describe("transactional match actions", () => {
       error: null,
     });
     const confirm = actions.confirmMatchRevision as unknown as (input: {
+      groupId: string;
+      matchId: string;
       revisionId: string;
       commandId: string;
     }) => ReturnType<typeof actions.confirmMatchRevision>;
 
     const result = await confirm({
+      groupId: "66666666-6666-4666-8666-666666666666",
+      matchId: "22222222-2222-4222-8222-222222222222",
       revisionId: "33333333-3333-4333-8333-333333333333",
       commandId: "88888888-8888-4888-8888-888888888888",
     });
@@ -490,6 +499,9 @@ describe("transactional match actions", () => {
       p_revision_id: "33333333-3333-4333-8333-333333333333",
       p_action: "confirmed",
     });
+    expect(nextCacheMocks.revalidatePath).toHaveBeenCalledWith(
+      "/groups/66666666-6666-4666-8666-666666666666/matches/22222222-2222-4222-8222-222222222222",
+    );
   });
 
   test("forwards the selected winner with a revised game", async () => {
@@ -507,6 +519,9 @@ describe("transactional match actions", () => {
     expect(supabaseMocks.rpc).toHaveBeenCalledWith("command_revise_match", expect.objectContaining({
       p_games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "B" }],
     }));
+    expect(nextCacheMocks.revalidatePath).not.toHaveBeenCalledWith(
+      "/groups/66666666-6666-4666-8666-666666666666/matches/22222222-2222-4222-8222-222222222222/revise",
+    );
     expect(nextCacheMocks.revalidatePath).toHaveBeenCalledWith(
       "/groups/66666666-6666-4666-8666-666666666666/members",
     );

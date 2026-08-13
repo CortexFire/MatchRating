@@ -4,6 +4,10 @@ import { leaveGroup } from "@/app/actions";
 const supabaseMocks = vi.hoisted(() => {
   const rpc = vi.fn();
   return {
+    requireAuthenticatedSupabaseClient: vi.fn(async () => ({
+      client: { rpc },
+      userId: "user-0000-0000-0000-000000000000",
+    })),
     createSupabaseServerClient: vi.fn(async () => ({ rpc })),
     createSupabaseServiceClient: vi.fn(() => ({
       from: () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useState } from "react";
 import { Share2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,8 @@ export function InvitePanel({ inviteUrl }: { inviteUrl: string }) {
   const [copied, setCopied] = useState(false);
   const displayInviteUrl = inviteUrl.replace(/^https?:\/\//, "");
   const shareText = useMemo(() => `Join my badminton rankings group: ${inviteUrl}`, [inviteUrl]);
+
+  useLayoutEffect(() => () => setCopied(false), []);
 
   return (
     <Card className="w-full">

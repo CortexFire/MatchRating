@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { updateTag } from "next/cache";
 import * as actions from "@/app/actions";
 
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
+  updateTag: vi.fn(),
 }));
 
 const supabaseMocks = vi.hoisted(() => {
@@ -59,6 +61,7 @@ const supabaseMocks = vi.hoisted(() => {
     ratings,
     untouchedUpdate,
     requireUserId: vi.fn(),
+    requireAuthenticatedSupabaseClient: vi.fn(),
     createSupabaseServerClient: vi.fn(async () => ({ auth, rpc })),
     createSupabaseServiceClient: vi.fn(() => ({
       from: vi.fn((table: string) => {
@@ -92,6 +95,10 @@ describe("onboarding actions", () => {
     vi.clearAllMocks();
     supabaseMocks.resetMembershipCalls();
     supabaseMocks.requireUserId.mockResolvedValue("user-1");
+    supabaseMocks.requireAuthenticatedSupabaseClient.mockResolvedValue({
+      client: { auth: supabaseMocks.auth, rpc: supabaseMocks.rpc },
+      userId: "user-1",
+    });
     supabaseMocks.profileUpsert.single.mockResolvedValue({ data: { id: "user-1" }, error: null });
     supabaseMocks.activeMembership.maybeSingle.mockResolvedValue({ data: { id: "member-1", role: "member" }, error: null });
     supabaseMocks.guestMemberships.then.mockImplementation((resolve) =>
@@ -118,6 +125,7 @@ describe("onboarding actions", () => {
       display_name: "Maya Chen",
       is_guest: false,
     });
+    expect(updateTag).toHaveBeenCalledWith("profile:user-1");
   });
 
   test("claimGuestProfiles rejects guest merges that duplicate a match participant", async () => {

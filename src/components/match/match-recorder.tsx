@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Medal, Plus, Trash2, X } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { type ActionResult, type MatchCommandResult } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import {
@@ -73,7 +72,6 @@ export function MatchRecorder({
   saveActiveMatchDraft?: SaveActiveMatchDraft;
   submitMatchAction?: SubmitMatchAction;
 }) {
-  const router = useRouter();
   const startingMatch = initialMatch ?? defaultMatchRecording;
   const [format, setFormat] = useState<MatchFormat>(startingMatch.format);
   const [teamA, setTeamA] = useState<TeamSelection>(() =>
@@ -122,6 +120,13 @@ export function MatchRecorder({
     gamesReadyForSubmission(games) &&
     !isSubmitting;
   const recorderEditable = canEdit && !isSubmitting;
+
+  useLayoutEffect(() => () => {
+    setPlayerSelectOpen(false);
+    setPlayerFilter("all");
+    setPlayerSearch("");
+    setMessage("");
+  }, []);
 
   useEffect(() => {
     saveActiveMatchDraftRef.current = saveActiveMatchDraft;
@@ -389,7 +394,9 @@ export function MatchRecorder({
       submitCommandId.current = null;
       submissionInProgress.current = false;
       setIsSubmitting(false);
-      router.replace(`/groups/${groupId}/matches/new`, { scroll: false });
+      if (window.location.search) {
+        window.history.replaceState(null, "", `/groups/${groupId}/matches/new`);
+      }
     }, 3_000);
   }
 
@@ -429,7 +436,6 @@ export function MatchRecorder({
         const result = await submitMatchAction(input);
         if (result.ok) {
           completeSubmission("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.");
-          router.refresh();
         } else {
           submissionInProgress.current = false;
           setIsSubmitting(false);

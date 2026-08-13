@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test, vi } from "vitest";
-import MatchPage from "./page";
+import { MatchContent } from "./page";
 
 const appDataMocks = vi.hoisted(() => ({
   getGroupMatchDetail: vi.fn(async () => ({
@@ -18,7 +18,7 @@ vi.mock("@/lib/app-data", () => ({
 vi.mock("next/navigation", () => ({ notFound: vi.fn(), useRouter: () => ({ refresh: vi.fn() }) }));
 
 test("renders the stored active revision in the rich detail view", async () => {
-  const html = renderToStaticMarkup(await MatchPage({
+  const html = renderToStaticMarkup(await MatchContent({
     params: Promise.resolve({ groupId: "group-1", matchId: "match-1" }),
   }));
 

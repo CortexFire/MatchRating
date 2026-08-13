@@ -1,23 +1,38 @@
-export const dynamic = "force-dynamic";
+export const unstable_instant = {
+  prefetch: "static",
+  samples: [{
+    params: { groupId: "00000000-0000-0000-0000-000000000000" },
+    searchParams: { draftId: null },
+  }],
+};
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import { createGuestPlayers, saveActiveMatchDraft, submitMatch } from "@/app/actions";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { MatchRecorder, type InitialMatchRecording } from "@/components/match/match-recorder";
 import { RatingRebuildStatus } from "@/components/match/rating-rebuild-status";
 import { type MatchFormat } from "@/lib/matches/validation";
 import { getMatchRecorderPageData } from "@/lib/navigation-read-models";
+import GroupMatchLoading from "../loading";
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
-export default async function NewMatchPage({
-  params,
-  searchParams,
-}: {
+type NewMatchPageProps = {
   params: Promise<{ groupId: string }>;
   searchParams: SearchParams;
-}) {
+};
+
+export default function NewMatchPage(props: NewMatchPageProps) {
+  return (
+    <Suspense fallback={<GroupMatchLoading />}>
+      <NewMatchContent {...props} />
+    </Suspense>
+  );
+}
+
+export async function NewMatchContent({ params, searchParams }: NewMatchPageProps) {
   const { groupId } = await params;
   const resolvedSearchParams = await searchParams;
   const draftId = firstValue(resolvedSearchParams.draftId);

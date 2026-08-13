@@ -435,7 +435,7 @@ begin
     ), '[]'::jsonb),
     'memberships', coalesce((
       select jsonb_agg(to_jsonb(vm) order by vm.group_id, vm.user_id)
-      from private.visible_group_memberships(v_group_ids) vm
+      from private.visible_group_memberships(array[p_group_id]) vm
     ), '[]'::jsonb),
     'ratings', coalesce((
       select jsonb_agg(to_jsonb(row_data) order by row_data.user_id)
@@ -453,7 +453,7 @@ begin
         select distinct p.id, p.display_name
         from public.profiles p
         where exists (
-          select 1 from private.visible_group_memberships(v_group_ids) vm where vm.user_id = p.id
+          select 1 from private.visible_group_memberships(array[p_group_id]) vm where vm.user_id = p.id
         ) or (
           v_draft is not null and (
             p.id = any(array(select jsonb_array_elements_text(v_draft->'team_a_user_ids'))::uuid[])

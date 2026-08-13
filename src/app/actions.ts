@@ -1,7 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
@@ -20,6 +20,7 @@ import {
 } from "@/lib/auth/callback-intent";
 import { getTrustedPublicSiteOrigin } from "@/lib/auth/public-site-origin";
 import { DEFAULT_AUTH_NEXT_PATH, getSafeAuthNextPath } from "@/lib/auth/next-path";
+import { profileCacheTag } from "@/lib/personalized-cache";
 import {
   validateMatchSubmission,
   type MatchSubmissionInput,
@@ -31,6 +32,7 @@ import { dispatchRatingRebuild } from "@/lib/ratings/rebuild-dispatch";
 import {
   createSupabaseServerClient,
   createSupabaseServiceClient,
+  requireAuthenticatedSupabaseClient,
   requireUserId,
 } from "@/lib/supabase/server";
 
@@ -53,8 +55,7 @@ async function executeCommand<T>(
   fallback: string,
 ): Promise<CommandResult<T>> {
   try {
-    await requireUserId();
-    const client = await createSupabaseServerClient();
+    const { client } = await requireAuthenticatedSupabaseClient();
     const { data, error } = await client.rpc(name, args);
     if (error) return toCommandError(error, fallback);
     return { ok: true, data: data as T };
@@ -114,6 +115,8 @@ const claimGuestProfilesSchema = z.object({
 });
 
 const confirmSchema = z.object({
+  groupId: z.string().uuid(),
+  matchId: z.string().uuid(),
   revisionId: z.string().uuid(),
   commandId: z.string().uuid(),
 });
@@ -472,6 +475,7 @@ export async function completeOnboardingProfile(input: {
       throw error;
     }
 
+    updateTag(profileCacheTag(userId));
     revalidatePath("/onboarding");
     return { ok: true, data: { profileId: data.id } };
   } catch (error) {
@@ -831,6 +835,7 @@ export async function confirmMatchRevision(input: z.infer<typeof confirmSchema>)
   if (result.ok) {
     revalidatePath("/groups");
     revalidatePath("/matches/review");
+    revalidatePath(`/groups/${parsed.data.groupId}/matches/${parsed.data.matchId}`);
   }
   return result;
 }
@@ -875,7 +880,6 @@ function revalidateMatchPaths(groupId: string, matchId: string) {
   revalidateRatingPaths(groupId);
   revalidatePath(`/groups/${groupId}/history`);
   revalidatePath(`/groups/${groupId}/matches/${matchId}`);
-  revalidatePath(`/groups/${groupId}/matches/${matchId}/revise`);
 }
 
 export async function retryRatingRebuild(

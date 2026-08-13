@@ -1,19 +1,19 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test, vi } from "vitest";
-import GroupInvitePage from "./page";
+import { GroupInviteContent } from "./page";
 
 const mocks = vi.hoisted(() => ({
-  getGroup: vi.fn(async () => ({ id: "group-1", name: "Wednesday Club", description: "", memberCount: 2 })),
+  getPrivateGroupMetadata: vi.fn(async () => ({ id: "group-1", name: "Wednesday Club", description: "" })),
   getOrCreateInvite: vi.fn(async () => ({ ok: false, message: "Invite unavailable." })),
 }));
 
-vi.mock("@/lib/app-data", () => ({ getGroup: mocks.getGroup }));
+vi.mock("@/lib/personalized-cache", () => ({ getPrivateGroupMetadata: mocks.getPrivateGroupMetadata }));
 vi.mock("@/app/actions", () => ({ getOrCreateInvite: mocks.getOrCreateInvite }));
 
 describe("GroupInvitePage", () => {
   test("returns directly to the group landing page", async () => {
     const html = renderToStaticMarkup(
-      await GroupInvitePage({ params: Promise.resolve({ groupId: "group-1" }) }),
+      await GroupInviteContent({ params: Promise.resolve({ groupId: "group-1" }) }),
     );
 
     expect(html).toContain('href="/groups/group-1"');

@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { cache } from "react";
 import {
   getRequiredSupabasePublicEnv,
   getRequiredSupabaseSecretKey,
@@ -42,13 +43,17 @@ export function createSupabaseServiceClient() {
   });
 }
 
-export async function requireUserId() {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.getClaims();
+export const requireAuthenticatedSupabaseClient = cache(async () => {
+  const client = await createSupabaseServerClient();
+  const { data, error } = await client.auth.getClaims();
 
   if (error || !data?.claims?.sub) {
     throw new Error("You must be signed in to do that.");
   }
 
-  return data.claims.sub;
-}
+  return { client, userId: data.claims.sub };
+});
+
+export const requireUserId = cache(async () => (
+  await requireAuthenticatedSupabaseClient()
+).userId);

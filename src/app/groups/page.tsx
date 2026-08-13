@@ -1,14 +1,24 @@
-export const dynamic = "force-dynamic";
+export const unstable_instant = { prefetch: "static" };
 
 import Link from "next/link";
 import { ChevronRight, Plus, UsersRound } from "lucide-react";
+import { Suspense } from "react";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { ScreenHeader } from "@/components/app/screen-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { listCurrentUserGroups } from "@/lib/app-data";
+import GroupsLoading from "./loading";
 
-export default async function GroupsPage() {
+export default function GroupsPage() {
+  return (
+    <Suspense fallback={<GroupsLoading />}>
+      <GroupsContent />
+    </Suspense>
+  );
+}
+
+export async function GroupsContent() {
   const groups = await listCurrentUserGroups();
   const primaryGroup = groups[0];
 

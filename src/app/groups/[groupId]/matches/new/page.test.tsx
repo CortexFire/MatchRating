@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import NewMatchPage from "./page";
+import { NewMatchContent } from "./page";
 
 const mocks = vi.hoisted(() => ({
   getMatchRecorderPageData: vi.fn(),
@@ -46,7 +46,7 @@ describe("NewMatchPage", () => {
   });
 
   test("loads switchable groups and keys the recorder to the route group", async () => {
-    const page = await NewMatchPage({
+    const page = await NewMatchContent({
       params: Promise.resolve({ groupId: routeGroup.id }),
       searchParams: Promise.resolve({}),
     });
@@ -67,7 +67,7 @@ describe("NewMatchPage", () => {
   test("shows expired recovery when the requested draft belongs to another group", async () => {
     mocks.getMatchRecorderPageData.mockResolvedValue({ ...recorderData, groups: [routeGroup], draft: null });
 
-    const html = renderToStaticMarkup(await NewMatchPage({
+    const html = renderToStaticMarkup(await NewMatchContent({
       params: Promise.resolve({ groupId: routeGroup.id }),
       searchParams: Promise.resolve({ draftId: "33333333-3333-4333-8333-333333333333" }),
     }));
@@ -84,7 +84,7 @@ describe("NewMatchPage", () => {
       ratingStatus: { id: "44444444-4444-4444-8444-444444444444", status: "failed", canRetry: false },
     });
 
-    const html = renderToStaticMarkup(await NewMatchPage({
+    const html = renderToStaticMarkup(await NewMatchContent({
       params: Promise.resolve({ groupId: routeGroup.id }),
       searchParams: Promise.resolve({}),
     }));
@@ -95,7 +95,7 @@ describe("NewMatchPage", () => {
   test("treats a missing or inaccessible route group as not found", async () => {
     mocks.getMatchRecorderPageData.mockResolvedValue(null);
 
-    await expect(NewMatchPage({
+    await expect(NewMatchContent({
       params: Promise.resolve({ groupId: routeGroup.id }),
       searchParams: Promise.resolve({}),
     })).rejects.toThrow("NEXT_NOT_FOUND");

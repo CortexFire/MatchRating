@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import HomePage from "./page";
+import { HomeContent } from "./page";
 
 const mocks = vi.hoisted(() => ({
   getHomePageData: vi.fn(),
@@ -80,7 +80,7 @@ describe("HomePage", () => {
   });
 
   test("resumes the newest real active draft with its canonical grouped link", async () => {
-    const html = renderToStaticMarkup(await HomePage());
+    const html = renderToStaticMarkup(await HomeContent());
 
     expect(html).toContain("Alice Tan");
     expect(html).toContain("Alice Tan vs Bea Rivera");
@@ -96,7 +96,7 @@ describe("HomePage", () => {
   test("falls back to the groups page when the user has no groups", async () => {
     mocks.getHomePageData.mockResolvedValueOnce({ ...homeData, groups: [], activeDrafts: [] });
 
-    const html = renderToStaticMarkup(await HomePage());
+    const html = renderToStaticMarkup(await HomeContent());
 
     expect(html).toContain('href="/groups"');
     expect(html).not.toContain('/groups/11111111-1111-4111-8111-111111111111/matches/new');
@@ -105,7 +105,7 @@ describe("HomePage", () => {
   test("renders the create-match empty state when there is no active draft", async () => {
     mocks.getHomePageData.mockResolvedValueOnce({ ...homeData, activeDrafts: [] });
 
-    const html = renderToStaticMarkup(await HomePage());
+    const html = renderToStaticMarkup(await HomeContent());
 
     expect(html).toContain("No active match in progress");
     expect(html).toContain("Create a match");
@@ -114,7 +114,7 @@ describe("HomePage", () => {
   });
 
   test("renders the three latest matches as result cards without rating summaries", async () => {
-    const html = renderToStaticMarkup(await HomePage());
+    const html = renderToStaticMarkup(await HomeContent());
 
     const activeIndex = html.indexOf("Active match");
     const latestIndex = html.indexOf("Latest matches");
@@ -150,7 +150,7 @@ describe("HomePage", () => {
       })),
     });
 
-    const html = renderToStaticMarkup(await HomePage());
+    const html = renderToStaticMarkup(await HomeContent());
 
     expect((html.match(/href="\/groups\/22222222-2222-4222-8222-222222222222\/matches\/latest-match-/g) ?? [])).toHaveLength(3);
     expect(html).not.toContain('href="/groups/22222222-2222-4222-8222-222222222222/matches/latest-match-4"');
@@ -159,7 +159,7 @@ describe("HomePage", () => {
   test("renders empty states for players without matches or rankings", async () => {
     mocks.getHomePageData.mockResolvedValueOnce({ ...homeData, latestMatches: [], currentRankings: [] });
 
-    const html = renderToStaticMarkup(await HomePage());
+    const html = renderToStaticMarkup(await HomeContent());
 
     expect(html).toContain("No matches recorded yet.");
     expect(html).toContain("Join a group to see your rankings.");

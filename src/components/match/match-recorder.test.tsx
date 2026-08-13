@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { Activity } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { matchRecorderPlayers } from "./match-recorder.test-fixtures";
 import { MobileShell } from "../app/mobile-shell";
@@ -44,6 +45,8 @@ describe("MatchRecorder", () => {
     navigationMocks.push.mockReset();
     navigationMocks.refresh.mockReset();
     navigationMocks.replace.mockReset();
+    vi.restoreAllMocks();
+    window.history.replaceState(null, "", "/");
     vi.useRealTimers();
   });
   test("offers the provided groups in a native group selector while recording", () => {
@@ -587,6 +590,23 @@ describe("MatchRecorder", () => {
     expect(screen.getByRole("link", { name: "Home" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Record" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Groups" })).toBeTruthy();
+  });
+
+  test("closes transient player selection while preserving the match when its route is hidden", () => {
+    const recorder = (
+      <MatchRecorder players={matchRecorderPlayers} initialMatch={editableDoublesMatch} />
+    );
+    const view = render(<Activity mode="visible">{recorder}</Activity>);
+
+    fireEvent.change(screen.getByLabelText("Set 1 Team A score"), { target: { value: "19" } });
+    fireEvent.click(screen.getByLabelText("Team B empty player slot 2"));
+    expect(screen.getByRole("heading", { name: "Player Select" })).toBeTruthy();
+
+    view.rerender(<Activity mode="hidden">{recorder}</Activity>);
+    view.rerender(<Activity mode="visible">{recorder}</Activity>);
+
+    expect(screen.getByRole("heading", { name: "Match Recording" })).toBeTruthy();
+    expect((screen.getByLabelText("Set 1 Team A score") as HTMLInputElement).value).toBe("19");
   });
 
   test("starts a fresh match with blank score placeholders and Team A selected", () => {
@@ -1176,7 +1196,7 @@ describe("MatchRecorder", () => {
     expect((screen.getByRole("button", { name: "Mark Set 1 Team A as winner" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByLabelText("Remove Alice from Team A")).toBeNull();
     expect(screen.queryByRole("button", { name: "Add set" })).toBeNull();
-    expect(navigationMocks.refresh).toHaveBeenCalledTimes(1);
+    expect(navigationMocks.refresh).not.toHaveBeenCalled();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_999);
@@ -1189,6 +1209,12 @@ describe("MatchRecorder", () => {
 
   test("resets the recorder and submission identity after three seconds", async () => {
     vi.useFakeTimers();
+    window.history.replaceState(
+      null,
+      "",
+      "/groups/11111111-1111-4111-8111-111111111111/matches/new?draftId=33333333-3333-4333-8333-333333333333",
+    );
+    const replaceState = vi.spyOn(window.history, "replaceState");
     const submitMatchAction = vi.fn().mockResolvedValue({
       ok: true as const,
       data: {
@@ -1232,10 +1258,12 @@ describe("MatchRecorder", () => {
     expect((screen.getByLabelText("Set 1 Team A score") as HTMLInputElement).value).toBe("");
     expect((screen.getByLabelText("Set 1 Team B score") as HTMLInputElement).value).toBe("");
     expect((screen.getByRole("button", { name: "Submit" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(navigationMocks.replace).toHaveBeenCalledWith(
+    expect(replaceState).toHaveBeenCalledWith(
+      null,
+      "",
       "/groups/11111111-1111-4111-8111-111111111111/matches/new",
-      { scroll: false },
     );
+    expect(navigationMocks.replace).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "singles" }));
     fireEvent.click(screen.getByLabelText("Team A empty player slot 1"));

@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import GroupPage from "./page";
+import { GroupContent } from "./page";
 
 const mocks = vi.hoisted(() => ({
   getGroupPageData: vi.fn(),
@@ -56,19 +56,19 @@ describe("GroupPage", () => {
   test("treats an inaccessible group as not found after one consolidated read", async () => {
     mocks.getGroupPageData.mockResolvedValue(null);
 
-    await expect(GroupPage({ params: Promise.resolve({ groupId }) })).rejects.toThrow("NEXT_NOT_FOUND");
+    await expect(GroupContent({ params: Promise.resolve({ groupId }) })).rejects.toThrow("NEXT_NOT_FOUND");
 
     expect(mocks.notFound).toHaveBeenCalledOnce();
     expect(mocks.getGroupPageData).toHaveBeenCalledWith(groupId);
   });
 
   test("loads the authorized group landing model once", async () => {
-    await GroupPage({ params: Promise.resolve({ groupId }) });
+    await GroupContent({ params: Promise.resolve({ groupId }) });
     expect(mocks.getGroupPageData.mock.calls).toEqual([[groupId]]);
   });
 
   test("renders pending and disputed recents without confirmed or rating-change labels", async () => {
-    const html = renderToStaticMarkup(await GroupPage({ params: Promise.resolve({ groupId }) }));
+    const html = renderToStaticMarkup(await GroupContent({ params: Promise.resolve({ groupId }) }));
 
     expect(html).toContain("Active matches");
     expect(html).toContain("Alice Tan vs Bea Chen");
@@ -91,4 +91,5 @@ describe("GroupPage", () => {
     expect(html).not.toContain('href="/groups/11111111-1111-4111-8111-111111111111/members"');
     expect(html).not.toContain('href="/groups/11111111-1111-4111-8111-111111111111/rankings"');
   });
+
 });

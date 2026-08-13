@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test, vi } from "vitest";
-import GroupsPage from "./page";
+import { GroupsContent } from "./page";
 
 const appDataMocks = vi.hoisted(() => ({
   listCurrentUserGroups: vi.fn(async () => [
@@ -17,7 +17,7 @@ vi.mock("@/lib/app-data", () => appDataMocks);
 
 describe("GroupsPage", () => {
   test("shows a create-group header action alongside existing groups", async () => {
-    const html = renderToStaticMarkup(await GroupsPage());
+    const html = renderToStaticMarkup(await GroupsContent());
 
     expect(html).toContain('href="/groups/new"');
     expect(html).toContain("Create group");
@@ -27,7 +27,7 @@ describe("GroupsPage", () => {
   test("shows a create-group action when the user has no groups", async () => {
     appDataMocks.listCurrentUserGroups.mockResolvedValueOnce([]);
 
-    const html = renderToStaticMarkup(await GroupsPage());
+    const html = renderToStaticMarkup(await GroupsContent());
 
     expect(html).toContain("Create or join a group to start ranking matches.");
     expect(html).toContain('href="/groups/new"');

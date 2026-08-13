@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(17);
+select plan(18);
 
 select has_index(
   'public',
@@ -154,6 +154,22 @@ select is(
   'group rating status allows an owner to retry a failed rebuild'
 );
 
+set local role postgres;
+
+insert into public.profiles (id, display_name, first_name, last_name, is_guest)
+values ('66666666-6666-4666-8666-666666666666', 'Unrelated Member', 'Unrelated', 'Member', false);
+
+insert into public.groups (id, owner_user_id, name, description)
+values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', '11111111-1111-4111-8111-111111111111', 'Second Club', 'Another ladder');
+
+insert into public.group_memberships (group_id, user_id, role, status)
+values
+  ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', '11111111-1111-4111-8111-111111111111', 'owner', 'active'),
+  ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', '66666666-6666-4666-8666-666666666666', 'member', 'active');
+
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"11111111-1111-4111-8111-111111111111","role":"authenticated"}', true);
+
 select is(
   public.get_match_recorder_page_data('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'e1000000-0000-4000-8000-000000000001')->'draft'->>'id',
   'e1000000-0000-4000-8000-000000000001',
@@ -168,8 +184,22 @@ select is(
 
 select is(
   jsonb_array_length(public.get_match_recorder_page_data('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', null)->'groups'),
-  1,
-  'recorder group switcher excludes inaccessible groups'
+  2,
+  'recorder group switcher includes every accessible group'
+);
+
+select ok(
+  not exists (
+    select 1
+    from jsonb_array_elements(public.get_match_recorder_page_data('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', null)->'memberships') entry
+    where entry->>'group_id' = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+  )
+  and not exists (
+    select 1
+    from jsonb_array_elements(public.get_match_recorder_page_data('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', null)->'profiles') entry
+    where entry->>'id' = '66666666-6666-4666-8666-666666666666'
+  ),
+  'recorder excludes memberships and profiles from unrelated accessible groups'
 );
 
 select set_config('request.jwt.claims', '{"sub":"55555555-5555-4555-8555-555555555555","role":"authenticated"}', true);

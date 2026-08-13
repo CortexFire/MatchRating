@@ -7,6 +7,13 @@ import {
   type MatchView,
 } from "@/lib/matches/read-model";
 import { listVisibleGroupMemberships } from "@/lib/group-membership-visibility";
+import {
+  encodeMatchHistoryCursor,
+  normalizeMatchHistoryRequest,
+  type MatchHistoryPage,
+  type MatchHistoryRequestInput,
+  type NormalizedMatchHistoryRequest,
+} from "@/lib/matches/history-pagination";
 
 export type AppGroup = {
   id: string;
@@ -92,7 +99,7 @@ type RatingRow = {
 const getCurrentUserId = cache(requireUserId);
 const canCurrentUserReadGroupCached = cache(async (groupId: string) => {
   if (!isUuid(groupId)) return false;
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   return canReadGroup(groupId, userId, createSupabaseServiceClient());
 });
 
@@ -199,56 +206,62 @@ export async function getGroup(groupId: string): Promise<AppGroup | null> {
   };
 }
 
-export async function listGroupMatches(groupId: string, options?: { limit?: number }): Promise<AppMatchSummary[]> {
-  const userId = await getCurrentUserId();
+export async function listGroupMatches(groupId: string, options: { limit: number }): Promise<AppMatchSummary[]> {
+  const userId = await requireUserId();
   const service = createSupabaseServiceClient();
   if (!(await canCurrentUserReadGroupCached(groupId))) return [];
-
-  let query = service
-    .from("matches")
-    .select("id, group_id, active_revision_id, status, submitted_at, review_started_at")
-    .eq("group_id", groupId)
-    .not("active_revision_id", "is", null)
-    .order("submitted_at", { ascending: false })
-    .order("id", { ascending: false });
-  if (options?.limit !== undefined) {
-    query = query.limit(options.limit);
-  }
-  const { data, error } = await query;
-  if (error) throw error;
-  return loadMatchViews((data ?? []) as MatchReadRows["matches"], userId, service);
+  const rows = await queryMatchHistoryRows({ groupId, limit: options.limit });
+  return loadMatchViews(rows, userId, service);
 }
 
-export async function listCurrentUserMatches(options?: { limit?: number }): Promise<AppMatchSummary[]> {
-  const userId = await getCurrentUserId();
+export async function listCurrentUserMatches(options: { limit: number }): Promise<AppMatchSummary[]> {
+  const userId = await requireUserId();
   const service = createSupabaseServiceClient();
-  const groupIds = await listActiveGroupIdsForUser(userId, service);
-  if (!groupIds.length) return [];
+  const rows = await queryMatchHistoryRows({ limit: options.limit });
+  return loadMatchViews(rows, userId, service);
+}
 
-  const { data: participantRows, error: participantError } = await service
-    .from("match_participants")
-    .select("revision_id")
-    .eq("user_id", userId);
-  if (participantError) throw participantError;
+const MATCH_HISTORY_PAGE_SIZE = 20;
 
-  const revisionIds = [...new Set((participantRows ?? []).map((row: { revision_id: string }) => row.revision_id))];
-  if (!revisionIds.length) return [];
+export async function listMatchHistoryPage(input: MatchHistoryRequestInput = {}): Promise<MatchHistoryPage> {
+  const request = normalizeMatchHistoryRequest(input);
+  const userId = await requireUserId();
+  const service = createSupabaseServiceClient();
+  const rows = await queryMatchHistoryRows({ ...request, limit: MATCH_HISTORY_PAGE_SIZE + 1 });
+  const hasNextPage = rows.length > MATCH_HISTORY_PAGE_SIZE;
+  const pageRows = rows.slice(0, MATCH_HISTORY_PAGE_SIZE);
+  const matches = await loadMatchViews(pageRows, userId, service);
+  const lastRow = pageRows.at(-1);
 
-  let query = service
-    .from("matches")
-    .select("id, group_id, active_revision_id, status, submitted_at, review_started_at")
-    .in("group_id", groupIds)
-    .in("active_revision_id", revisionIds)
-    .not("active_revision_id", "is", null)
-    .order("submitted_at", { ascending: false })
-    .order("id", { ascending: false });
-  if (options?.limit !== undefined) {
-    query = query.limit(options.limit);
+  return {
+    matches,
+    nextCursor: hasNextPage && lastRow
+      ? encodeMatchHistoryCursor({ submittedAt: lastRow.submitted_at, id: lastRow.id })
+      : null,
+  };
+}
+
+async function queryMatchHistoryRows({
+  groupId = null,
+  status = null,
+  search = null,
+  cursor = null,
+  limit,
+}: Partial<NormalizedMatchHistoryRequest> & { limit: number }): Promise<MatchReadRows["matches"]> {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 51) {
+    throw new Error("Match history limit must be between 1 and 51");
   }
-
-  const { data, error } = await query;
+  const client = await createSupabaseServerClient();
+  const { data, error } = await client.rpc("list_match_history_page", {
+    p_group_id: groupId,
+    p_status: status,
+    p_search: search,
+    p_before_submitted_at: cursor?.submittedAt ?? null,
+    p_before_match_id: cursor?.id ?? null,
+    p_limit: limit,
+  });
   if (error) throw error;
-  return loadMatchViews((data ?? []) as MatchReadRows["matches"], userId, service);
+  return (data ?? []) as MatchReadRows["matches"];
 }
 
 export async function listPendingReviewsForCurrentUser(): Promise<AppPendingReview[]> {
@@ -358,23 +371,6 @@ async function loadMatchViews(
   });
 }
 
-async function listActiveGroupIdsForUser(
-  userId: string,
-  service: ReturnType<typeof createSupabaseServiceClient>,
-): Promise<string[]> {
-  const { data, error } = await service
-    .from("group_memberships")
-    .select("group_id")
-    .eq("user_id", userId)
-    .eq("status", "active")
-    .is("left_at", null);
-
-  if (error) {
-    throw error;
-  }
-
-  return [...new Set((data ?? []).map((membership) => membership.group_id as string))];
-}
 
 export async function listGroupPlayers(groupId: string): Promise<AppPlayer[]> {
   await ensureCurrentUserCanReadGroup(groupId);

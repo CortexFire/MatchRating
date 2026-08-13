@@ -4,6 +4,8 @@ import {
   getGroup,
   getGroupMatchDetail,
   listCurrentUserGroups,
+  listCurrentUserMatches,
+  listMatchHistoryPage,
   listGroupMatches,
   listGroupPlayers,
   listPendingReviewsForCurrentUser,
@@ -23,11 +25,19 @@ const reactMocks = vi.hoisted(() => ({
   }),
 }));
 
-const supabaseMocks = vi.hoisted(() => ({
-  createSupabaseServerClient: vi.fn(),
-  createSupabaseServiceClient: vi.fn(),
-  requireUserId: vi.fn(),
-}));
+const supabaseMocks = vi.hoisted(() => {
+  const resolveUserId = vi.fn();
+  let userIdPromise: Promise<string> | undefined;
+  return {
+    createSupabaseServerClient: vi.fn(),
+    createSupabaseServiceClient: vi.fn(),
+    requireUserId: () => (userIdPromise ??= resolveUserId()),
+    resolveUserId,
+    resetUserId: () => {
+      userIdPromise = undefined;
+    },
+  };
+});
 
 vi.mock("@/lib/supabase/server", () => supabaseMocks);
 vi.mock("react", () => reactMocks);
@@ -95,6 +105,7 @@ const baseRows: Record<string, unknown[]> = {
 let rowsByTable: Record<string, unknown[]>;
 let errorsByTable: Record<string, Error | null>;
 let from: ReturnType<typeof vi.fn>;
+let rpc: ReturnType<typeof vi.fn>;
 let queriesByTable: Record<string, Array<ReturnType<typeof makeQuery>>>;
 
 function makeQuery(table: string) {
@@ -102,7 +113,10 @@ function makeQuery(table: string) {
   const orders: Array<{ column: string; ascending: boolean }> = [];
   let rowLimit: number | undefined;
   const query = {
-    select: vi.fn(() => query),
+    select: vi.fn((columns?: string) => {
+      void columns;
+      return query;
+    }),
     eq: vi.fn((column: string, value: unknown) => {
       rows = rows.filter((row) => (row as Record<string, unknown>)[column] === value);
       return query;
@@ -158,6 +172,7 @@ function makeQuery(table: string) {
 describe("stored match reads", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    supabaseMocks.resetUserId();
     reactMocks.values.clear();
     rowsByTable = structuredClone(baseRows);
     errorsByTable = {};
@@ -167,12 +182,107 @@ describe("stored match reads", () => {
       (queriesByTable[table] ??= []).push(query);
       return query;
     });
-    supabaseMocks.requireUserId.mockResolvedValue(OPPONENT);
+    rpc = vi.fn(async (_name: string, args: Record<string, unknown>) => {
+      const groupId = args.p_group_id as string | null;
+      const status = args.p_status as string | null;
+      const participantRevisionIds = new Set(
+        rowsByTable.match_participants
+          .filter((row) => (row as { user_id: string }).user_id === OPPONENT)
+          .map((row) => (row as { revision_id: string }).revision_id),
+      );
+      const activeGroupIds = new Set(
+        rowsByTable.group_memberships
+          .filter((row) => {
+            const membership = row as { user_id: string; status: string; left_at: string | null };
+            return membership.user_id === OPPONENT && membership.status === "active" && membership.left_at === null;
+          })
+          .map((row) => (row as { group_id: string }).group_id),
+      );
+      const data = rowsByTable.matches
+        .filter((row) => {
+          const match = row as { group_id: string; active_revision_id: string | null; status: string };
+          if (!match.active_revision_id || (status && match.status !== status)) return false;
+          return groupId
+            ? match.group_id === groupId
+            : activeGroupIds.has(match.group_id) && participantRevisionIds.has(match.active_revision_id);
+        })
+        .sort((left, right) => {
+          const leftMatch = left as { submitted_at: string; id: string };
+          const rightMatch = right as { submitted_at: string; id: string };
+          return rightMatch.submitted_at.localeCompare(leftMatch.submitted_at) || rightMatch.id.localeCompare(leftMatch.id);
+        })
+        .slice(0, args.p_limit as number);
+      return { data, error: null };
+    });
+    supabaseMocks.resolveUserId.mockResolvedValue(OPPONENT);
     supabaseMocks.createSupabaseServiceClient.mockReturnValue({ from });
+    supabaseMocks.createSupabaseServerClient.mockResolvedValue({ rpc });
+  });
+
+  test("hydrates at most 20 matches and returns an opaque cursor when another row exists", async () => {
+    const pageRows = Array.from({ length: 21 }, (_, index) => {
+      const suffix = String(index + 1).padStart(12, "0");
+      return {
+        id: `90000000-0000-4000-8000-${suffix}`,
+        group_id: GROUP_ONE,
+        active_revision_id: `91000000-0000-4000-8000-${suffix}`,
+        status: "confirmed",
+        submitted_at: `2026-08-${String(31 - index).padStart(2, "0")}T12:00:00.000Z`,
+        review_started_at: `2026-08-${String(31 - index).padStart(2, "0")}T12:00:00.000Z`,
+      };
+    });
+    rowsByTable.match_revisions = pageRows.map((match) => ({
+      id: match.active_revision_id,
+      match_id: match.id,
+      submitted_by_user_id: SUBMITTER,
+      format: "singles",
+    }));
+    rowsByTable.match_participants = pageRows.flatMap((match) => [
+      { revision_id: match.active_revision_id, user_id: SUBMITTER, team: "A", slot: 1 },
+      { revision_id: match.active_revision_id, user_id: OPPONENT, team: "B", slot: 1 },
+    ]);
+    rowsByTable.match_games = pageRows.map((match) => ({
+      revision_id: match.active_revision_id,
+      game_number: 1,
+      team_a_score: 21,
+      team_b_score: 18,
+      winner_team: "A",
+    }));
+    rpc.mockResolvedValue({ data: pageRows, error: null });
+
+    const page = await listMatchHistoryPage({ status: "confirmed", search: "  Alice  " });
+
+    expect(page.matches).toHaveLength(20);
+    expect(page.nextCursor).toEqual(expect.any(String));
+    expect(page.nextCursor).not.toContain(pageRows[19].submitted_at);
+    expect(rpc).toHaveBeenCalledWith("list_match_history_page", {
+      p_group_id: null,
+      p_status: "confirmed",
+      p_search: "Alice",
+      p_before_submitted_at: null,
+      p_before_match_id: null,
+      p_limit: 21,
+    });
+    expect(queriesByTable.match_revisions[0].in).toHaveBeenCalledWith(
+      "id",
+      pageRows.slice(0, 20).map((match) => match.active_revision_id),
+    );
+  });
+
+  test("keeps the recent current-user reader bounded without loading every participant revision", async () => {
+    await listCurrentUserMatches({ limit: 3 });
+
+    expect(rpc).toHaveBeenCalledWith("list_match_history_page", expect.objectContaining({
+      p_group_id: null,
+      p_limit: 3,
+    }));
+    expect(queriesByTable.match_participants.every((query) =>
+      query.select.mock.calls.every(([columns]) => columns !== "revision_id"),
+    )).toBe(true);
   });
 
   test("orders one group's hydrated matches newest first", async () => {
-    const matches = await listGroupMatches(GROUP_ONE);
+    const matches = await listGroupMatches(GROUP_ONE, { limit: 20 });
 
     expect(matches.map((match) => match.id)).toEqual([MATCH_NEW, MATCH_OLD]);
     expect(matches.every((match) => match.groupId === GROUP_ONE)).toBe(true);
@@ -186,15 +296,11 @@ describe("stored match reads", () => {
 
     await listGroupMatches(GROUP_ONE, { limit: 5 });
 
-    const matchesQuery = queriesByTable.matches[0];
-    expect(matchesQuery.eq).toHaveBeenCalledWith("group_id", GROUP_ONE);
-    expect(matchesQuery.not).toHaveBeenCalledWith("active_revision_id", "is", null);
-    expect(matchesQuery.order.mock.calls).toEqual([
-      ["submitted_at", { ascending: false }],
-      ["id", { ascending: false }],
-    ]);
-    expect(matchesQuery.limit).toHaveBeenCalledWith(5);
-    expect(matchesQuery.limit.mock.invocationCallOrder[0]).toBeGreaterThan(matchesQuery.order.mock.invocationCallOrder[1]);
+    expect(rpc).toHaveBeenCalledWith("list_match_history_page", expect.objectContaining({
+      p_group_id: GROUP_ONE,
+      p_limit: 5,
+    }));
+    expect(queriesByTable.matches).toBeUndefined();
   });
 
   test("includes every stored match status for the group with equal-timestamp IDs descending", async () => {
@@ -204,7 +310,7 @@ describe("stored match reads", () => {
       { id: MATCH_NEW, group_id: GROUP_ONE, active_revision_id: REVISION_NEW, status: "pending_confirmation", submitted_at: "2026-08-07T20:00:00.000Z", review_started_at: "2026-08-07T20:00:00.000Z" },
     ];
 
-    const matches = await listGroupMatches(GROUP_ONE);
+    const matches = await listGroupMatches(GROUP_ONE, { limit: 20 });
 
     expect(matches.map((match) => match.id)).toEqual([MATCH_OTHER, MATCH_OLD, MATCH_NEW]);
     expect(matches.map((match) => match.status)).toEqual(["disputed", "confirmed", "pending_confirmation"]);
@@ -214,11 +320,11 @@ describe("stored match reads", () => {
     await Promise.all([
       canCurrentUserReadGroup(GROUP_ONE),
       getGroup(GROUP_ONE),
-      listGroupMatches(GROUP_ONE),
+      listGroupMatches(GROUP_ONE, { limit: 20 }),
       listGroupPlayers(GROUP_ONE),
     ]);
 
-    expect(supabaseMocks.requireUserId).toHaveBeenCalledTimes(1);
+    expect(supabaseMocks.resolveUserId).toHaveBeenCalledTimes(1);
     const membershipAuthorizationQueries = queriesByTable.group_memberships.filter((query) =>
       query.maybeSingle.mock.calls.length > 0,
     );
@@ -415,7 +521,7 @@ describe("stored match reads", () => {
     await expect(canCurrentUserReadGroup(GROUP_ONE)).resolves.toBe(false);
     await expect(getGroup(GROUP_ONE)).rejects.toThrow("not an active member");
     await expect(listGroupPlayers(GROUP_ONE)).rejects.toThrow("not an active member");
-    await expect(listGroupMatches(GROUP_ONE)).resolves.toEqual([]);
+    await expect(listGroupMatches(GROUP_ONE, { limit: 20 })).resolves.toEqual([]);
     await expect(getGroupMatchDetail(GROUP_ONE, MATCH_NEW)).resolves.toBeNull();
   });
 

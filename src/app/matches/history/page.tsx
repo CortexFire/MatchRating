@@ -1,14 +1,24 @@
-export const dynamic = "force-dynamic";
+export const unstable_instant = { prefetch: "static" };
 
+import { Suspense } from "react";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { ScreenHeader } from "@/components/app/screen-header";
 import { MatchHistoryList } from "@/components/match/match-history-list";
-import { listCurrentUserGroups, listCurrentUserMatches } from "@/lib/app-data";
+import { listCurrentUserGroups, listMatchHistoryPage } from "@/lib/app-data";
+import MatchesLoading from "../loading";
 
-export default async function HistoryPage() {
-  const [groups, matches] = await Promise.all([
+export default function HistoryPage() {
+  return (
+    <Suspense fallback={<MatchesLoading />}>
+      <MatchHistoryContent />
+    </Suspense>
+  );
+}
+
+export async function MatchHistoryContent() {
+  const [groups, initialPage] = await Promise.all([
     listCurrentUserGroups(),
-    listCurrentUserMatches(),
+    listMatchHistoryPage({}),
   ]);
   const primaryGroup = groups[0];
 
@@ -18,7 +28,7 @@ export default async function HistoryPage() {
       recordHref={primaryGroup ? `/groups/${primaryGroup.id}/matches/new` : undefined}
     >
       <ScreenHeader title="Match history" backHref="/home" />
-      <MatchHistoryList matches={matches} showGroupName />
+      <MatchHistoryList initialPage={initialPage} showGroupName />
     </MobileShell>
   );
 }
