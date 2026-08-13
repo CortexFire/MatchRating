@@ -2,7 +2,6 @@
 
 import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { confirmMatchRevision } from "@/app/actions";
 
 export function MatchReviewActions({
@@ -18,7 +17,6 @@ export function MatchReviewActions({
   canConfirm: boolean;
   canDispute: boolean;
 }) {
-  const router = useRouter();
   const commandId = useRef<string | null>(null);
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
@@ -27,13 +25,17 @@ export function MatchReviewActions({
     setMessage("");
     commandId.current ??= crypto.randomUUID();
     startTransition(async () => {
-      const result = await confirmMatchRevision({ revisionId, commandId: commandId.current! });
+      const result = await confirmMatchRevision({
+        groupId,
+        matchId,
+        revisionId,
+        commandId: commandId.current!,
+      });
       if (!result.ok) {
         setMessage(result.message);
         return;
       }
       commandId.current = null;
-      router.refresh();
     });
   }
 

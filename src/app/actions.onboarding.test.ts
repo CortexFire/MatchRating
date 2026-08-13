@@ -61,6 +61,7 @@ const supabaseMocks = vi.hoisted(() => {
     ratings,
     untouchedUpdate,
     requireUserId: vi.fn(),
+    requireAuthenticatedSupabaseClient: vi.fn(),
     createSupabaseServerClient: vi.fn(async () => ({ auth, rpc })),
     createSupabaseServiceClient: vi.fn(() => ({
       from: vi.fn((table: string) => {
@@ -94,6 +95,10 @@ describe("onboarding actions", () => {
     vi.clearAllMocks();
     supabaseMocks.resetMembershipCalls();
     supabaseMocks.requireUserId.mockResolvedValue("user-1");
+    supabaseMocks.requireAuthenticatedSupabaseClient.mockResolvedValue({
+      client: { auth: supabaseMocks.auth, rpc: supabaseMocks.rpc },
+      userId: "user-1",
+    });
     supabaseMocks.profileUpsert.single.mockResolvedValue({ data: { id: "user-1" }, error: null });
     supabaseMocks.activeMembership.maybeSingle.mockResolvedValue({ data: { id: "member-1", role: "member" }, error: null });
     supabaseMocks.guestMemberships.then.mockImplementation((resolve) =>

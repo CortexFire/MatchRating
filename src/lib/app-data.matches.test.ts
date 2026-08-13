@@ -25,11 +25,19 @@ const reactMocks = vi.hoisted(() => ({
   }),
 }));
 
-const supabaseMocks = vi.hoisted(() => ({
-  createSupabaseServerClient: vi.fn(),
-  createSupabaseServiceClient: vi.fn(),
-  requireUserId: vi.fn(),
-}));
+const supabaseMocks = vi.hoisted(() => {
+  const resolveUserId = vi.fn();
+  let userIdPromise: Promise<string> | undefined;
+  return {
+    createSupabaseServerClient: vi.fn(),
+    createSupabaseServiceClient: vi.fn(),
+    requireUserId: () => (userIdPromise ??= resolveUserId()),
+    resolveUserId,
+    resetUserId: () => {
+      userIdPromise = undefined;
+    },
+  };
+});
 
 vi.mock("@/lib/supabase/server", () => supabaseMocks);
 vi.mock("react", () => reactMocks);
@@ -164,6 +172,7 @@ function makeQuery(table: string) {
 describe("stored match reads", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    supabaseMocks.resetUserId();
     reactMocks.values.clear();
     rowsByTable = structuredClone(baseRows);
     errorsByTable = {};
@@ -205,7 +214,7 @@ describe("stored match reads", () => {
         .slice(0, args.p_limit as number);
       return { data, error: null };
     });
-    supabaseMocks.requireUserId.mockResolvedValue(OPPONENT);
+    supabaseMocks.resolveUserId.mockResolvedValue(OPPONENT);
     supabaseMocks.createSupabaseServiceClient.mockReturnValue({ from });
     supabaseMocks.createSupabaseServerClient.mockResolvedValue({ rpc });
   });
@@ -315,7 +324,7 @@ describe("stored match reads", () => {
       listGroupPlayers(GROUP_ONE),
     ]);
 
-    expect(supabaseMocks.requireUserId).toHaveBeenCalledTimes(1);
+    expect(supabaseMocks.resolveUserId).toHaveBeenCalledTimes(1);
     const membershipAuthorizationQueries = queriesByTable.group_memberships.filter((query) =>
       query.maybeSingle.mock.calls.length > 0,
     );

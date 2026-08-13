@@ -12,17 +12,19 @@ vi.mock("next/navigation", () => ({ useRouter: () => navigationMocks }));
 
 beforeEach(() => vi.clearAllMocks());
 
-test("confirms the stored revision and refreshes the route", async () => {
+test("confirms the stored revision without a client refresh", async () => {
   actionMocks.confirmMatchRevision.mockResolvedValue({ ok: true, data: { revisionId: "revision-1" } });
   render(<MatchReviewActions groupId="group-1" matchId="match-1" revisionId="revision-1" canConfirm canDispute />);
 
   fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
 
   await waitFor(() => expect(actionMocks.confirmMatchRevision).toHaveBeenCalledWith({
+    groupId: "group-1",
+    matchId: "match-1",
     revisionId: "revision-1",
     commandId: expect.any(String),
   }));
-  expect(navigationMocks.refresh).toHaveBeenCalled();
+  expect(navigationMocks.refresh).not.toHaveBeenCalled();
 });
 
 test("shows an expected confirmation failure", async () => {

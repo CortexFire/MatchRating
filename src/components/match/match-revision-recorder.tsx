@@ -41,7 +41,6 @@ export function MatchRevisionRecorder({
       : await reviseMatch(payload);
     if (result.ok) {
       router.push(`/groups/${groupId}/matches/${matchId}`);
-      router.refresh();
     }
     return result;
   }

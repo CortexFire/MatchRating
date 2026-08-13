@@ -96,10 +96,9 @@ type RatingRow = {
   games_played: number;
 };
 
-const getCurrentUserId = cache(requireUserId);
 const canCurrentUserReadGroupCached = cache(async (groupId: string) => {
   if (!isUuid(groupId)) return false;
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   return canReadGroup(groupId, userId, createSupabaseServiceClient());
 });
 
@@ -127,7 +126,7 @@ export async function getGroupRatingRebuildStatus(groupId: string): Promise<AppR
 }
 
 export async function getCurrentProfile(): Promise<AppProfile> {
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   const service = createSupabaseServiceClient();
   const { data, error } = await service
     .from("profiles")
@@ -143,7 +142,7 @@ export async function getCurrentProfile(): Promise<AppProfile> {
 }
 
 export async function listCurrentUserGroups(): Promise<AppGroup[]> {
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   const service = createSupabaseServiceClient();
   const { data: memberships, error } = await service
     .from("group_memberships")
@@ -207,7 +206,7 @@ export async function getGroup(groupId: string): Promise<AppGroup | null> {
 }
 
 export async function listGroupMatches(groupId: string, options: { limit: number }): Promise<AppMatchSummary[]> {
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   const service = createSupabaseServiceClient();
   if (!(await canCurrentUserReadGroupCached(groupId))) return [];
   const rows = await queryMatchHistoryRows({ groupId, limit: options.limit });
@@ -215,7 +214,7 @@ export async function listGroupMatches(groupId: string, options: { limit: number
 }
 
 export async function listCurrentUserMatches(options: { limit: number }): Promise<AppMatchSummary[]> {
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   const service = createSupabaseServiceClient();
   const rows = await queryMatchHistoryRows({ limit: options.limit });
   return loadMatchViews(rows, userId, service);
@@ -225,7 +224,7 @@ const MATCH_HISTORY_PAGE_SIZE = 20;
 
 export async function listMatchHistoryPage(input: MatchHistoryRequestInput = {}): Promise<MatchHistoryPage> {
   const request = normalizeMatchHistoryRequest(input);
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   const service = createSupabaseServiceClient();
   const rows = await queryMatchHistoryRows({ ...request, limit: MATCH_HISTORY_PAGE_SIZE + 1 });
   const hasNextPage = rows.length > MATCH_HISTORY_PAGE_SIZE;
@@ -265,7 +264,7 @@ async function queryMatchHistoryRows({
 }
 
 export async function listPendingReviewsForCurrentUser(): Promise<AppPendingReview[]> {
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   const service = createSupabaseServiceClient();
   const { data: memberships, error: membershipError } = await service
     .from("group_memberships")
@@ -291,7 +290,7 @@ export async function listPendingReviewsForCurrentUser(): Promise<AppPendingRevi
 }
 
 export async function getGroupMatchDetail(groupId: string, matchId: string): Promise<AppMatchDetail | null> {
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   const service = createSupabaseServiceClient();
   if (!isUuid(groupId) || !isUuid(matchId) || !(await canReadGroup(groupId, userId, service))) return null;
 

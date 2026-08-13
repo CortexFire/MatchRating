@@ -43,6 +43,7 @@ const supabaseMocks = vi.hoisted(() => {
   const rpc = vi.fn();
 
   return {
+    requireAuthenticatedSupabaseClient: vi.fn(),
     createSupabaseServerClient: vi.fn(async () => ({ rpc })),
     createSupabaseServiceClient: vi.fn(() => service),
     requireUserId: vi.fn(),
@@ -61,6 +62,10 @@ describe("guest player actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     supabaseMocks.requireUserId.mockResolvedValue("owner-user");
+    supabaseMocks.requireAuthenticatedSupabaseClient.mockResolvedValue({
+      client: { rpc: supabaseMocks.rpc },
+      userId: "owner-user",
+    });
     supabaseMocks.membershipSelect.maybeSingle.mockResolvedValue({
       data: { id: "membership-1", role: "owner" },
       error: null,
@@ -132,7 +137,7 @@ describe("guest player actions", () => {
   });
 
   test("rejects unauthenticated callers before inserting guests", async () => {
-    supabaseMocks.requireUserId.mockRejectedValue(new Error("Unauthorized"));
+    supabaseMocks.requireAuthenticatedSupabaseClient.mockRejectedValue(new Error("Unauthorized"));
 
     const result = await actions.createGuestPlayers({ groupId: "group-1", names: ["Noah Kim"] });
 

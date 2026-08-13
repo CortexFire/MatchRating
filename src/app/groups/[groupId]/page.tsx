@@ -42,6 +42,7 @@ export async function GroupContent({ params }: GroupPageProps) {
         jobId={ratingStatus.id}
         status={ratingStatus.status}
         canRetry={ratingStatus.canRetry}
+        refreshOnComplete
       />
       <GroupMembersDisclosure players={players} inviteHref={`/groups/${groupId}/invite`} />
       <ActiveMatchDraftList drafts={activeDrafts} />

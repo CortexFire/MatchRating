@@ -55,6 +55,7 @@ export async function MembersContent({
         jobId={ratingStatus.id}
         status={ratingStatus.status}
         canRetry={ratingStatus.canRetry}
+        refreshOnComplete
       />
       {players.length ? (
         <section className="flex flex-col gap-2">

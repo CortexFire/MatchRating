@@ -32,6 +32,7 @@ import { dispatchRatingRebuild } from "@/lib/ratings/rebuild-dispatch";
 import {
   createSupabaseServerClient,
   createSupabaseServiceClient,
+  requireAuthenticatedSupabaseClient,
   requireUserId,
 } from "@/lib/supabase/server";
 
@@ -54,8 +55,7 @@ async function executeCommand<T>(
   fallback: string,
 ): Promise<CommandResult<T>> {
   try {
-    await requireUserId();
-    const client = await createSupabaseServerClient();
+    const { client } = await requireAuthenticatedSupabaseClient();
     const { data, error } = await client.rpc(name, args);
     if (error) return toCommandError(error, fallback);
     return { ok: true, data: data as T };
@@ -115,6 +115,8 @@ const claimGuestProfilesSchema = z.object({
 });
 
 const confirmSchema = z.object({
+  groupId: z.string().uuid(),
+  matchId: z.string().uuid(),
   revisionId: z.string().uuid(),
   commandId: z.string().uuid(),
 });
@@ -833,6 +835,7 @@ export async function confirmMatchRevision(input: z.infer<typeof confirmSchema>)
   if (result.ok) {
     revalidatePath("/groups");
     revalidatePath("/matches/review");
+    revalidatePath(`/groups/${parsed.data.groupId}/matches/${parsed.data.matchId}`);
   }
   return result;
 }
@@ -877,7 +880,6 @@ function revalidateMatchPaths(groupId: string, matchId: string) {
   revalidateRatingPaths(groupId);
   revalidatePath(`/groups/${groupId}/history`);
   revalidatePath(`/groups/${groupId}/matches/${matchId}`);
-  revalidatePath(`/groups/${groupId}/matches/${matchId}/revise`);
 }
 
 export async function retryRatingRebuild(
