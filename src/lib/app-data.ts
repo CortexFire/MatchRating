@@ -458,12 +458,12 @@ export async function listGroupActiveMatchDrafts(groupId: string): Promise<AppAc
 export async function getActiveMatchDraft(draftId: string): Promise<AppActiveMatchDraftDetail | null> {
   const userId = await requireUserId();
   const service = createSupabaseServiceClient();
-  await deleteExpiredDrafts(service);
   const { data, error } = await service
     .from("active_match_drafts")
     .select("id, group_id, created_by_user_id, format, team_a_user_ids, team_b_user_ids, games, expires_at")
     .eq("id", draftId)
     .is("submitted_match_id", null)
+    .gt("expires_at", new Date().toISOString())
     .maybeSingle();
 
   if (error) {
@@ -503,7 +503,6 @@ async function listVisibleDraftRows(
   service: ReturnType<typeof createSupabaseServiceClient>,
   activeGroupIds?: string[],
 ) {
-  await deleteExpiredDrafts(service);
   let query = service
     .from("active_match_drafts")
     .select("id, group_id, created_by_user_id, format, team_a_user_ids, team_b_user_ids, games, expires_at")
@@ -541,18 +540,6 @@ async function listActiveGroupIdsForUser(
   }
 
   return [...new Set((data ?? []).map((membership) => membership.group_id as string))];
-}
-
-async function deleteExpiredDrafts(service: ReturnType<typeof createSupabaseServiceClient>) {
-  const { error } = await service
-    .from("active_match_drafts")
-    .delete()
-    .lt("expires_at", new Date().toISOString())
-    .is("submitted_match_id", null);
-
-  if (error) {
-    throw error;
-  }
 }
 
 async function hydrateDraftSummaries(
