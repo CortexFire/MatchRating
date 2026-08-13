@@ -226,15 +226,21 @@ select set_config(
   '{"sub":"33333333-3333-4333-8333-333333333333","role":"authenticated"}',
   true
 );
-select lives_ok(
+select throws_ok(
   format(
     'select public.command_review_match(%L, %L, %L)',
     '15151515-1515-4515-8515-151515151515',
     (select value->>'revisionId' from match_command_test_state where name = 'first-submit'),
     'disputed'
   ),
-  'an opposing participant can dispute a pending revision'
+  'MRVAL',
+  'Disputes must include a corrected result',
+  'the review command rejects a dispute without a corrected result'
 );
+
+update public.matches
+set status = 'disputed'
+where id = (select (value->>'matchId')::uuid from match_command_test_state where name = 'first-submit');
 
 select set_config(
   'request.jwt.claims',
@@ -656,11 +662,9 @@ select set_config(
   '{"sub":"33333333-3333-4333-8333-333333333333","role":"authenticated"}',
   true
 );
-select public.command_review_match(
-  '22222222-2222-4222-8222-222222222223',
-  (select (value->>'revisionId')::uuid from match_command_test_state where name = 'selected-winner-submit'),
-  'disputed'
-);
+update public.matches
+set status = 'disputed'
+where id = (select (value->>'matchId')::uuid from match_command_test_state where name = 'selected-winner-submit');
 
 select set_config(
   'request.jwt.claims',

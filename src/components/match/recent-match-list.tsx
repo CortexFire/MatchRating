@@ -2,7 +2,13 @@ import Link from "next/link";
 import { MatchRow } from "@/components/app/match-row";
 import { type AppMatchSummary } from "@/lib/app-data";
 
-export function RecentMatchList({ matches, historyHref }: { matches: AppMatchSummary[]; historyHref: string }) {
+export function RecentMatchList({
+  matches,
+  historyHref,
+}: {
+  matches: AppMatchSummary[];
+  historyHref: string;
+}) {
   const recentMatches = matches.slice(0, 5);
 
   return (
@@ -18,7 +24,7 @@ export function RecentMatchList({ matches, historyHref }: { matches: AppMatchSum
       {recentMatches.length ? (
         <div className="flex flex-col gap-2">
           {recentMatches.map((match) => (
-            <MatchRow key={match.id} match={match} />
+            <MatchRow key={match.id} match={match} showRatingSummary={false} />
           ))}
         </div>
       ) : (

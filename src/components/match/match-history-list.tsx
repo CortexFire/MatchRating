@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 
 type Filter = "all" | "pending_confirmation" | "disputed";
 
-export function MatchHistoryList({ matches }: { matches: AppMatchSummary[] }) {
+export function MatchHistoryList({ matches, showGroupName = false }: { matches: AppMatchSummary[]; showGroupName?: boolean }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
   const visibleMatches = useMemo(() => {
@@ -19,18 +19,20 @@ export function MatchHistoryList({ matches }: { matches: AppMatchSummary[] }) {
       if (!query) return true;
       return [
         match.format,
+        match.status,
         displayStatus(match.status),
+        ...(showGroupName ? [match.groupName] : []),
         ...match.teamA.map((player) => player.name),
         ...match.teamB.map((player) => player.name),
       ].some((value) => value.toLocaleLowerCase().includes(query));
     });
-  }, [filter, matches, search]);
+  }, [filter, matches, search, showGroupName]);
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex gap-2">
         <FilterButton active={filter === "all"} onClick={() => setFilter("all")}>All</FilterButton>
-        <FilterButton active={filter === "pending_confirmation"} onClick={() => setFilter("pending_confirmation")}>Pending</FilterButton>
+        <FilterButton active={filter === "pending_confirmation"} onClick={() => setFilter("pending_confirmation")}>Awaiting review</FilterButton>
         <FilterButton active={filter === "disputed"} onClick={() => setFilter("disputed")}>Disputed</FilterButton>
       </div>
       <div className="relative">
@@ -40,7 +42,7 @@ export function MatchHistoryList({ matches }: { matches: AppMatchSummary[] }) {
       {visibleMatches.length ? (
         <div className="flex flex-col gap-3">
           {visibleMatches.map((match) => (
-            <MatchRow key={match.id} match={match} />
+            <MatchRow key={match.id} match={match} showGroupName={showGroupName} heading="participants" />
           ))}
         </div>
       ) : (
@@ -69,7 +71,7 @@ function FilterButton({ active, onClick, children }: { active: boolean; onClick:
 }
 
 function displayStatus(status: AppMatchSummary["status"]) {
-  if (status === "pending_confirmation") return "Pending confirmation" as const;
-  if (status === "confirmed") return "Confirmed" as const;
+  if (status === "pending_confirmation") return "Awaiting review" as const;
+  if (status === "confirmed") return "Accepted" as const;
   return "Disputed" as const;
 }

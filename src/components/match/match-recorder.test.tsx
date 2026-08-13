@@ -114,6 +114,7 @@ describe("MatchRecorder", () => {
       data: {
         players: names.map((name, index) => ({
           ...groupPlayer(`${groupId}-guest-${index}`, name, "GG"),
+          role: "Guest" as const,
           isGuest: true,
         })),
       },
@@ -146,10 +147,10 @@ describe("MatchRecorder", () => {
 
     fireEvent.click(screen.getByLabelText("Team A empty player slot 2"));
     expect(screen.getByRole("combobox", { name: "Current group Group A" })).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Group A Guest" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "Group A Guest" } });
     fireEvent.click(screen.getByRole("button", { name: "Add guest player Group A Guest" }));
     fireEvent.click(screen.getByRole("button", { name: /Select Team B/ }));
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "AveryCara" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "AveryCara" } });
     fireEvent.click(screen.getByRole("button", { name: "Select AveryCara" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Add players" }));
@@ -188,15 +189,15 @@ describe("MatchRecorder", () => {
     expect((screen.getByLabelText("Set 1 Team B score") as HTMLInputElement).value).toBe("18");
 
     fireEvent.click(screen.getByLabelText("Team B empty player slot 2"));
-    expect((screen.getByLabelText("Search for a player") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Add a guest or search for a player") as HTMLInputElement).value).toBe("");
     expect(screen.getByRole("button", { name: "Filter All" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.queryByRole("button", { name: "Select AveryCara" })).toBeNull();
     expect(screen.getByRole("button", { name: "Select BriaCara" })).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Group B Guest" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "Group B Guest" } });
     fireEvent.click(screen.getByRole("button", { name: "Add guest player Group B Guest" }));
     fireEvent.click(screen.getByRole("button", { name: /Select Team A/ }));
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "BriaCara" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "BriaCara" } });
     fireEvent.click(screen.getByRole("button", { name: "Select BriaCara" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Add players" }));
@@ -253,6 +254,41 @@ describe("MatchRecorder", () => {
     expect(screen.getByRole("button", { name: "Add players" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
     expect(screen.queryByRole("listbox")).toBeNull();
+  });
+
+  test("prompts users to add a guest or search for a player", () => {
+    openPlayerSelect();
+
+    const search = screen.getByRole("searchbox", { name: "Add a guest or search for a player" });
+
+    expect(search.getAttribute("placeholder")).toBe("Add a guest or search for a player");
+    expect(screen.queryByRole("searchbox", { name: "Search for a player" })).toBeNull();
+  });
+
+  test("shows 5.2 compact player cards in a keyboard-focusable scroll region", () => {
+    openPlayerSelect();
+
+    const roster = screen.getByRole("region", { name: "Available players" });
+    const player = screen.getByRole("button", { name: "Select Cory Shah" });
+    const avatar = screen.getByText("CS");
+    const name = screen.getByText("Cory Shah");
+    const statusDot = player.querySelector('[aria-hidden="true"]');
+
+    expect(roster.classList.contains("max-h-[352px]")).toBe(true);
+    expect(roster.classList.contains("gap-2")).toBe(true);
+    expect(roster.classList.contains("overflow-y-auto")).toBe(true);
+    expect(roster.classList.contains("focus-visible:outline-action")).toBe(true);
+    expect(roster.getAttribute("tabindex")).toBe("0");
+    expect(player.classList.contains("h-[60px]")).toBe(true);
+    expect(player.classList.contains("shrink-0")).toBe(true);
+    expect(avatar.classList.contains("size-10")).toBe(true);
+    expect(name.classList.contains("text-sm")).toBe(true);
+    expect(name.classList.contains("truncate")).toBe(true);
+    expect(statusDot?.classList.contains("size-2")).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Filter Selected" }));
+
+    expect(screen.getByRole("region", { name: "Available players" }).hasAttribute("tabindex")).toBe(false);
   });
 
   test("keeps draft player changes in Player Select until Add players is clicked", () => {
@@ -340,7 +376,7 @@ describe("MatchRecorder", () => {
   test("filters Player Select rows by player name and initials", () => {
     openPlayerSelect();
 
-    const search = screen.getByLabelText("Search for a player");
+    const search = screen.getByLabelText("Add a guest or search for a player");
 
     fireEvent.change(search, { target: { value: "HP" } });
     expect(screen.getByRole("button", { name: "Select Henry Park" })).toBeTruthy();
@@ -411,7 +447,7 @@ describe("MatchRecorder", () => {
   test("creates a draft guest from the search box on the active team", () => {
     openPlayerSelect();
 
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Noah Kim" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "Noah Kim" } });
     fireEvent.click(screen.getByRole("button", { name: "Add guest player Noah Kim" }));
 
     expect(screen.getByLabelText("Draft Team B player Noah Kim")).toBeTruthy();
@@ -426,7 +462,7 @@ describe("MatchRecorder", () => {
     expect(addGuest.classList.contains("bg-surface")).toBe(true);
     expect(addGuest.classList.contains("text-muted")).toBe(true);
 
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Noah Kim" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "Noah Kim" } });
     const enabledAddGuest = screen.getByRole("button", {
       name: "Add guest player Noah Kim",
     }) as HTMLButtonElement;
@@ -434,9 +470,9 @@ describe("MatchRecorder", () => {
     expect(enabledAddGuest.classList.contains("bg-action")).toBe(true);
     expect(enabledAddGuest.classList.contains("text-white")).toBe(true);
 
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Dev" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "Dev" } });
     fireEvent.click(screen.getByRole("button", { name: "Select Dev Okafor" }));
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Noah Kim" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "Noah Kim" } });
 
     const fullTeamAddGuest = screen.getByRole("button", { name: "Add player" }) as HTMLButtonElement;
     expect(fullTeamAddGuest.disabled).toBe(true);
@@ -447,7 +483,7 @@ describe("MatchRecorder", () => {
   test("discards draft guests when Player Select is canceled", () => {
     openPlayerSelect();
 
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Noah Kim" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "Noah Kim" } });
     fireEvent.click(screen.getByRole("button", { name: "Add guest player Noah Kim" }));
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
@@ -464,7 +500,7 @@ describe("MatchRecorder", () => {
             id: "guest-mina",
             name: "Mina Ray",
             initials: "MR",
-            role: "Member" as const,
+            role: "Guest" as const,
             rating: 1500,
             rd: 350,
             rank: 0,
@@ -485,13 +521,13 @@ describe("MatchRecorder", () => {
     );
 
     fireEvent.click(screen.getByLabelText("Team B empty player slot 2"));
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Noah Kim" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "Noah Kim" } });
     fireEvent.click(screen.getByRole("button", { name: "Add guest player Noah Kim" }));
     fireEvent.click(screen.getByRole("button", { name: "Remove Noah Kim from draft Team B" }));
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Mina Ray" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "Mina Ray" } });
     fireEvent.click(screen.getByRole("button", { name: "Add guest player Mina Ray" }));
     fireEvent.click(screen.getByRole("button", { name: /Select Team A/ }));
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Dev" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "Dev" } });
     fireEvent.click(screen.getByRole("button", { name: "Select Dev Okafor" }));
     fireEvent.click(screen.getByRole("button", { name: "Add players" }));
 
@@ -1133,7 +1169,7 @@ describe("MatchRecorder", () => {
       fireEvent.click(screen.getByRole("button", { name: "Submit" }));
     });
 
-    expect(screen.getByText("Match saved. Ratings updating…")).toBeTruthy();
+    expect(screen.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.")).toBeTruthy();
     expect((screen.getByLabelText("Current group Downtown Rec") as HTMLSelectElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: "singles" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByLabelText("Set 1 Team A score") as HTMLInputElement).disabled).toBe(true);
@@ -1146,7 +1182,7 @@ describe("MatchRecorder", () => {
       await vi.advanceTimersByTimeAsync(2_999);
     });
 
-    expect(screen.getByText("Match saved. Ratings updating…")).toBeTruthy();
+    expect(screen.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.")).toBeTruthy();
     expect((screen.getByLabelText("Set 1 Team A score") as HTMLInputElement).value).toBe("21");
     expect(navigationMocks.replace).not.toHaveBeenCalled();
   });
@@ -1187,7 +1223,7 @@ describe("MatchRecorder", () => {
       await vi.advanceTimersByTimeAsync(3_000);
     });
 
-    expect(screen.queryByText("Match saved. Ratings updating…")).toBeNull();
+    expect(screen.queryByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.")).toBeNull();
     expect(screen.getByRole("button", { name: "doubles" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByLabelText("Team A empty player slot 1")).toBeTruthy();
     expect(screen.getByLabelText("Team A empty player slot 2")).toBeTruthy();
@@ -1298,7 +1334,7 @@ describe("MatchRecorder", () => {
 
     expect(submitMatchAction).toHaveBeenCalledWith(expect.objectContaining({ draftId: "draft-1" }));
     expect(saveActiveMatchDraft).not.toHaveBeenCalled();
-    expect(screen.getByText("Match saved. Ratings updating…")).toBeTruthy();
+    expect(screen.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.")).toBeTruthy();
   });
 
   test("waits for an in-flight autosave before submitting its returned draft id", async () => {
@@ -1347,7 +1383,7 @@ describe("MatchRecorder", () => {
     });
 
     expect(submitMatchAction).toHaveBeenCalledWith(expect.objectContaining({ draftId: "draft-created" }));
-    expect(screen.getByText("Match saved. Ratings updating…")).toBeTruthy();
+    expect(screen.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.")).toBeTruthy();
   });
 
   test("does not restart autosave when a server refresh replaces the action reference", async () => {
@@ -1419,7 +1455,7 @@ describe("MatchRecorder", () => {
 
     await waitFor(() => expect(submitMatchAction).toHaveBeenCalledTimes(2));
     expect(submitMatchAction.mock.calls[1][0].commandId).toBe(firstCommandId);
-    expect(screen.getByText("Match saved. Ratings updating…")).toBeTruthy();
+    expect(screen.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.")).toBeTruthy();
   });
 
   test("renders selected-player drafts as read-only", () => {

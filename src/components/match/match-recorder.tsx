@@ -428,7 +428,7 @@ export function MatchRecorder({
       if (submitMatchAction) {
         const result = await submitMatchAction(input);
         if (result.ok) {
-          completeSubmission("Match saved. Ratings updating…");
+          completeSubmission("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.");
           router.refresh();
         } else {
           submissionInProgress.current = false;
@@ -438,7 +438,7 @@ export function MatchRecorder({
         return;
       }
 
-      completeSubmission(`Submitted. Team ${validated.matchWinnerTeam} wins; ratings update immediately.`);
+      completeSubmission(`Submitted. Team ${validated.matchWinnerTeam} wins. Ratings updated immediately; opponents may review it, and participants have 30 days to correct it.`);
     } catch (error) {
       submissionInProgress.current = false;
       setIsSubmitting(false);
@@ -842,7 +842,7 @@ function toGuestPlayer(id: string, name: string): AppPlayer {
     id,
     name,
     initials: initialsFor(name),
-    role: "Member",
+    role: "Guest",
     rating: 1500,
     rd: 350,
     rank: 0,

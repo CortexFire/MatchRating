@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { MobileShell } from "@/components/app/mobile-shell";
-import { PendingReviewList } from "@/components/match/pending-review-list";
+import { MatchResultList } from "@/components/match/match-result-list";
 import { listCurrentUserGroups, listPendingReviewsForCurrentUser } from "@/lib/app-data";
-import { toPendingReviewMatch } from "@/lib/matches/pending-review";
+import { toMatchResultSummary } from "@/lib/matches/match-result-summary";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +29,11 @@ export default async function ReviewMatchesPage() {
         </Link>
         <h1 className="text-center text-2xl font-bold leading-8 text-ink">Review Matches</h1>
       </header>
+      <p className="rounded-lg border border-stroke bg-surface p-4 text-sm leading-5 text-muted">
+        Confirmation is optional. Confirm if correct, dispute to correct it, or do nothing; matches are typically accepted automatically within 24–48 hours.
+      </p>
       {matches.length ? (
-        <PendingReviewList matches={matches.map(toPendingReviewMatch)} />
+        <MatchResultList matches={matches.map(toMatchResultSummary)} />
       ) : (
         <p className="rounded-lg border border-stroke bg-surface p-4 text-sm text-muted">No pending reviews yet.</p>
       )}
