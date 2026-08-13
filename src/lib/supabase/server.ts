@@ -5,6 +5,7 @@ import {
   getRequiredSupabasePublicEnv,
   getRequiredSupabaseSecretKey,
 } from "./env";
+import { createPostgrestFutureJwtRetryFetch } from "./retry-fetch";
 
 export async function createSupabaseServerClient() {
   const env = getRequiredSupabasePublicEnv();
@@ -34,6 +35,9 @@ export function createSupabaseServiceClient() {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
+    },
+    global: {
+      fetch: createPostgrestFutureJwtRetryFetch(fetch),
     },
   });
 }
