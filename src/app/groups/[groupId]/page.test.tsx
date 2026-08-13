@@ -3,23 +3,11 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import GroupPage from "./page";
 
 const mocks = vi.hoisted(() => ({
-  canCurrentUserReadGroup: vi.fn(),
-  getGroup: vi.fn(),
-  listGroupActiveMatchDrafts: vi.fn(),
-  getGroupRatingRebuildStatus: vi.fn(),
-  listGroupMatches: vi.fn(),
-  listGroupPlayers: vi.fn(),
+  getGroupPageData: vi.fn(),
   notFound: vi.fn(() => { throw new Error("NEXT_NOT_FOUND"); }),
 }));
 
-vi.mock("@/lib/app-data", () => ({
-  canCurrentUserReadGroup: mocks.canCurrentUserReadGroup,
-  getGroup: mocks.getGroup,
-  listGroupActiveMatchDrafts: mocks.listGroupActiveMatchDrafts,
-  getGroupRatingRebuildStatus: mocks.getGroupRatingRebuildStatus,
-  listGroupMatches: mocks.listGroupMatches,
-  listGroupPlayers: mocks.listGroupPlayers,
-}));
+vi.mock("@/lib/navigation-read-models", () => ({ getGroupPageData: mocks.getGroupPageData }));
 vi.mock("next/navigation", () => ({
   notFound: mocks.notFound,
   useRouter: () => ({ refresh: vi.fn() }),
@@ -56,42 +44,27 @@ const recentMatches = ["pending_confirmation", "confirmed", "disputed"].map((sta
 describe("GroupPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.canCurrentUserReadGroup.mockResolvedValue(true);
-    mocks.getGroup.mockResolvedValue(group);
-    mocks.listGroupActiveMatchDrafts.mockResolvedValue([draft]);
-    mocks.getGroupRatingRebuildStatus.mockResolvedValue({ id: "job-1", status: "running", canRetry: false });
-    mocks.listGroupMatches.mockResolvedValue(recentMatches);
-    mocks.listGroupPlayers.mockResolvedValue(players);
+    mocks.getGroupPageData.mockResolvedValue({
+      group,
+      activeDrafts: [draft],
+      ratingStatus: { id: "job-1", status: "running", canRetry: false },
+      recentMatches,
+      players,
+    });
   });
 
-  test("stops with not found before loading private group data when access is denied", async () => {
-    mocks.canCurrentUserReadGroup.mockResolvedValue(false);
+  test("treats an inaccessible group as not found after one consolidated read", async () => {
+    mocks.getGroupPageData.mockResolvedValue(null);
 
     await expect(GroupPage({ params: Promise.resolve({ groupId }) })).rejects.toThrow("NEXT_NOT_FOUND");
 
     expect(mocks.notFound).toHaveBeenCalledOnce();
-    expect(mocks.getGroup).not.toHaveBeenCalled();
-    expect(mocks.listGroupMatches).not.toHaveBeenCalled();
-    expect(mocks.listGroupPlayers).not.toHaveBeenCalled();
+    expect(mocks.getGroupPageData).toHaveBeenCalledWith(groupId);
   });
 
-  test("starts every authorized landing read in parallel", async () => {
-    const pending = new Promise<never>(() => {});
-    mocks.getGroup.mockReturnValue(pending);
-    mocks.listGroupActiveMatchDrafts.mockReturnValue(pending);
-    mocks.getGroupRatingRebuildStatus.mockReturnValue(pending);
-    mocks.listGroupMatches.mockReturnValue(pending);
-    mocks.listGroupPlayers.mockReturnValue(pending);
-
-    void GroupPage({ params: Promise.resolve({ groupId }) });
-    await vi.waitFor(() => expect(mocks.canCurrentUserReadGroup).toHaveBeenCalledWith(groupId));
-    await vi.waitFor(() => {
-      expect(mocks.getGroup).toHaveBeenCalledWith(groupId);
-      expect(mocks.listGroupActiveMatchDrafts).toHaveBeenCalledWith(groupId);
-      expect(mocks.getGroupRatingRebuildStatus).toHaveBeenCalledWith(groupId);
-      expect(mocks.listGroupMatches).toHaveBeenCalledWith(groupId, { limit: 5 });
-      expect(mocks.listGroupPlayers).toHaveBeenCalledWith(groupId);
-    });
+  test("loads the authorized group landing model once", async () => {
+    await GroupPage({ params: Promise.resolve({ groupId }) });
+    expect(mocks.getGroupPageData.mock.calls).toEqual([[groupId]]);
   });
 
   test("renders pending and disputed recents without confirmed or rating-change labels", async () => {
@@ -117,13 +90,5 @@ describe("GroupPage", () => {
     expect(html).toContain('href="/groups/11111111-1111-4111-8111-111111111111/invite"');
     expect(html).not.toContain('href="/groups/11111111-1111-4111-8111-111111111111/members"');
     expect(html).not.toContain('href="/groups/11111111-1111-4111-8111-111111111111/rankings"');
-  });
-
-  test("treats a missing authorized group as not found", async () => {
-    mocks.getGroup.mockResolvedValue(null);
-
-    await expect(GroupPage({ params: Promise.resolve({ groupId }) })).rejects.toThrow("NEXT_NOT_FOUND");
-
-    expect(mocks.notFound).toHaveBeenCalledOnce();
   });
 });

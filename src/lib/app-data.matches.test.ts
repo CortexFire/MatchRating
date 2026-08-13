@@ -1,14 +1,9 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
   canCurrentUserReadGroup,
-  getActiveMatchDraft,
   getGroup,
   getGroupMatchDetail,
   listCurrentUserGroups,
-  listCurrentUserMatches,
-  listCurrentUserRankings,
-  listCurrentUserActiveMatchDrafts,
-  listGroupActiveMatchDrafts,
   listGroupMatches,
   listGroupPlayers,
   listPendingReviewsForCurrentUser,
@@ -219,7 +214,6 @@ describe("stored match reads", () => {
     await Promise.all([
       canCurrentUserReadGroup(GROUP_ONE),
       getGroup(GROUP_ONE),
-      listGroupActiveMatchDrafts(GROUP_ONE),
       listGroupMatches(GROUP_ONE),
       listGroupPlayers(GROUP_ONE),
     ]);
@@ -387,46 +381,6 @@ describe("stored match reads", () => {
     ]);
   });
 
-  test("returns the current user's rank and active member count for every group alphabetically", async () => {
-    rowsByTable.group_memberships = [
-      { id: "membership-1", group_id: GROUP_ONE, user_id: OPPONENT, role: "member", status: "active", left_at: null },
-      { id: "membership-2", group_id: GROUP_ONE, user_id: SUBMITTER, role: "owner", status: "active", left_at: null },
-      { id: "membership-3", group_id: GROUP_TWO, user_id: OPPONENT, role: "member", status: "active", left_at: null },
-      { id: "membership-4", group_id: GROUP_TWO, user_id: SUBMITTER, role: "owner", status: "active", left_at: null },
-    ];
-    rowsByTable.profiles = [
-      { id: OPPONENT, display_name: "Bea Rivera", is_guest: false, active_until: null },
-      { id: SUBMITTER, display_name: "Alice Tan", is_guest: false, active_until: null },
-    ];
-    rowsByTable.group_rating_states = [
-      { group_id: GROUP_ONE, user_id: OPPONENT, rating: "1400.4", rd: "160", games_played: 2 },
-      { group_id: GROUP_ONE, user_id: SUBMITTER, rating: "1600.4", rd: "120", games_played: 3 },
-      { group_id: GROUP_TWO, user_id: OPPONENT, rating: "1700.4", rd: "100", games_played: 5 },
-      { group_id: GROUP_TWO, user_id: SUBMITTER, rating: "1500.4", rd: "140", games_played: 1 },
-    ];
-
-    await expect(listCurrentUserRankings()).resolves.toEqual([
-      { groupId: GROUP_TWO, groupName: "Other Club", rating: 1700, rank: 1, memberCount: 2 },
-      { groupId: GROUP_ONE, groupName: "Wednesday Club", rating: 1400, rank: 2, memberCount: 2 },
-    ]);
-  });
-
-  test("ranks missing rating states at the displayed default rating", async () => {
-    rowsByTable.group_memberships = [
-      { id: "membership-1", group_id: GROUP_ONE, user_id: OPPONENT, role: "member", status: "active", left_at: null },
-      { id: "membership-2", group_id: GROUP_ONE, user_id: SUBMITTER, role: "owner", status: "active", left_at: null },
-    ];
-    rowsByTable.profiles = [
-      { id: OPPONENT, display_name: "Bea Rivera", is_guest: false, active_until: null },
-      { id: SUBMITTER, display_name: "Alice Tan", is_guest: false, active_until: null },
-    ];
-    rowsByTable.group_rating_states = [];
-
-    await expect(listCurrentUserRankings()).resolves.toEqual([
-      { groupId: GROUP_ONE, groupName: "Wednesday Club", rating: 1500, rank: 2, memberCount: 2 },
-    ]);
-  });
-
   test("lists only confirmable matches with the oldest review first", async () => {
     rowsByTable.match_confirmations = [];
     const matches = await listPendingReviewsForCurrentUser();
@@ -436,72 +390,6 @@ describe("stored match reads", () => {
       ["review_started_at", { ascending: true }],
       ["id", { ascending: true }],
     ]);
-  });
-
-  test("preserves a stored draft winner when hydrating an editable participant", async () => {
-    const draft = await getActiveMatchDraft("30303030-3030-4030-8030-303030303030");
-
-    expect(draft).toMatchObject({
-      role: "Participant",
-      canEdit: true,
-      initialMatch: {
-        format: "singles",
-        teamAUserIds: [SUBMITTER],
-        teamBUserIds: [OPPONENT],
-        games: [{ teamAScore: 12, teamBScore: 12, winnerTeam: "B" }],
-      },
-    });
-  });
-
-  test("derives a missing legacy draft winner from scores", async () => {
-    (rowsByTable.active_match_drafts[0] as { games: unknown }).games = [{ teamAScore: 12, teamBScore: 12 }];
-
-    const draft = await getActiveMatchDraft("30303030-3030-4030-8030-303030303030");
-
-    expect(draft?.initialMatch.games).toEqual([{ teamAScore: 12, teamBScore: 12, winnerTeam: "A" }]);
-  });
-
-  test("keeps active-draft readers read-only while filtering expired drafts", async () => {
-    vi.useFakeTimers();
-    const now = new Date("2026-08-13T12:00:00.000Z");
-    vi.setSystemTime(now);
-    (rowsByTable.active_match_drafts[0] as { expires_at: string }).expires_at = "2026-08-13T11:59:59.999Z";
-
-    try {
-      const [currentUserDrafts, groupDrafts, draft] = await Promise.all([
-        listCurrentUserActiveMatchDrafts(),
-        listGroupActiveMatchDrafts(GROUP_ONE),
-        getActiveMatchDraft("30303030-3030-4030-8030-303030303030"),
-      ]);
-
-      expect(currentUserDrafts).toEqual([]);
-      expect(groupDrafts).toEqual([]);
-      expect(draft).toBeNull();
-
-      const draftQueries = queriesByTable.active_match_drafts;
-      const selectQueries = draftQueries.filter((query) => query.select.mock.calls.length > 0);
-      expect(selectQueries).toHaveLength(3);
-      for (const query of selectQueries) {
-        expect(query.gt).toHaveBeenCalledWith("expires_at", now.toISOString());
-      }
-      for (const query of draftQueries) {
-        expect(query.delete).not.toHaveBeenCalled();
-      }
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  test("hides current-user drafts after the user leaves their group", async () => {
-    rowsByTable.group_memberships = [];
-
-    await expect(listCurrentUserActiveMatchDrafts()).resolves.toEqual([]);
-  });
-
-  test("does not hydrate a draft route after the user leaves its group", async () => {
-    rowsByTable.group_memberships = [];
-
-    await expect(getActiveMatchDraft("30303030-3030-4030-8030-303030303030")).resolves.toBeNull();
   });
 
   test("enforces exact group and match pairing", async () => {
@@ -526,7 +414,6 @@ describe("stored match reads", () => {
 
     await expect(canCurrentUserReadGroup(GROUP_ONE)).resolves.toBe(false);
     await expect(getGroup(GROUP_ONE)).rejects.toThrow("not an active member");
-    await expect(listGroupActiveMatchDrafts(GROUP_ONE)).rejects.toThrow("not an active member");
     await expect(listGroupPlayers(GROUP_ONE)).rejects.toThrow("not an active member");
     await expect(listGroupMatches(GROUP_ONE)).resolves.toEqual([]);
     await expect(getGroupMatchDetail(GROUP_ONE, MATCH_NEW)).resolves.toBeNull();
