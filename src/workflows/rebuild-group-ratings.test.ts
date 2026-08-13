@@ -67,6 +67,27 @@ describe("rating rebuild workflow failure handling", () => {
     });
   });
 
+  test("persists the leaf message from an exhausted serialized step failure", async () => {
+    supabaseMocks.rpc
+      .mockResolvedValueOnce({
+        data: null,
+        error: {
+          message:
+            'Step "loadRebuildInput" failed after 3 retries: {"message":"RPC request failed","cause":"{\\"message\\":\\"rating service unavailable\\"}"}',
+        },
+      })
+      .mockResolvedValueOnce({ data: null, error: null });
+
+    await expect(rebuildGroupRatingsWorkflow("job-1", "dispatch-1")).rejects.toThrow(
+      "rating service unavailable",
+    );
+
+    expect(supabaseMocks.rpc).toHaveBeenLastCalledWith("fail_rating_rebuild", {
+      p_job_id: "job-1",
+      p_error: "rating service unavailable",
+    });
+  });
+
   test("marks invalid historical input as fatal so the calculation step is not retried", async () => {
     const malformedInput = {
       groupId: "group-1",

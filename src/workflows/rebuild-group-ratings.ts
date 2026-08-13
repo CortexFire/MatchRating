@@ -52,11 +52,29 @@ export async function markFailed(jobId: string, message: string) {
 }
 
 function errorMessage(error: unknown): string {
-  if (typeof error !== "object" || error === null) return "Rating rebuild failed";
+  return findErrorMessage(error, new Set<object>()) ?? "Rating rebuild failed";
+}
+
+function findErrorMessage(error: unknown, seen: Set<object>): string | undefined {
+  if (typeof error === "string") {
+    const exhaustedStepMessage = error.replace(/^Step ".+" failed after \d+ retr(?:y|ies):\s*/, "");
+    if (exhaustedStepMessage !== error) return findErrorMessage(exhaustedStepMessage, seen);
+
+    try {
+      const parsed = JSON.parse(error) as unknown;
+      if (parsed !== error) return findErrorMessage(parsed, seen);
+    } catch {
+      // The error was not serialized JSON.
+    }
+
+    return error.length > 0 ? error : undefined;
+  }
+
+  if (typeof error !== "object" || error === null || seen.has(error)) return undefined;
+  seen.add(error);
 
   const { message, cause } = error as { message?: unknown; cause?: unknown };
-  if (typeof message === "string" && message.length > 0) return message;
-  return errorMessage(cause);
+  return findErrorMessage(cause, seen) ?? findErrorMessage(message, seen);
 }
 
 export async function rebuildGroupRatingsWorkflow(jobId: string, dispatchToken: string) {
