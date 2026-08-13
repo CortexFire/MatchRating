@@ -1,28 +1,41 @@
 import type { MatchView } from "./read-model";
 
-export type PendingReviewMatch = {
+export type MatchResultSummary = {
   id: string;
   groupId: string;
   summary: string;
   details: string;
+  submittedAt: string;
+  groupName: string;
   score: string;
+  singleGameScore?: string;
   format: string;
 };
 
-export function toPendingReviewMatch(match: MatchView): PendingReviewMatch {
+export function toMatchResultSummary(match: MatchView): MatchResultSummary {
   const winning = match.winnerTeam === "A" ? match.teamA : match.teamB;
   const losing = match.winnerTeam === "A" ? match.teamB : match.teamA;
   const winningGames = match.games.filter(
     (game) => game.winnerTeam === match.winnerTeam,
   ).length;
   const losingGames = match.games.length - winningGames;
+  const submittedAt = formatSubmittedAt(match.submittedAt);
+  const singleGame = match.games.length === 1 ? match.games[0] : undefined;
+  const singleGameScore = singleGame
+    ? match.winnerTeam === "A"
+      ? `${singleGame.teamAScore} - ${singleGame.teamBScore}`
+      : `${singleGame.teamBScore} - ${singleGame.teamAScore}`
+    : undefined;
 
   return {
     id: match.id,
     groupId: match.groupId,
     summary: `${shortTeamName(winning)} def. ${shortTeamName(losing)}`,
-    details: `${formatSubmittedAt(match.submittedAt)} @ ${match.groupName}`,
+    details: `${submittedAt} @ ${match.groupName}`,
+    submittedAt,
+    groupName: match.groupName,
     score: match.games.length ? `${winningGames} - ${losingGames}` : "—",
+    ...(singleGameScore ? { singleGameScore } : {}),
     format: match.format === "singles" ? "Singles" : "Doubles",
   };
 }

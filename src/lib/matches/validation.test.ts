@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { validateMatchSubmission } from "./validation";
+import { type MatchSubmissionInput, validateMatchSubmission } from "./validation";
 
 describe("match validation", () => {
-  it("accepts a valid best-of-three doubles submission and derives the winner", () => {
+  it("counts a selected winner when its score conflicts with the selection", () => {
     const result = validateMatchSubmission(
       {
         groupId: "group-1",
@@ -10,20 +10,20 @@ describe("match validation", () => {
         teamAUserIds: ["alice", "cory"],
         teamBUserIds: ["bea", "dev"],
         games: [
-          { teamAScore: 21, teamBScore: 17 },
-          { teamAScore: 18, teamBScore: 21 },
-          { teamAScore: 21, teamBScore: 15 },
+          { teamAScore: 21, teamBScore: 17, winnerTeam: "B" },
+          { teamAScore: 18, teamBScore: 21, winnerTeam: "B" },
+          { teamAScore: 21, teamBScore: 15, winnerTeam: "A" },
         ],
       },
       { activeMemberIds: ["alice", "bea", "cory", "dev"] },
     );
 
-    expect(result.matchWinnerTeam).toBe("A");
-    expect(result.teamAGameWins).toBe(2);
-    expect(result.teamBGameWins).toBe(1);
+    expect(result.matchWinnerTeam).toBe("B");
+    expect(result.teamAGameWins).toBe(1);
+    expect(result.teamBGameWins).toBe(2);
   });
 
-  it("rejects duplicate players and tied game scores", () => {
+  it("rejects duplicate players", () => {
     expect(() =>
       validateMatchSubmission(
         {
@@ -31,11 +31,44 @@ describe("match validation", () => {
           format: "doubles",
           teamAUserIds: ["alice", "alice"],
           teamBUserIds: ["bea", "dev"],
-          games: [{ teamAScore: 21, teamBScore: 21 }],
+          games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "A" }],
         },
         { activeMemberIds: ["alice", "bea", "dev"] },
       ),
     ).toThrow(/duplicate/i);
+  });
+
+  it("rejects a missing or invalid selected game winner", () => {
+    const input = {
+      groupId: "group-1",
+      format: "singles" as const,
+      teamAUserIds: ["alice"],
+      teamBUserIds: ["bea"],
+      games: [{ teamAScore: 21, teamBScore: 18 }],
+    };
+
+    expect(() => validateMatchSubmission(input as unknown as MatchSubmissionInput, { activeMemberIds: ["alice", "bea"] })).toThrow();
+    expect(() =>
+      validateMatchSubmission(
+        { ...input, games: [{ ...input.games[0], winnerTeam: "winner" }] } as unknown as MatchSubmissionInput,
+        { activeMemberIds: ["alice", "bea"] },
+      ),
+    ).toThrow();
+  });
+
+  it("rejects a tied final score even when a winner is selected", () => {
+    expect(() =>
+      validateMatchSubmission(
+        {
+          groupId: "group-1",
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 21, winnerTeam: "A" }],
+        },
+        { activeMemberIds: ["alice", "bea"] },
+      ),
+    ).toThrow(/tied scores/i);
   });
 
   it("rejects players who are not active group members", () => {
@@ -46,7 +79,7 @@ describe("match validation", () => {
           format: "singles",
           teamAUserIds: ["alice"],
           teamBUserIds: ["outsider"],
-          games: [{ teamAScore: 21, teamBScore: 15 }],
+          games: [{ teamAScore: 21, teamBScore: 15, winnerTeam: "A" }],
         },
         { activeMemberIds: ["alice"] },
       ),

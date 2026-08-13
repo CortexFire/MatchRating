@@ -3,6 +3,9 @@ import { describe, expect, test, vi } from "vitest";
 import { MatchResultConfirmation } from "./match-result-confirmation";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock("@/lib/ratings/glicko2", () => ({
+  DEFAULT_RATING: { rating: 1777, rd: 222 },
+}));
 
 const match = {
   id: "match-1",
@@ -11,6 +14,7 @@ const match = {
   winnerTeam: "A" as const,
   clubName: "Downtown Rec Club",
   submittedAt: "Aug 2nd, 2026 @ 8:53pm",
+  disputeUntil: "Sep 1, 2026",
   teamA: {
     label: "Team A",
     players: [
@@ -38,15 +42,15 @@ describe("MatchResultConfirmation", () => {
       <MatchResultConfirmation
         groupId="demo"
         groupName="Downtown Rec"
-        reviewCount={3}
-        canReview={true}
-        canRevise={true}
+        canConfirm={true}
+        canDispute={true}
+        canRevise={false}
         match={match}
       />,
     );
 
-    expect(html).toContain("Match Result Confirmation");
-    expect(html).toContain("3 matches to review");
+    expect(html).toContain("Match Result");
+    expect(html).not.toContain("matches to review");
     expect(html).toContain("Downtown Rec");
     expect(html).toContain("Downtown Rec Club");
     expect(html).toContain("Aug 2nd, 2026 @ 8:53pm");
@@ -57,6 +61,7 @@ describe("MatchResultConfirmation", () => {
     expect(html).toContain("Set 3");
     expect(html).toContain("Confirm");
     expect(html).toContain("Dispute");
+    expect(html).toContain("Dispute until Sep 1, 2026");
   });
 
   test("links dispute to a prefilled new match route", () => {
@@ -64,9 +69,9 @@ describe("MatchResultConfirmation", () => {
       <MatchResultConfirmation
         groupId="demo"
         groupName="Downtown Rec"
-        reviewCount={3}
-        canReview={true}
-        canRevise={true}
+        canConfirm={true}
+        canDispute={true}
+        canRevise={false}
         match={match}
       />,
     );
@@ -74,5 +79,50 @@ describe("MatchResultConfirmation", () => {
     expect(html).toContain(
       'href="/groups/demo/matches/match-1/revise"',
     );
+  });
+
+  test("shows accepted status with the rolling dispute action", () => {
+    const html = renderToStaticMarkup(
+      <MatchResultConfirmation
+        groupId="demo"
+        groupName="Downtown Rec"
+        canConfirm={false}
+        canDispute={true}
+        canRevise={false}
+        match={{ ...match, status: "confirmed" }}
+      />,
+    );
+
+    expect(html).toContain("Accepted");
+    expect(html).toContain("Dispute until Sep 1, 2026");
+    expect(html).toContain("Dispute");
+    expect(html).not.toContain(">Confirm<");
+  });
+  test("renders compact completed and pending player rating changes without deviations", () => {
+    const html = renderToStaticMarkup(
+      <MatchResultConfirmation
+        groupId="demo"
+        groupName="Downtown Rec"
+        canConfirm={false}
+        canDispute={false}
+        canRevise={false}
+        match={{
+          ...match,
+          teamA: { label: "Team A", players: [{ id: "alice", initials: "AT", name: "Alice Tan", ratingChange: { previous: { rating: 1488, rd: 211 }, next: { rating: 1512, rd: 179 } } }] },
+          teamB: { label: "Team B", players: [{ id: "bea", initials: "BR", name: "Bea Rivera" }] },
+        }}
+      />,
+    );
+
+    expect(html).toContain("1488 → 1512");
+    expect(html).toContain("1777 → …");
+    expect(html).toContain("whitespace-nowrap");
+    expect(html).not.toContain("Previous");
+    expect(html).not.toContain("New 1512");
+    expect(html).not.toContain("±");
+    expect(html).not.toContain("211");
+    expect(html).not.toContain("179");
+    expect(html).not.toContain("222");
+    expect(html).not.toContain("Updating…");
   });
 });

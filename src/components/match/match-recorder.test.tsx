@@ -7,7 +7,7 @@ import { MobileShell } from "../app/mobile-shell";
 import { type AppPlayer } from "@/lib/app-data";
 import { MatchRecorder } from "./match-recorder";
 
-const navigationMocks = vi.hoisted(() => ({ push: vi.fn() }));
+const navigationMocks = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn(), replace: vi.fn() }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => navigationMocks }));
 
@@ -41,6 +41,9 @@ function groupPlayer(id: string, name: string, initials: string): AppPlayer {
 
 describe("MatchRecorder", () => {
   afterEach(() => {
+    navigationMocks.push.mockReset();
+    navigationMocks.refresh.mockReset();
+    navigationMocks.replace.mockReset();
     vi.useRealTimers();
   });
   test("offers the provided groups in a native group selector while recording", () => {
@@ -111,6 +114,7 @@ describe("MatchRecorder", () => {
       data: {
         players: names.map((name, index) => ({
           ...groupPlayer(`${groupId}-guest-${index}`, name, "GG"),
+          role: "Guest" as const,
           isGuest: true,
         })),
       },
@@ -143,10 +147,10 @@ describe("MatchRecorder", () => {
 
     fireEvent.click(screen.getByLabelText("Team A empty player slot 2"));
     expect(screen.getByRole("combobox", { name: "Current group Group A" })).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Group A Guest" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "Group A Guest" } });
     fireEvent.click(screen.getByRole("button", { name: "Add guest player Group A Guest" }));
     fireEvent.click(screen.getByRole("button", { name: /Select Team B/ }));
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "AveryCara" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "AveryCara" } });
     fireEvent.click(screen.getByRole("button", { name: "Select AveryCara" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Add players" }));
@@ -185,15 +189,15 @@ describe("MatchRecorder", () => {
     expect((screen.getByLabelText("Set 1 Team B score") as HTMLInputElement).value).toBe("18");
 
     fireEvent.click(screen.getByLabelText("Team B empty player slot 2"));
-    expect((screen.getByLabelText("Search for a player") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Add a guest or search for a player") as HTMLInputElement).value).toBe("");
     expect(screen.getByRole("button", { name: "Filter All" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.queryByRole("button", { name: "Select AveryCara" })).toBeNull();
     expect(screen.getByRole("button", { name: "Select BriaCara" })).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Group B Guest" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "Group B Guest" } });
     fireEvent.click(screen.getByRole("button", { name: "Add guest player Group B Guest" }));
     fireEvent.click(screen.getByRole("button", { name: /Select Team A/ }));
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "BriaCara" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "BriaCara" } });
     fireEvent.click(screen.getByRole("button", { name: "Select BriaCara" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Add players" }));
@@ -211,7 +215,7 @@ describe("MatchRecorder", () => {
       format: "doubles",
       teamAUserIds: ["group-b-ada", "group-b-cara"],
       teamBUserIds: ["group-b-bea", "group-b-guest-0"],
-      games: [{ teamAScore: 21, teamBScore: 20 }],
+      games: [{ teamAScore: 21, teamBScore: 20, winnerTeam: "A" }],
     });
   });
   test("renders a disputed match as the initial recording state", () => {
@@ -250,6 +254,41 @@ describe("MatchRecorder", () => {
     expect(screen.getByRole("button", { name: "Add players" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
     expect(screen.queryByRole("listbox")).toBeNull();
+  });
+
+  test("prompts users to add a guest or search for a player", () => {
+    openPlayerSelect();
+
+    const search = screen.getByRole("searchbox", { name: "Add a guest or search for a player" });
+
+    expect(search.getAttribute("placeholder")).toBe("Add a guest or search for a player");
+    expect(screen.queryByRole("searchbox", { name: "Search for a player" })).toBeNull();
+  });
+
+  test("shows 5.2 compact player cards in a keyboard-focusable scroll region", () => {
+    openPlayerSelect();
+
+    const roster = screen.getByRole("region", { name: "Available players" });
+    const player = screen.getByRole("button", { name: "Select Cory Shah" });
+    const avatar = screen.getByText("CS");
+    const name = screen.getByText("Cory Shah");
+    const statusDot = player.querySelector('[aria-hidden="true"]');
+
+    expect(roster.classList.contains("max-h-[352px]")).toBe(true);
+    expect(roster.classList.contains("gap-2")).toBe(true);
+    expect(roster.classList.contains("overflow-y-auto")).toBe(true);
+    expect(roster.classList.contains("focus-visible:outline-action")).toBe(true);
+    expect(roster.getAttribute("tabindex")).toBe("0");
+    expect(player.classList.contains("h-[60px]")).toBe(true);
+    expect(player.classList.contains("shrink-0")).toBe(true);
+    expect(avatar.classList.contains("size-10")).toBe(true);
+    expect(name.classList.contains("text-sm")).toBe(true);
+    expect(name.classList.contains("truncate")).toBe(true);
+    expect(statusDot?.classList.contains("size-2")).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Filter Selected" }));
+
+    expect(screen.getByRole("region", { name: "Available players" }).hasAttribute("tabindex")).toBe(false);
   });
 
   test("keeps draft player changes in Player Select until Add players is clicked", () => {
@@ -337,7 +376,7 @@ describe("MatchRecorder", () => {
   test("filters Player Select rows by player name and initials", () => {
     openPlayerSelect();
 
-    const search = screen.getByLabelText("Search for a player");
+    const search = screen.getByLabelText("Add a guest or search for a player");
 
     fireEvent.change(search, { target: { value: "HP" } });
     expect(screen.getByRole("button", { name: "Select Henry Park" })).toBeTruthy();
@@ -408,7 +447,7 @@ describe("MatchRecorder", () => {
   test("creates a draft guest from the search box on the active team", () => {
     openPlayerSelect();
 
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Noah Kim" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "Noah Kim" } });
     fireEvent.click(screen.getByRole("button", { name: "Add guest player Noah Kim" }));
 
     expect(screen.getByLabelText("Draft Team B player Noah Kim")).toBeTruthy();
@@ -423,7 +462,7 @@ describe("MatchRecorder", () => {
     expect(addGuest.classList.contains("bg-surface")).toBe(true);
     expect(addGuest.classList.contains("text-muted")).toBe(true);
 
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Noah Kim" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "Noah Kim" } });
     const enabledAddGuest = screen.getByRole("button", {
       name: "Add guest player Noah Kim",
     }) as HTMLButtonElement;
@@ -431,9 +470,9 @@ describe("MatchRecorder", () => {
     expect(enabledAddGuest.classList.contains("bg-action")).toBe(true);
     expect(enabledAddGuest.classList.contains("text-white")).toBe(true);
 
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Dev" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "Dev" } });
     fireEvent.click(screen.getByRole("button", { name: "Select Dev Okafor" }));
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Noah Kim" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "Noah Kim" } });
 
     const fullTeamAddGuest = screen.getByRole("button", { name: "Add player" }) as HTMLButtonElement;
     expect(fullTeamAddGuest.disabled).toBe(true);
@@ -444,7 +483,7 @@ describe("MatchRecorder", () => {
   test("discards draft guests when Player Select is canceled", () => {
     openPlayerSelect();
 
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Noah Kim" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "Noah Kim" } });
     fireEvent.click(screen.getByRole("button", { name: "Add guest player Noah Kim" }));
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
@@ -461,7 +500,7 @@ describe("MatchRecorder", () => {
             id: "guest-mina",
             name: "Mina Ray",
             initials: "MR",
-            role: "Member" as const,
+            role: "Guest" as const,
             rating: 1500,
             rd: 350,
             rank: 0,
@@ -482,13 +521,13 @@ describe("MatchRecorder", () => {
     );
 
     fireEvent.click(screen.getByLabelText("Team B empty player slot 2"));
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Noah Kim" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "Noah Kim" } });
     fireEvent.click(screen.getByRole("button", { name: "Add guest player Noah Kim" }));
     fireEvent.click(screen.getByRole("button", { name: "Remove Noah Kim from draft Team B" }));
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Mina Ray" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "Mina Ray" } });
     fireEvent.click(screen.getByRole("button", { name: "Add guest player Mina Ray" }));
     fireEvent.click(screen.getByRole("button", { name: /Select Team A/ }));
-    fireEvent.change(screen.getByLabelText("Search for a player"), { target: { value: "Dev" } });
+    fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "Dev" } });
     fireEvent.click(screen.getByRole("button", { name: "Select Dev Okafor" }));
     fireEvent.click(screen.getByRole("button", { name: "Add players" }));
 
@@ -659,7 +698,7 @@ describe("MatchRecorder", () => {
       format: "singles",
       teamAUserIds: ["alice"],
       teamBUserIds: ["bea"],
-      games: [{ teamAScore: 18, teamBScore: 21 }],
+      games: [{ teamAScore: 18, teamBScore: 21, winnerTeam: "B" }],
     });
   });
 
@@ -713,6 +752,99 @@ describe("MatchRecorder", () => {
     expect((screen.getByLabelText("Set 1 Team B score") as HTMLInputElement).value).toBe("18");
   });
 
+  test("preserves an explicit initial winner that conflicts with the scores", () => {
+    render(
+      <MatchRecorder
+        players={matchRecorderPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "B" }],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Mark Set 1 Team B as winner" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  test("uses Team A for a legacy tied-score initial recording without a selected winner", () => {
+    render(
+      <MatchRecorder
+        players={matchRecorderPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 12, teamBScore: 12 }],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Mark Set 1 Team A as winner" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Mark Set 1 Team B as winner" }).getAttribute("aria-pressed")).toBe("false");
+  });
+
+  test("retains a conflicting selected winner in autosave and submit payloads", async () => {
+    vi.useFakeTimers();
+    const saveActiveMatchDraft = vi.fn(async () => ({ ok: true as const, data: { draftId: "draft-1" } }));
+    const submitMatchAction = vi.fn(async () => ({
+      ok: true as const,
+      data: { matchId: "match-1", revisionId: "revision-1", ratingJobId: "job-1", ratingStatus: "queued" as const },
+    }));
+
+    render(
+      <MatchRecorder
+        players={matchRecorderPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "B" }],
+        }}
+        saveActiveMatchDraft={saveActiveMatchDraft}
+        submitMatchAction={submitMatchAction}
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(saveActiveMatchDraft).toHaveBeenLastCalledWith(expect.objectContaining({
+      games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "B" }],
+    }));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+      await Promise.resolve();
+    });
+    expect(submitMatchAction).toHaveBeenCalledTimes(1);
+    expect(submitMatchAction).toHaveBeenLastCalledWith(expect.objectContaining({
+      games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "B" }],
+    }));
+  });
+
+  test("re-derives unequal score edits while retaining a selected winner for tied scores", () => {
+    render(
+      <MatchRecorder
+        players={matchRecorderPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "B" }],
+        }}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "20" } });
+    expect(screen.getByRole("button", { name: "Mark Set 1 Team A as winner" }).getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark Set 1 Team B as winner" }));
+    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "21" } });
+    expect(screen.getByRole("button", { name: "Mark Set 1 Team B as winner" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
   test("derives the winner after both blank scores are entered", () => {
     render(<MatchRecorder players={matchRecorderPlayers} />);
 
@@ -761,7 +893,7 @@ describe("MatchRecorder", () => {
       format: "singles",
       teamAUserIds: ["alice"],
       teamBUserIds: ["bea"],
-      games: [{ teamAScore: 21, teamBScore: 20 }],
+      games: [{ teamAScore: 21, teamBScore: 20, winnerTeam: "A" }],
     });
   });
 
@@ -806,7 +938,7 @@ describe("MatchRecorder", () => {
     expect(saveActiveMatchDraft).toHaveBeenCalledTimes(2);
     expect(saveActiveMatchDraft).toHaveBeenLastCalledWith(expect.objectContaining({
       draftId: "draft-created",
-      games: [{ teamAScore: 21, teamBScore: 19 }],
+      games: [{ teamAScore: 21, teamBScore: 19, winnerTeam: "A" }],
     }));
   });
 
@@ -847,7 +979,7 @@ describe("MatchRecorder", () => {
       format: "singles",
       teamAUserIds: ["alice"],
       teamBUserIds: ["bea"],
-      games: [{ teamAScore: 21, teamBScore: 20 }],
+      games: [{ teamAScore: 21, teamBScore: 20, winnerTeam: "A" }],
     });
   });
 
@@ -1003,6 +1135,164 @@ describe("MatchRecorder", () => {
     });
   });
 
+  test("keeps the submitted match visible and locked for three seconds", async () => {
+    vi.useFakeTimers();
+    const submitMatchAction = vi.fn(async () => ({
+      ok: true as const,
+      data: {
+        matchId: "match-1",
+        revisionId: "revision-1",
+        ratingJobId: "job-1",
+        ratingStatus: "queued" as const,
+      },
+    }));
+
+    render(
+      <MatchRecorder
+        groupId="11111111-1111-4111-8111-111111111111"
+        groupOptions={[
+          { id: "11111111-1111-4111-8111-111111111111", name: "Downtown Rec" },
+          { id: "22222222-2222-4222-8222-222222222222", name: "Wednesday Club" },
+        ]}
+        players={matchRecorderPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 18 }],
+        }}
+        submitMatchAction={submitMatchAction}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    });
+
+    expect(screen.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.")).toBeTruthy();
+    expect((screen.getByLabelText("Current group Downtown Rec") as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "singles" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Set 1 Team A score") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Mark Set 1 Team A as winner" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByLabelText("Remove Alice from Team A")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add set" })).toBeNull();
+    expect(navigationMocks.refresh).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_999);
+    });
+
+    expect(screen.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.")).toBeTruthy();
+    expect((screen.getByLabelText("Set 1 Team A score") as HTMLInputElement).value).toBe("21");
+    expect(navigationMocks.replace).not.toHaveBeenCalled();
+  });
+
+  test("resets the recorder and submission identity after three seconds", async () => {
+    vi.useFakeTimers();
+    const submitMatchAction = vi.fn().mockResolvedValue({
+      ok: true as const,
+      data: {
+        matchId: "match-1",
+        revisionId: "revision-1",
+        ratingJobId: "job-1",
+        ratingStatus: "queued" as const,
+      },
+    });
+
+    render(
+      <MatchRecorder
+        groupId="11111111-1111-4111-8111-111111111111"
+        players={matchRecorderPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 18 }],
+        }}
+        draftId="33333333-3333-4333-8333-333333333333"
+        submitMatchAction={submitMatchAction}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    });
+    const firstCommandId = submitMatchAction.mock.calls[0][0].commandId;
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+
+    expect(screen.queryByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.")).toBeNull();
+    expect(screen.getByRole("button", { name: "doubles" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByLabelText("Team A empty player slot 1")).toBeTruthy();
+    expect(screen.getByLabelText("Team A empty player slot 2")).toBeTruthy();
+    expect(screen.getByLabelText("Team B empty player slot 1")).toBeTruthy();
+    expect(screen.getByLabelText("Team B empty player slot 2")).toBeTruthy();
+    expect((screen.getByLabelText("Set 1 Team A score") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Set 1 Team B score") as HTMLInputElement).value).toBe("");
+    expect((screen.getByRole("button", { name: "Submit" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(navigationMocks.replace).toHaveBeenCalledWith(
+      "/groups/11111111-1111-4111-8111-111111111111/matches/new",
+      { scroll: false },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "singles" }));
+    fireEvent.click(screen.getByLabelText("Team A empty player slot 1"));
+    fireEvent.click(screen.getByRole("button", { name: "Select Alice Tan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add players" }));
+    fireEvent.click(screen.getByLabelText("Team B empty player slot 1"));
+    fireEvent.click(screen.getByRole("button", { name: "Select Bea Rivera" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add players" }));
+    fireEvent.change(screen.getByLabelText("Set 1 Team A score"), { target: { value: "21" } });
+    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "19" } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    });
+
+    expect(submitMatchAction).toHaveBeenCalledTimes(2);
+    expect(submitMatchAction.mock.calls[1][0].draftId).toBeUndefined();
+    expect(submitMatchAction.mock.calls[1][0].commandId).not.toBe(firstCommandId);
+  });
+
+  test("cancels the scheduled recorder reset when unmounted", async () => {
+    vi.useFakeTimers();
+    const clearTimeout = vi.spyOn(window, "clearTimeout");
+    const submitMatchAction = vi.fn(async () => ({
+      ok: true as const,
+      data: {
+        matchId: "match-1",
+        revisionId: "revision-1",
+        ratingJobId: "job-1",
+        ratingStatus: "queued" as const,
+      },
+    }));
+    const { unmount } = render(
+      <MatchRecorder
+        groupId="11111111-1111-4111-8111-111111111111"
+        players={matchRecorderPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 18 }],
+        }}
+        submitMatchAction={submitMatchAction}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    });
+    unmount();
+
+    expect(clearTimeout).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    expect(navigationMocks.replace).not.toHaveBeenCalled();
+  });
+
   test("cancels a scheduled autosave when submitting immediately", async () => {
     vi.useFakeTimers();
     const saveActiveMatchDraft = vi.fn(async () => ({
@@ -1044,7 +1334,7 @@ describe("MatchRecorder", () => {
 
     expect(submitMatchAction).toHaveBeenCalledWith(expect.objectContaining({ draftId: "draft-1" }));
     expect(saveActiveMatchDraft).not.toHaveBeenCalled();
-    expect(screen.getByText("Match saved. Ratings updating…")).toBeTruthy();
+    expect(screen.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.")).toBeTruthy();
   });
 
   test("waits for an in-flight autosave before submitting its returned draft id", async () => {
@@ -1093,7 +1383,7 @@ describe("MatchRecorder", () => {
     });
 
     expect(submitMatchAction).toHaveBeenCalledWith(expect.objectContaining({ draftId: "draft-created" }));
-    expect(screen.getByText("Match saved. Ratings updating…")).toBeTruthy();
+    expect(screen.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.")).toBeTruthy();
   });
 
   test("does not restart autosave when a server refresh replaces the action reference", async () => {
@@ -1165,7 +1455,7 @@ describe("MatchRecorder", () => {
 
     await waitFor(() => expect(submitMatchAction).toHaveBeenCalledTimes(2));
     expect(submitMatchAction.mock.calls[1][0].commandId).toBe(firstCommandId);
-    expect(screen.getByText("Match saved. Ratings updating…")).toBeTruthy();
+    expect(screen.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.")).toBeTruthy();
   });
 
   test("renders selected-player drafts as read-only", () => {

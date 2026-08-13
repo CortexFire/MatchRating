@@ -36,15 +36,16 @@ export default async function GroupPage({
   return (
     <MobileShell active="Group" recordHref={recordHref}>
       <ScreenHeader title={group.name} backHref="/groups" />
-      <ActiveMatchDraftList drafts={activeDrafts} />
       <RatingRebuildStatus
+        key={ratingStatus.id ?? "no-rating-job"}
         groupId={groupId}
         jobId={ratingStatus.id}
         status={ratingStatus.status}
         canRetry={ratingStatus.canRetry}
       />
-      <RecentMatchList matches={recentMatches} historyHref={`/groups/${groupId}/history`} />
       <GroupMembersDisclosure players={players} inviteHref={`/groups/${groupId}/invite`} />
+      <ActiveMatchDraftList drafts={activeDrafts} />
+      <RecentMatchList matches={recentMatches} historyHref={`/groups/${groupId}/history`} />
     </MobileShell>
   );
 }

@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(45);
+select plan(55);
 
 insert into public.profiles (id, display_name, first_name, last_name)
 values
@@ -93,7 +93,7 @@ select 'first-submit', public.command_submit_match(
   'singles',
   array['22222222-2222-4222-8222-222222222222']::uuid[],
   array['33333333-3333-4333-8333-333333333333']::uuid[],
-  '[{"teamAScore":21,"teamBScore":18}]'::jsonb
+  '[{"teamAScore":21,"teamBScore":18,"winnerTeam":"A"}]'::jsonb
 );
 
 select ok(
@@ -113,7 +113,7 @@ select is(
     'singles',
     array['22222222-2222-4222-8222-222222222222']::uuid[],
     array['33333333-3333-4333-8333-333333333333']::uuid[],
-    '[{"teamAScore":21,"teamBScore":18}]'::jsonb
+    '[{"teamAScore":21,"teamBScore":18,"winnerTeam":"A"}]'::jsonb
   ),
   (select value from match_command_test_state where name = 'first-submit'),
   'an identical retry replays the original result'
@@ -129,7 +129,7 @@ select throws_ok(
       'singles',
       array['22222222-2222-4222-8222-222222222222']::uuid[],
       array['33333333-3333-4333-8333-333333333333']::uuid[],
-      '[{"teamAScore":21,"teamBScore":17}]'::jsonb
+      '[{"teamAScore":21,"teamBScore":17,"winnerTeam":"A"}]'::jsonb
     )
   $$,
   'MRCMD',
@@ -146,7 +146,7 @@ select throws_ok(
       'singles',
       array['22222222-2222-4222-8222-222222222222']::uuid[],
       array['33333333-3333-4333-8333-333333333333']::uuid[],
-      '[{"teamAScore":100,"teamBScore":18}]'::jsonb
+      '[{"teamAScore":100,"teamBScore":18,"winnerTeam":"A"}]'::jsonb
     )
   $$,
   'MRVAL',
@@ -169,7 +169,7 @@ select throws_ok(
       'singles',
       array['22222222-2222-4222-8222-222222222222']::uuid[],
       array['33333333-3333-4333-8333-333333333333']::uuid[],
-      '[{"teamAScore":21,"teamBScore":18}]'::jsonb
+      '[{"teamAScore":21,"teamBScore":18,"winnerTeam":"A"}]'::jsonb
     )
   $$,
   'MR403',
@@ -191,7 +191,7 @@ select throws_ok(
       'singles',
       array['22222222-2222-4222-8222-222222222222']::uuid[],
       array['33333333-3333-4333-8333-333333333333']::uuid[],
-      '[{"teamAScore":21,"teamBScore":18}]'::jsonb
+      '[{"teamAScore":21,"teamBScore":18,"winnerTeam":"A"}]'::jsonb
     )
   $$,
   'MRVAL',
@@ -214,7 +214,7 @@ select throws_ok(
     'singles',
     '{22222222-2222-4222-8222-222222222222}',
     '{33333333-3333-4333-8333-333333333333}',
-    '[{"teamAScore":21,"teamBScore":19}]'
+    '[{"teamAScore":21,"teamBScore":19,"winnerTeam":"A"}]'
   ),
   'MR409',
   'Match is not disputed',
@@ -226,15 +226,21 @@ select set_config(
   '{"sub":"33333333-3333-4333-8333-333333333333","role":"authenticated"}',
   true
 );
-select lives_ok(
+select throws_ok(
   format(
     'select public.command_review_match(%L, %L, %L)',
     '15151515-1515-4515-8515-151515151515',
     (select value->>'revisionId' from match_command_test_state where name = 'first-submit'),
     'disputed'
   ),
-  'an opposing participant can dispute a pending revision'
+  'MRVAL',
+  'Disputes must include a corrected result',
+  'the review command rejects a dispute without a corrected result'
 );
+
+update public.matches
+set status = 'disputed'
+where id = (select (value->>'matchId')::uuid from match_command_test_state where name = 'first-submit');
 
 select set_config(
   'request.jwt.claims',
@@ -250,7 +256,7 @@ select throws_ok(
     'singles',
     '{11111111-1111-4111-8111-111111111111}',
     '{33333333-3333-4333-8333-333333333333}',
-    '[{"teamAScore":21,"teamBScore":17}]'
+    '[{"teamAScore":21,"teamBScore":17,"winnerTeam":"A"}]'
   ),
   'MR403',
   'Only current match participants can revise',
@@ -271,7 +277,7 @@ select 'revision', public.command_revise_match(
   'singles',
   array['22222222-2222-4222-8222-222222222222']::uuid[],
   array['33333333-3333-4333-8333-333333333333']::uuid[],
-  '[{"teamAScore":21,"teamBScore":19}]'::jsonb
+  '[{"teamAScore":21,"teamBScore":19,"winnerTeam":"A"}]'::jsonb
 );
 select is((select count(*) from test_group_revisions), 2::bigint, 'a current participant can revise a disputed match');
 
@@ -289,7 +295,7 @@ select throws_ok(
     'singles',
     '{22222222-2222-4222-8222-222222222222}',
     '{33333333-3333-4333-8333-333333333333}',
-    '[{"teamAScore":21,"teamBScore":17}]'
+    '[{"teamAScore":21,"teamBScore":17,"winnerTeam":"A"}]'
   ),
   'MR409',
   'Stale match revision',
@@ -322,7 +328,7 @@ select 'atomic-revision', public.command_dispute_and_revise_match(
   'singles',
   array['22222222-2222-4222-8222-222222222222']::uuid[],
   array['33333333-3333-4333-8333-333333333333']::uuid[],
-  '[{"teamAScore":21,"teamBScore":16}]'::jsonb
+  '[{"teamAScore":21,"teamBScore":16,"winnerTeam":"A"}]'::jsonb
 );
 select is(
   (select status::text from public.matches where id = (select (value->>'matchId')::uuid from match_command_test_state where name = 'first-submit')),
@@ -347,7 +353,7 @@ select is(
     'singles',
     array['22222222-2222-4222-8222-222222222222']::uuid[],
     array['33333333-3333-4333-8333-333333333333']::uuid[],
-    '[{"teamAScore":21,"teamBScore":16}]'::jsonb
+    '[{"teamAScore":21,"teamBScore":16,"winnerTeam":"A"}]'::jsonb
   ),
   (select value from match_command_test_state where name = 'atomic-revision'),
   'an identical atomic correction retry replays the original result'
@@ -386,7 +392,7 @@ select throws_ok(
     'singles',
     '{22222222-2222-4222-8222-222222222222}',
     '{33333333-3333-4333-8333-333333333333}',
-    '[{"teamAScore":21,"teamBScore":15}]'
+    '[{"teamAScore":21,"teamBScore":15,"winnerTeam":"A"}]'
   ),
   'MR409',
   'Match is not disputed',
@@ -476,7 +482,7 @@ values (
   'singles',
   array['22222222-2222-4222-8222-222222222222']::uuid[],
   array['33333333-3333-4333-8333-333333333333']::uuid[],
-  '[{"teamAScore":12,"teamBScore":12}]'::jsonb,
+  '[{"teamAScore":12,"teamBScore":12,"winnerTeam":"B"}]'::jsonb,
   now() + interval '1 day'
 );
 
@@ -494,7 +500,7 @@ select 'shared-draft-submit', public.command_submit_match(
   'singles',
   array['22222222-2222-4222-8222-222222222222']::uuid[],
   array['33333333-3333-4333-8333-333333333333']::uuid[],
-  '[{"teamAScore":21,"teamBScore":19}]'::jsonb
+  '[{"teamAScore":21,"teamBScore":19,"winnerTeam":"A"}]'::jsonb
 );
 
 select ok(
@@ -539,7 +545,7 @@ select throws_ok(
       'singles',
       array['22222222-2222-4222-8222-222222222222']::uuid[],
       array['33333333-3333-4333-8333-333333333333']::uuid[],
-      '[{"teamAScore":21,"teamBScore":19}]'::jsonb
+      '[{"teamAScore":21,"teamBScore":19,"winnerTeam":"A"}]'::jsonb
     )
   $$,
   'MRVAL',
@@ -547,6 +553,200 @@ select throws_ok(
   'a second participant cannot submit an already retired shared draft'
 );
 select is((select count(*) from test_group_matches), 2::bigint, 'a competing shared-draft submission creates no duplicate match');
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"22222222-2222-4222-8222-222222222222","role":"authenticated"}',
+  true
+);
+
+select throws_ok(
+  $$
+    select public.command_submit_match(
+      '19191919-1919-4919-8919-191919191919',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      null,
+      'singles',
+      array['22222222-2222-4222-8222-222222222222']::uuid[],
+      array['33333333-3333-4333-8333-333333333333']::uuid[],
+      '[{"teamAScore":21,"teamBScore":19}]'::jsonb
+    )
+  $$,
+  'MRVAL',
+  'Winner team must be A or B',
+  'database validation rejects a missing selected winner'
+);
+select is(
+  (select count(*) from test_group_matches),
+  2::bigint,
+  'missing selected-winner rejection makes no aggregate writes'
+);
+
+select throws_ok(
+  $$
+    select public.command_submit_match(
+      '20202020-2020-4020-8020-202020202020',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      null,
+      'singles',
+      array['22222222-2222-4222-8222-222222222222']::uuid[],
+      array['33333333-3333-4333-8333-333333333333']::uuid[],
+      '[{"teamAScore":21,"teamBScore":19,"winnerTeam":"not-a-team"}]'::jsonb
+    )
+  $$,
+  'MRVAL',
+  'Winner team must be A or B',
+  'database validation rejects an invalid selected winner before enum casting'
+);
+select is(
+  (select count(*) from test_group_matches),
+  2::bigint,
+  'invalid selected-winner rejection makes no aggregate writes'
+);
+
+insert into match_command_test_state (name, value)
+select 'selected-winner-submit', public.command_submit_match(
+  '21212121-2121-4121-8121-212121212121',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  null,
+  'singles',
+  array['22222222-2222-4222-8222-222222222222']::uuid[],
+  array['33333333-3333-4333-8333-333333333333']::uuid[],
+  '[{"teamAScore":21,"teamBScore":19,"winnerTeam":"B"}]'::jsonb
+);
+select is(
+  (
+    select winner_team::text
+    from public.match_games
+    where revision_id = (
+      select (value->>'revisionId')::uuid
+      from match_command_test_state
+      where name = 'selected-winner-submit'
+    )
+  ),
+  'B',
+  'submission persists a selected winner that conflicts with the score comparison'
+);
+select is(
+  public.command_submit_match(
+    '21212121-2121-4121-8121-212121212121',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    null,
+    'singles',
+    array['22222222-2222-4222-8222-222222222222']::uuid[],
+    array['33333333-3333-4333-8333-333333333333']::uuid[],
+    '[{"teamAScore":21,"teamBScore":19,"winnerTeam":"B"}]'::jsonb
+  ),
+  (select value from match_command_test_state where name = 'selected-winner-submit'),
+  'an identical selected-winner retry replays the original result'
+);
+select throws_ok(
+  $$
+    select public.command_submit_match(
+      '21212121-2121-4121-8121-212121212121',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      null,
+      'singles',
+      array['22222222-2222-4222-8222-222222222222']::uuid[],
+      array['33333333-3333-4333-8333-333333333333']::uuid[],
+      '[{"teamAScore":21,"teamBScore":19,"winnerTeam":"A"}]'::jsonb
+    )
+  $$,
+  'MRCMD',
+  'Command ID was reused with different input',
+  'changing only the selected winner conflicts with the original command'
+);
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"33333333-3333-4333-8333-333333333333","role":"authenticated"}',
+  true
+);
+update public.matches
+set status = 'disputed'
+where id = (select (value->>'matchId')::uuid from match_command_test_state where name = 'selected-winner-submit');
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"22222222-2222-4222-8222-222222222222","role":"authenticated"}',
+  true
+);
+insert into match_command_test_state (name, value)
+select 'selected-winner-revision', public.command_revise_match(
+  '23232323-2323-4323-8323-232323232323',
+  (select (value->>'matchId')::uuid from match_command_test_state where name = 'selected-winner-submit'),
+  (select (value->>'revisionId')::uuid from match_command_test_state where name = 'selected-winner-submit'),
+  'singles',
+  array['22222222-2222-4222-8222-222222222222']::uuid[],
+  array['33333333-3333-4333-8333-333333333333']::uuid[],
+  '[{"teamAScore":21,"teamBScore":18,"winnerTeam":"B"}]'::jsonb
+);
+select is(
+  (
+    select winner_team::text
+    from public.match_games
+    where revision_id = (
+      select (value->>'revisionId')::uuid
+      from match_command_test_state
+      where name = 'selected-winner-revision'
+    )
+  ),
+  'B',
+  'revision persists the supplied selected winner'
+);
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"33333333-3333-4333-8333-333333333333","role":"authenticated"}',
+  true
+);
+insert into match_command_test_state (name, value)
+select 'selected-winner-atomic-revision', public.command_dispute_and_revise_match(
+  '24242424-2424-4424-8424-242424242424',
+  (select (value->>'matchId')::uuid from match_command_test_state where name = 'selected-winner-submit'),
+  (select (value->>'revisionId')::uuid from match_command_test_state where name = 'selected-winner-revision'),
+  'singles',
+  array['22222222-2222-4222-8222-222222222222']::uuid[],
+  array['33333333-3333-4333-8333-333333333333']::uuid[],
+  '[{"teamAScore":21,"teamBScore":17,"winnerTeam":"B"}]'::jsonb
+);
+select is(
+  (
+    select winner_team::text
+    from public.match_games
+    where revision_id = (
+      select (value->>'revisionId')::uuid
+      from match_command_test_state
+      where name = 'selected-winner-atomic-revision'
+    )
+  ),
+  'B',
+  'atomic dispute-and-revise persists the supplied selected winner'
+);
+
+select public.claim_rating_rebuild_dispatch(
+  (select (value->>'ratingJobId')::uuid from match_command_test_state where name = 'selected-winner-atomic-revision'),
+  'ffffffff-ffff-4fff-8fff-ffffffffffff'
+);
+select is(
+  (
+    select game->>'winnerTeam'
+    from jsonb_array_elements(
+      public.begin_rating_rebuild(
+        (select (value->>'ratingJobId')::uuid from match_command_test_state where name = 'selected-winner-atomic-revision'),
+        'ffffffff-ffff-4fff-8fff-ffffffffffff'
+      )->'history'
+    ) as history(item)
+    cross join lateral jsonb_array_elements(history.item->'games') as games(game)
+    where (history.item->>'revisionId')::uuid = (
+      select (value->>'revisionId')::uuid
+      from match_command_test_state
+      where name = 'selected-winner-atomic-revision'
+    )
+  ),
+  'B',
+  'rating rebuild history returns the stored selected winner'
+);
 
 select * from finish();
 rollback;

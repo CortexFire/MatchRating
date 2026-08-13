@@ -4,25 +4,28 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { AvatarInitials } from "@/components/ui/avatar";
-import { PendingReviewList } from "@/components/match/pending-review-list";
+import { MatchResultList } from "@/components/match/match-result-list";
+import { CurrentRankingList } from "@/components/rankings/current-ranking-list";
 import {
   getCurrentProfile,
   listCurrentUserActiveMatchDrafts,
   listCurrentUserGroups,
-  listPendingReviewsForCurrentUser,
+  listCurrentUserMatches,
+  listCurrentUserRankings,
 } from "@/lib/app-data";
-import { toPendingReviewMatch } from "@/lib/matches/pending-review";
+import { toMatchResultSummary } from "@/lib/matches/match-result-summary";
 
 export default async function HomePage() {
-  const [profile, groups, activeDrafts, pendingReviews] = await Promise.all([
+  const [profile, groups, activeDrafts, latestMatches, currentRankings] = await Promise.all([
     getCurrentProfile(),
     listCurrentUserGroups(),
     listCurrentUserActiveMatchDrafts(),
-    listPendingReviewsForCurrentUser(),
+    listCurrentUserMatches({ limit: 3 }),
+    listCurrentUserRankings(),
   ]);
   const primaryGroup = groups[0];
   const primaryDraft = activeDrafts[0];
-  const pendingReviewMatches = pendingReviews.map(toPendingReviewMatch);
+  const latestMatchResults = latestMatches.slice(0, 3).map(toMatchResultSummary);
 
   return (
     <MobileShell
@@ -111,24 +114,26 @@ export default async function HomePage() {
         )}
       </section>
 
-      <section className="flex flex-col gap-3 rounded-lg border border-stroke bg-surface p-2 pb-4">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-bold text-ink pl-2">Pending review</h2>
-          </div>
-          <span className="rounded-full bg-surface px-3 py-1 text-xs font-semibold text-muted">
-            {pendingReviewMatches.length} waiting
-          </span>
+      <section className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-bold text-ink">Latest matches</h2>
+          {latestMatchResults.length ? (
+            <Link
+              href="/matches/history"
+              className="inline-flex min-h-11 items-center rounded-lg px-2 text-sm font-semibold text-action transition hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+            >
+              View full history
+            </Link>
+          ) : null}
         </div>
-
-        {pendingReviewMatches.length ? (
-          <PendingReviewList matches={pendingReviewMatches} />
+        {latestMatchResults.length ? (
+          <MatchResultList matches={latestMatchResults} presentation="latest" />
         ) : (
-          <span className="flex flex-col items-center p-6">
-            <p className="text-sm text-muted">No matches pending review</p>
-          </span>
+          <p className="rounded-lg border border-stroke bg-surface p-4 text-sm text-muted">No matches recorded yet.</p>
         )}
       </section>
+
+      <CurrentRankingList rankings={currentRankings} />
     </MobileShell>
   );
 }

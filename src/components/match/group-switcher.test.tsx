@@ -60,6 +60,18 @@ describe("GroupSwitcher", () => {
     expect(container.querySelector("svg")).toBeNull();
   });
 
+  test("disables switching when the recorder is locked", () => {
+    render(
+      <GroupSwitcher
+        currentGroupId="downtown"
+        groups={[{ id: "downtown", name: "Downtown Rec" }, { id: "wednesday", name: "Wednesday Club" }]}
+        disabled
+      />,
+    );
+
+    expect((screen.getByLabelText("Current group Downtown Rec") as HTMLSelectElement).disabled).toBe(true);
+  });
+
   test("shows the dropdown indicator when another group is available", () => {
     const { container } = render(
       <GroupSwitcher

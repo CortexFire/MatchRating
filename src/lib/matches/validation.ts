@@ -3,10 +3,12 @@ import { z } from "zod";
 export type MatchFormat = "singles" | "doubles";
 export type Team = "A" | "B";
 
-export type MatchGameInput = {
+export type MatchScoreInput = {
   teamAScore: number;
   teamBScore: number;
 };
+
+export type MatchGameInput = MatchScoreInput & { winnerTeam: "A" | "B" };
 
 export type MatchSubmissionInput = {
   groupId: string;
@@ -26,6 +28,7 @@ export type ValidatedMatchSubmission = Omit<MatchSubmissionInput, "games"> & {
 const gameSchema = z.object({
   teamAScore: z.coerce.number().int().min(0).max(99),
   teamBScore: z.coerce.number().int().min(0).max(99),
+  winnerTeam: z.enum(["A", "B"]),
 });
 
 const submissionSchema = z.object({
@@ -80,7 +83,7 @@ export function validateMatchSubmission(
       throw new Error("Badminton games must have one winner; tied scores are not allowed.");
     }
 
-    const winnerTeam = game.teamAScore > game.teamBScore ? "A" : "B";
+    const winnerTeam = game.winnerTeam;
     if (winnerTeam === "A") {
       teamAGameWins += 1;
     } else {

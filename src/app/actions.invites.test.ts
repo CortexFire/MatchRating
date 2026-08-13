@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import * as actions from "@/app/actions";
 
+const visibilityMocks = vi.hoisted(() => ({
+  listVisibleGroupMemberships: vi.fn(),
+}));
+
+vi.mock("@/lib/group-membership-visibility", () => visibilityMocks);
+
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
 }));
@@ -117,6 +123,9 @@ describe("invite actions", () => {
       data: null,
       error: null,
     });
+    visibilityMocks.listVisibleGroupMemberships.mockResolvedValue([
+      { groupId: "group-1", userId: "user-1", role: "member", profile: null },
+    ]);
   });
 
   test("returns the existing permanent invite without inserting another", async () => {
@@ -275,7 +284,7 @@ describe("invite actions", () => {
       data: {
         groupId: "group-1",
         groupName: "Downtown Rec Club",
-        memberCount: 2,
+        memberCount: 1,
         lastActiveText: "No matches yet",
       },
     });

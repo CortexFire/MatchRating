@@ -6,6 +6,7 @@ import {
   type MatchReadRows,
   type MatchView,
 } from "@/lib/matches/read-model";
+import { listVisibleGroupMemberships } from "@/lib/group-membership-visibility";
 
 export type AppGroup = {
   id: string;
@@ -45,13 +46,21 @@ export type AppPlayer = {
   id: string;
   name: string;
   initials: string;
-  role: "Owner" | "Admin" | "Member";
+  role: "Owner" | "Admin" | "Member" | "Guest";
   rating: number;
   rd: number;
   rank: number;
   gamesPlayed: number;
   status: "Active" | "Inactive";
   isGuest?: boolean;
+};
+
+export type AppCurrentRanking = {
+  groupId: string;
+  groupName: string;
+  rating: number;
+  rank: number;
+  memberCount: number;
 };
 
 type GroupRow = {
@@ -77,8 +86,11 @@ type RatingRow = {
   user_id: string;
   rating: number | string;
   rd: number | string;
-  rank: number | null;
   games_played: number;
+};
+
+type GroupRatingRow = RatingRow & {
+  group_id: string;
 };
 
 const getCurrentUserId = cache(requireUserId);
@@ -157,25 +169,19 @@ export async function listCurrentUserGroups(): Promise<AppGroup[]> {
     return [];
   }
 
-  const [{ data: groups, error: groupsError }, { data: memberRows, error: membersError }] = await Promise.all([
+  const [{ data: groups, error: groupsError }, visibleMemberships] = await Promise.all([
     service.from("groups").select("id, name, description").in("id", groupIds).is("archived_at", null),
-    service
-      .from("group_memberships")
-      .select("group_id")
-      .in("group_id", groupIds)
-      .eq("status", "active")
-      .is("left_at", null),
+    listVisibleGroupMemberships(groupIds, service),
   ]);
 
   if (groupsError) {
     throw groupsError;
   }
 
-  if (membersError) {
-    throw membersError;
-  }
-
-  const memberCounts = countBy(memberRows ?? [], "group_id");
+  const memberCounts = countBy(
+    visibleMemberships.map((membership) => ({ group_id: membership.groupId })),
+    "group_id",
+  );
   return (groups ?? []).map((group: GroupRow) => ({
     id: group.id,
     name: group.name,
@@ -187,22 +193,13 @@ export async function listCurrentUserGroups(): Promise<AppGroup[]> {
 export async function getGroup(groupId: string): Promise<AppGroup | null> {
   await ensureCurrentUserCanReadGroup(groupId);
   const service = createSupabaseServiceClient();
-  const [{ data: group, error }, { data: members, error: membersError }] = await Promise.all([
+  const [{ data: group, error }, visibleMemberships] = await Promise.all([
     service.from("groups").select("id, name, description").eq("id", groupId).is("archived_at", null).maybeSingle(),
-    service
-      .from("group_memberships")
-      .select("user_id")
-      .eq("group_id", groupId)
-      .eq("status", "active")
-      .is("left_at", null),
+    listVisibleGroupMemberships([groupId], service),
   ]);
 
   if (error) {
     throw error;
-  }
-
-  if (membersError) {
-    throw membersError;
   }
 
   if (!group) {
@@ -213,7 +210,7 @@ export async function getGroup(groupId: string): Promise<AppGroup | null> {
     id: group.id,
     name: group.name,
     description: group.description,
-    memberCount: members?.length ?? 0,
+    memberCount: visibleMemberships.length,
   };
 }
 
@@ -224,7 +221,7 @@ export async function listGroupMatches(groupId: string, options?: { limit?: numb
 
   let query = service
     .from("matches")
-    .select("id, group_id, active_revision_id, status, submitted_at")
+    .select("id, group_id, active_revision_id, status, submitted_at, review_started_at")
     .eq("group_id", groupId)
     .not("active_revision_id", "is", null)
     .order("submitted_at", { ascending: false })
@@ -235,6 +232,100 @@ export async function listGroupMatches(groupId: string, options?: { limit?: numb
   const { data, error } = await query;
   if (error) throw error;
   return loadMatchViews((data ?? []) as MatchReadRows["matches"], userId, service);
+}
+
+export async function listCurrentUserMatches(options?: { limit?: number }): Promise<AppMatchSummary[]> {
+  const userId = await requireUserId();
+  const service = createSupabaseServiceClient();
+  const groupIds = await listActiveGroupIdsForUser(userId, service);
+  if (!groupIds.length) return [];
+
+  const { data: participantRows, error: participantError } = await service
+    .from("match_participants")
+    .select("revision_id")
+    .eq("user_id", userId);
+  if (participantError) throw participantError;
+
+  const revisionIds = [...new Set((participantRows ?? []).map((row: { revision_id: string }) => row.revision_id))];
+  if (!revisionIds.length) return [];
+
+  let query = service
+    .from("matches")
+    .select("id, group_id, active_revision_id, status, submitted_at, review_started_at")
+    .in("group_id", groupIds)
+    .in("active_revision_id", revisionIds)
+    .not("active_revision_id", "is", null)
+    .order("submitted_at", { ascending: false })
+    .order("id", { ascending: false });
+  if (options?.limit !== undefined) {
+    query = query.limit(options.limit);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return loadMatchViews((data ?? []) as MatchReadRows["matches"], userId, service);
+}
+
+export async function listCurrentUserRankings(): Promise<AppCurrentRanking[]> {
+  const userId = await requireUserId();
+  const service = createSupabaseServiceClient();
+  const groupIds = await listActiveGroupIdsForUser(userId, service);
+  if (!groupIds.length) return [];
+
+  const [{ data: groups, error: groupsError }, { data: memberships, error: membershipsError }] = await Promise.all([
+    service.from("groups").select("id, name").in("id", groupIds),
+    service
+      .from("group_memberships")
+      .select("group_id, user_id")
+      .in("group_id", groupIds)
+      .eq("status", "active")
+      .is("left_at", null),
+  ]);
+  if (groupsError) throw groupsError;
+  if (membershipsError) throw membershipsError;
+
+  const memberRows = (memberships ?? []) as Array<Pick<MembershipRow, "group_id" | "user_id">>;
+  const userIds = [...new Set(memberRows.map((membership) => membership.user_id))];
+  if (!userIds.length) return [];
+
+  const [{ data: profiles, error: profilesError }, { data: ratings, error: ratingsError }] = await Promise.all([
+    service.from("profiles").select("id, display_name").in("id", userIds),
+    service
+      .from("group_rating_states")
+      .select("group_id, user_id, rating, rd, games_played")
+      .in("group_id", groupIds)
+      .in("user_id", userIds),
+  ]);
+  if (profilesError) throw profilesError;
+  if (ratingsError) throw ratingsError;
+
+  const profilesById = new Map((profiles ?? []).map((profile: ProfileRow) => [profile.id, profile.display_name]));
+  const ratingsByGroupAndUser = new Map(
+    ((ratings ?? []) as GroupRatingRow[]).map((rating) => [`${rating.group_id}:${rating.user_id}`, rating]),
+  );
+
+  return ((groups ?? []) as Array<{ id: string; name: string }>)
+    .flatMap((group) => {
+      const members = memberRows
+        .filter((membership) => membership.group_id === group.id)
+        .map((membership) => ({
+          id: membership.user_id,
+          name: profilesById.get(membership.user_id) ?? "Unknown player",
+          rating: Math.round(Number(ratingsByGroupAndUser.get(`${group.id}:${membership.user_id}`)?.rating ?? 1500)),
+        }));
+      const rankedMembers = rankPlayers(members);
+      const currentPlayer = rankedMembers.find((player) => player.id === userId);
+      if (!currentPlayer) return [];
+
+      return [{
+        groupId: group.id,
+        groupName: group.name,
+        rating: currentPlayer.rating,
+        rank: currentPlayer.rank,
+        memberCount: rankedMembers.length,
+      }];
+    })
+    .sort((left, right) => left.groupName.localeCompare(right.groupName) || left.groupId.localeCompare(right.groupId));
 }
 
 export async function listPendingReviewsForCurrentUser(): Promise<AppPendingReview[]> {
@@ -252,15 +343,15 @@ export async function listPendingReviewsForCurrentUser(): Promise<AppPendingRevi
 
   const { data, error } = await service
     .from("matches")
-    .select("id, group_id, active_revision_id, status, submitted_at")
+    .select("id, group_id, active_revision_id, status, submitted_at, review_started_at")
     .in("group_id", groupIds)
     .eq("status", "pending_confirmation")
     .not("active_revision_id", "is", null)
-    .order("submitted_at", { ascending: false })
-    .order("id", { ascending: false });
+    .order("review_started_at", { ascending: true })
+    .order("id", { ascending: true });
   if (error) throw error;
   const matches = await loadMatchViews((data ?? []) as MatchReadRows["matches"], userId, service);
-  return matches.filter((match) => match.canReview);
+  return matches.filter((match) => match.canConfirm);
 }
 
 export async function getGroupMatchDetail(groupId: string, matchId: string): Promise<AppMatchDetail | null> {
@@ -270,7 +361,7 @@ export async function getGroupMatchDetail(groupId: string, matchId: string): Pro
 
   const { data, error } = await service
     .from("matches")
-    .select("id, group_id, active_revision_id, status, submitted_at")
+    .select("id, group_id, active_revision_id, status, submitted_at, review_started_at")
     .eq("group_id", groupId)
     .eq("id", matchId)
     .not("active_revision_id", "is", null)
@@ -320,7 +411,7 @@ async function loadMatchViews(
     service.from("match_participants").select("revision_id, user_id, team, slot").in("revision_id", revisionIds),
     service.from("match_games").select("revision_id, game_number, team_a_score, team_b_score, winner_team").in("revision_id", revisionIds),
     service.from("match_confirmations").select("revision_id, user_id, action, created_at").in("revision_id", revisionIds),
-    service.from("rating_events").select("revision_id, user_id, before_rating, after_rating").in("revision_id", revisionIds),
+    service.from("rating_events").select("revision_id, user_id, sequence, before_rating, before_rd, after_rating, after_rd").in("revision_id", revisionIds),
   ]);
   const firstError = [groupsResult, revisionsResult, participantsResult, gamesResult, confirmationsResult, ratingEventsResult]
     .find((result) => result.error)?.error;
@@ -513,80 +604,80 @@ function isVisibleDraft(draft: ActiveMatchDraftRow, userId: string) {
 
 function parseDraftGames(value: unknown): MatchGameInput[] {
   if (!Array.isArray(value)) {
-    return [{ teamAScore: 0, teamBScore: 0 }];
+    return [{ teamAScore: 0, teamBScore: 0, winnerTeam: "A" }];
   }
 
   return value
-    .map((game) => ({
-      teamAScore: Number((game as { teamAScore?: unknown }).teamAScore ?? 0),
-      teamBScore: Number((game as { teamBScore?: unknown }).teamBScore ?? 0),
-    }))
+    .map((game) => {
+      const storedGame = game as { teamAScore?: unknown; teamBScore?: unknown; winnerTeam?: unknown };
+      const teamAScore = Number(storedGame.teamAScore ?? 0);
+      const teamBScore = Number(storedGame.teamBScore ?? 0);
+
+      const winnerTeam: "A" | "B" =
+        storedGame.winnerTeam === "A" || storedGame.winnerTeam === "B"
+          ? storedGame.winnerTeam
+          : teamAScore >= teamBScore
+            ? "A"
+            : "B";
+
+      return {
+        teamAScore,
+        teamBScore,
+        winnerTeam,
+      };
+    })
     .filter((game) => Number.isFinite(game.teamAScore) && Number.isFinite(game.teamBScore));
 }
 
 export async function listGroupPlayers(groupId: string): Promise<AppPlayer[]> {
   await ensureCurrentUserCanReadGroup(groupId);
   const service = createSupabaseServiceClient();
-  const { data: memberships, error } = await service
-    .from("group_memberships")
-    .select("user_id, role")
-    .eq("group_id", groupId)
-    .eq("status", "active")
-    .is("left_at", null);
-
-  if (error) {
-    throw error;
-  }
-
-  const memberRows = (memberships ?? []) as MembershipRow[];
-  const userIds = memberRows.map((membership) => membership.user_id);
+  const memberRows = await listVisibleGroupMemberships([groupId], service);
+  const userIds = memberRows.map((membership) => membership.userId);
   if (!userIds.length) {
     return [];
   }
 
-  const [{ data: profiles, error: profilesError }, { data: ratings, error: ratingsError }] = await Promise.all([
-    service.from("profiles").select("id, display_name, is_guest, active_until").in("id", userIds),
-    service
-      .from("group_rating_states")
-      .select("user_id, rating, rd, rank, games_played")
-      .eq("group_id", groupId)
-      .in("user_id", userIds),
-  ]);
-
-  if (profilesError) {
-    throw profilesError;
-  }
+  const { data: ratings, error: ratingsError } = await service
+    .from("group_rating_states")
+    .select("user_id, rating, rd, games_played")
+    .eq("group_id", groupId)
+    .in("user_id", userIds);
 
   if (ratingsError) {
     throw ratingsError;
   }
 
-  const profilesById = new Map((profiles ?? []).map((profile: ProfileRow) => [profile.id, profile]));
   const ratingsByUserId = new Map((ratings ?? []).map((rating: RatingRow) => [rating.user_id, rating]));
 
-  return memberRows
-    .map((membership, index) => {
-      const profile = profilesById.get(membership.user_id);
-      const rating = ratingsByUserId.get(membership.user_id);
-      const name = profile?.display_name ?? "Unknown player";
+  const players = memberRows.map((membership) => {
+    const profile = membership.profile;
+    const rating = ratingsByUserId.get(membership.userId);
+    const name = profile?.displayName ?? "Unknown player";
 
-      return {
-        id: membership.user_id,
-        name,
-        initials: initialsFor(name),
-        role: displayRole(membership.role),
-        rating: Math.round(Number(rating?.rating ?? 1500)),
-        rd: Math.round(Number(rating?.rd ?? 350)),
-        rank: rating?.rank ?? index + 1,
-        gamesPlayed: rating?.games_played ?? 0,
-        status:
-          profile?.active_until && new Date(profile.active_until).getTime() >= Date.now()
-            ? "Active"
-            : "Inactive",
-        isGuest: profile?.is_guest ?? false,
-      } satisfies AppPlayer;
-    })
-    .sort((a, b) => a.rank - b.rank || b.rating - a.rating || a.name.localeCompare(b.name));
+    return {
+      id: membership.userId,
+      name,
+      initials: initialsFor(name),
+      role: profile?.isGuest ? "Guest" : displayRole(membership.role),
+      rating: Math.round(Number(rating?.rating ?? 1500)),
+      rd: Math.round(Number(rating?.rd ?? 350)),
+      gamesPlayed: rating?.games_played ?? 0,
+      status:
+        profile?.activeUntil && new Date(profile.activeUntil).getTime() >= Date.now()
+          ? "Active"
+          : "Inactive",
+      isGuest: profile?.isGuest ?? false,
+    } satisfies Omit<AppPlayer, "rank">;
+  });
+
+  return rankPlayers(players);
+}
+
+function rankPlayers<T extends { id: string; name: string; rating: number }>(players: T[]): Array<T & { rank: number }> {
+  return players
+    .sort((a, b) => b.rating - a.rating || a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+    .map((player, index) => ({ ...player, rank: index + 1 }));
 }
 
 async function ensureCurrentUserCanReadGroup(groupId: string) {

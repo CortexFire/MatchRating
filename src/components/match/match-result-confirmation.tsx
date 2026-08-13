@@ -3,6 +3,7 @@ import Link from "next/link";
 import { cn } from "../../lib/utils";
 import { MatchReviewActions } from "./match-review-actions";
 import { Badge } from "@/components/ui/badge";
+import { DEFAULT_RATING } from "@/lib/ratings/glicko2";
 
 type TeamKey = "A" | "B";
 
@@ -10,6 +11,10 @@ type Player = {
   id: string;
   initials: string;
   name: string;
+  ratingChange?: {
+    previous: { rating: number; rd: number };
+    next: { rating: number; rd: number };
+  };
 };
 
 type Team = {
@@ -31,6 +36,7 @@ export type MatchResultConfirmationData = {
   winnerTeam: TeamKey;
   clubName: string;
   submittedAt: string;
+  disputeUntil: string;
   teamA: Team;
   teamB: Team;
   sets: SetScore[];
@@ -39,15 +45,15 @@ export type MatchResultConfirmationData = {
 export function MatchResultConfirmation({
   groupId,
   groupName,
-  reviewCount,
-  canReview,
+  canConfirm,
+  canDispute,
   canRevise,
   match,
 }: {
   groupId: string;
   groupName: string;
-  reviewCount: number;
-  canReview: boolean;
+  canConfirm: boolean;
+  canDispute: boolean;
   canRevise: boolean;
   match: MatchResultConfirmationData;
 }) {
@@ -55,12 +61,7 @@ export function MatchResultConfirmation({
     <section className="flex min-h-full flex-col gap-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="max-w-[230px] text-[26px] font-bold leading-[30px] text-ink">
-            Match Result Confirmation
-          </h1>
-          <p className="mt-1 text-base leading-6 text-muted">
-            {reviewCount} matches to review
-          </p>
+          <h1 className="max-w-[230px] text-[26px] font-bold leading-[30px] text-ink">Match Result</h1>
         </div>
         <button
           type="button"
@@ -89,30 +90,37 @@ export function MatchResultConfirmation({
           ))}
         </div>
 
-        {canReview ? (
-          <MatchReviewActions groupId={groupId} matchId={match.id} revisionId={match.revisionId} />
-        ) : (
-          <div className="mt-12 flex items-center justify-between gap-3">
+        <div className="mt-12">
+          <div className="flex items-center justify-between gap-3">
             <Badge tone={match.status === "confirmed" ? "victory" : "neutral"}>{displayStatus(match.status)}</Badge>
-            {match.status === "disputed" && canRevise ? (
-              <Link
-                href={`/groups/${groupId}/matches/${match.id}/revise`}
-                className="inline-flex min-h-11 items-center justify-center rounded-lg border border-stroke bg-surface px-4 text-sm font-semibold text-ink"
-              >
-                Revise result
-              </Link>
-            ) : null}
+            {canDispute ? <p className="text-sm font-semibold text-muted">Dispute until {match.disputeUntil}</p> : null}
           </div>
-        )}
+          {canConfirm || canDispute ? (
+            <MatchReviewActions
+              groupId={groupId}
+              matchId={match.id}
+              revisionId={match.revisionId}
+              canConfirm={canConfirm}
+              canDispute={canDispute}
+            />
+          ) : match.status === "disputed" && canRevise ? (
+            <Link
+              href={`/groups/${groupId}/matches/${match.id}/revise`}
+              className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg border border-stroke bg-surface px-4 text-sm font-semibold text-ink"
+            >
+              Revise result
+            </Link>
+          ) : null}
+        </div>
       </article>
     </section>
   );
 }
 
 function displayStatus(status: MatchResultConfirmationData["status"]) {
-  if (status === "confirmed") return "Confirmed";
+  if (status === "confirmed") return "Accepted";
   if (status === "disputed") return "Disputed";
-  return "Pending confirmation";
+  return "Awaiting review";
 }
 
 function TeamSummary({ team, winner }: { team: Team; winner: boolean }) {
@@ -129,22 +137,33 @@ function TeamSummary({ team, winner }: { team: Team; winner: boolean }) {
       </div>
       <div
         className={cn(
-          "flex min-h-[112px] w-full flex-col justify-center gap-4 rounded-lg border px-5 py-4",
+          "flex min-h-[112px] w-full flex-col justify-center gap-4 rounded-lg border px-3 py-4",
           winner ? "border-victory-stroke bg-victory" : "border-stroke bg-surface",
         )}
       >
         {team.players.map((player, index) => (
-          <div key={`${team.label}-${player.name}-${index}`} className="flex items-center gap-3">
+          <div key={`${team.label}-${player.name}-${index}`} className="flex items-center gap-2">
             <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-app-bg text-sm font-bold text-ink">
               {player.initials}
             </span>
-            <span className="min-w-0 truncate text-lg font-bold leading-6 text-ink">
-              {player.name}
-            </span>
+            <div className="min-w-0">
+              <p className="truncate text-lg font-bold leading-6 text-ink">{player.name}</p>
+              <RatingChange ratingChange={player.ratingChange} />
+            </div>
           </div>
         ))}
       </div>
     </div>
+  );
+}
+
+function RatingChange({ ratingChange }: { ratingChange?: Player["ratingChange"] }) {
+  const previous = ratingChange?.previous ?? DEFAULT_RATING;
+
+  return (
+    <p className="mt-1 whitespace-nowrap text-[11px] leading-4 tabular-nums text-muted">
+      {previous.rating} → {ratingChange ? ratingChange.next.rating : "…"}
+    </p>
   );
 }
 

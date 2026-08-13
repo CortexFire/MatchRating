@@ -70,19 +70,21 @@ export function PlayerSelectView({
   const canCommit = selectedPlayerIds.length > 0 && selectedIds.size === selectedPlayerIds.length;
   const searchTerm = guestName.toLowerCase();
 
-  const visiblePlayers = players.filter((player) => {
-    const selected = selectedIds.has(player.id);
-    const active = player.status === "Active";
-    const matchesFilter =
-      filter === "all" ||
-      (filter === "selected" && selected) ||
-      (filter === "active" && active) ||
-      (filter === "inactive" && !active);
-    const searchableText = `${player.name} ${player.initials}`.toLowerCase();
-    const matchesSearch = searchTerm.length === 0 || searchableText.includes(searchTerm);
+  const visiblePlayers = players
+    .filter((player) => {
+      const selected = selectedIds.has(player.id);
+      const active = player.status === "Active";
+      const matchesFilter =
+        filter === "all" ||
+        (filter === "selected" && selected) ||
+        (filter === "active" && active) ||
+        (filter === "inactive" && !active);
+      const searchableText = `${player.name} ${player.initials}`.toLowerCase();
+      const matchesSearch = searchTerm.length === 0 || searchableText.includes(searchTerm);
 
-    return matchesFilter && matchesSearch;
-  });
+      return matchesFilter && matchesSearch;
+    })
+    .sort(comparePlayersByFirstName);
 
   function removeFromActiveTeam(playerId: string) {
     onDraftTeamChange(
@@ -160,7 +162,7 @@ export function PlayerSelectView({
 
         <div className="flex gap-2">
           <label className="relative min-w-0 flex-1">
-            <span className="sr-only">Search for a player</span>
+            <span className="sr-only">Add a guest or search for a player</span>
             <Search
               aria-hidden="true"
               className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted"
@@ -168,7 +170,7 @@ export function PlayerSelectView({
             <Input
               type="search"
               value={search}
-              placeholder="Search for a player"
+              placeholder="Add a guest or search for a player"
               onChange={(event) => onSearchChange(event.target.value)}
               className="pl-9"
             />
@@ -188,7 +190,12 @@ export function PlayerSelectView({
           </Button>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto pb-1">
+        <div
+          role="region"
+          aria-label="Available players"
+          tabIndex={visiblePlayers.length > 5 ? 0 : undefined}
+          className="flex max-h-[352px] min-h-0 flex-col gap-2 overflow-y-auto rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+        >
           {visiblePlayers.map((player) => {
             const selected = selectedIds.has(player.id);
             const selectedInActiveTeam = activeIds.has(player.id);
@@ -307,7 +314,7 @@ function PlayerRow({
       disabled={disabled}
       onClick={onSelect}
       className={cn(
-        "flex min-h-[72px] w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action disabled:cursor-not-allowed",
+        "flex h-[60px] w-full shrink-0 items-center gap-2 rounded-lg border px-2 py-2 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action disabled:cursor-not-allowed",
         selected ? "border-selection-stroke bg-selection" : "border-stroke bg-surface hover:bg-app-bg",
         (inactive || disabled) && "text-muted",
         disabled && "opacity-55",
@@ -316,16 +323,16 @@ function PlayerRow({
       <span
         aria-hidden="true"
         className={cn(
-          "size-2.5 shrink-0 rounded-full",
+          "size-2 shrink-0 rounded-full",
           selected ? "bg-victory-stroke" : inactive ? "bg-stroke" : "bg-muted",
         )}
       />
       <AvatarInitials
         initials={player.initials}
-        className={cn("size-12 text-base", (inactive || disabled) && "bg-app-bg text-muted")}
+        className={cn("size-10 text-sm", (inactive || disabled) && "bg-app-bg text-muted")}
       />
       <span className="min-w-0 flex-1">
-        <span className={cn("block truncate text-base font-bold", inactive || disabled ? "text-muted" : "text-ink")}>
+        <span className={cn("block truncate text-sm font-bold", inactive || disabled ? "text-muted" : "text-ink")}>
           {player.name}
         </span>
         {inactive ? <span className="block text-xs font-semibold text-muted">{player.status}</span> : null}
@@ -359,6 +366,14 @@ function describeSelection(selection: PlayerSelection, players: AppPlayer[]) {
 
 function compactSelection(selection: PlayerSelection): string[] {
   return selection.filter((playerId): playerId is string => Boolean(playerId));
+}
+
+function comparePlayersByFirstName(left: AppPlayer, right: AppPlayer) {
+  const leftFirstName = left.name.trim().split(/\s+/, 1)[0] ?? "";
+  const rightFirstName = right.name.trim().split(/\s+/, 1)[0] ?? "";
+  const firstNameOrder = leftFirstName.localeCompare(rightFirstName, undefined, { sensitivity: "base" });
+
+  return firstNameOrder || left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
 }
 
 function shortenName(name: string) {

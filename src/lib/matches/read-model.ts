@@ -6,6 +6,10 @@ export type MatchPlayer = {
   id: string;
   name: string;
   initials: string;
+  ratingChange?: {
+    previous: { rating: number; rd: number };
+    next: { rating: number; rd: number };
+  };
 };
 
 export type MatchGame = {
@@ -23,25 +27,36 @@ export type MatchView = {
   submittedByUserId: string;
   status: MatchStatus;
   submittedAt: string;
+  reviewStartedAt: string;
+  disputeUntil: string;
   format: MatchFormat;
   teamA: MatchPlayer[];
   teamB: MatchPlayer[];
   games: MatchGame[];
   winnerTeam: TeamCode;
   ratingSummary: string;
-  canReview: boolean;
+  canConfirm: boolean;
+  canDispute: boolean;
   canRevise: boolean;
 };
 
 export type MatchReadRows = {
   currentUserId: string;
   groups: Array<{ id: string; name: string }>;
-  matches: Array<{ id: string; group_id: string; active_revision_id: string; status: MatchStatus; submitted_at: string }>;
+  matches: Array<{ id: string; group_id: string; active_revision_id: string; status: MatchStatus; submitted_at: string; review_started_at: string }>;
   revisions: Array<{ id: string; match_id: string; submitted_by_user_id: string; format: MatchFormat }>;
   participants: Array<{ revision_id: string; user_id: string; team: TeamCode; slot: number }>;
   games: Array<{ revision_id: string; game_number: number; team_a_score: number; team_b_score: number; winner_team: TeamCode }>;
   confirmations: Array<{ revision_id: string; user_id: string; action: "confirmed" | "disputed"; created_at: string }>;
-  ratingEvents: Array<{ revision_id: string; user_id: string; before_rating: number | string; after_rating: number | string }>;
+  ratingEvents: Array<{
+    revision_id: string;
+    user_id: string;
+    sequence: number | string;
+    before_rating: number | string;
+    before_rd: number | string;
+    after_rating: number | string;
+    after_rd: number | string;
+  }>;
   profiles: Array<{ id: string; display_name: string }>;
 };
 
@@ -66,9 +81,32 @@ export function buildMatchViews(rows: MatchReadRows): MatchView[] {
         teamBScore: game.team_b_score,
         winnerTeam: game.winner_team,
       }));
+    const ratingEventsByUser = new Map<string, { first: MatchReadRows["ratingEvents"][number]; last: MatchReadRows["ratingEvents"][number] }>();
+    for (const event of rows.ratingEvents) {
+      if (event.revision_id !== revision.id) continue;
+      const current = ratingEventsByUser.get(event.user_id);
+      const sequence = Number(event.sequence);
+      if (!current) {
+        ratingEventsByUser.set(event.user_id, { first: event, last: event });
+      } else {
+        if (sequence < Number(current.first.sequence)) current.first = event;
+        if (sequence > Number(current.last.sequence)) current.last = event;
+      }
+    }
     const toPlayer = (participant: MatchReadRows["participants"][number]): MatchPlayer => {
       const name = profiles.get(participant.user_id) ?? "Unknown player";
-      return { id: participant.user_id, name, initials: initialsFor(name) };
+      const events = ratingEventsByUser.get(participant.user_id);
+      return {
+        id: participant.user_id,
+        name,
+        initials: initialsFor(name),
+        ...(events ? {
+          ratingChange: {
+            previous: { rating: Math.round(Number(events.first.before_rating)), rd: Math.round(Number(events.first.before_rd)) },
+            next: { rating: Math.round(Number(events.last.after_rating)), rd: Math.round(Number(events.last.after_rd)) },
+          },
+        } : {}),
+      };
     };
     const submitterTeam = revisionParticipants.find((participant) => participant.user_id === revision.submitted_by_user_id)?.team;
     const currentParticipant = revisionParticipants.find((participant) => participant.user_id === rows.currentUserId);
@@ -78,6 +116,8 @@ export function buildMatchViews(rows: MatchReadRows): MatchView[] {
     const ratingCount = rows.ratingEvents.filter((event) => event.revision_id === revision.id).length;
     const teamAWins = revisionGames.filter((game) => game.winnerTeam === "A").length;
     const teamBWins = revisionGames.length - teamAWins;
+    const disputeUntil = new Date(new Date(match.review_started_at).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const disputeWindowOpen = Date.now() < new Date(disputeUntil).getTime();
 
     return [{
       id: match.id,
@@ -87,16 +127,21 @@ export function buildMatchViews(rows: MatchReadRows): MatchView[] {
       submittedByUserId: revision.submitted_by_user_id,
       status: match.status,
       submittedAt: match.submitted_at,
+      reviewStartedAt: match.review_started_at,
+      disputeUntil,
       format: revision.format,
       teamA: revisionParticipants.filter((participant) => participant.team === "A").map(toPlayer),
       teamB: revisionParticipants.filter((participant) => participant.team === "B").map(toPlayer),
       games: revisionGames,
       winnerTeam: teamAWins > teamBWins ? "A" : "B",
       ratingSummary: ratingCount ? `${ratingCount} rating ${ratingCount === 1 ? "change" : "changes"}` : "Ratings updating…",
-      canReview: match.status === "pending_confirmation"
+      canConfirm: match.status === "pending_confirmation"
         && Boolean(currentParticipant && submitterTeam && currentParticipant.team !== submitterTeam)
         && !alreadyReviewed,
-      canRevise: Boolean(currentParticipant),
+      canDispute: Boolean(currentParticipant)
+        && disputeWindowOpen
+        && (match.status === "pending_confirmation" || match.status === "confirmed"),
+      canRevise: Boolean(currentParticipant) && disputeWindowOpen && match.status === "disputed",
     } satisfies MatchView];
   });
 }

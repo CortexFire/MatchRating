@@ -31,6 +31,7 @@ export default async function RankingsPage({
         <Input className="pl-9" placeholder="Search rankings" />
       </div>
       <RatingRebuildStatus
+        key={ratingStatus.id ?? "no-rating-job"}
         groupId={groupId}
         jobId={ratingStatus.id}
         status={ratingStatus.status}
