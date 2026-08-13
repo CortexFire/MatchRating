@@ -89,10 +89,6 @@ type RatingRow = {
   games_played: number;
 };
 
-type GroupRatingRow = RatingRow & {
-  group_id: string;
-};
-
 const getCurrentUserId = cache(requireUserId);
 const canCurrentUserReadGroupCached = cache(async (groupId: string) => {
   if (!isUuid(groupId)) return false;
@@ -123,19 +119,8 @@ export async function getGroupRatingRebuildStatus(groupId: string): Promise<AppR
   };
 }
 
-type ActiveMatchDraftRow = {
-  id: string;
-  group_id: string;
-  created_by_user_id: string;
-  format: MatchFormat;
-  team_a_user_ids: string[];
-  team_b_user_ids: string[];
-  games: unknown;
-  expires_at: string;
-};
-
 export async function getCurrentProfile(): Promise<AppProfile> {
-  const userId = await requireUserId();
+  const userId = await getCurrentUserId();
   const service = createSupabaseServiceClient();
   const { data, error } = await service
     .from("profiles")
@@ -151,7 +136,7 @@ export async function getCurrentProfile(): Promise<AppProfile> {
 }
 
 export async function listCurrentUserGroups(): Promise<AppGroup[]> {
-  const userId = await requireUserId();
+  const userId = await getCurrentUserId();
   const service = createSupabaseServiceClient();
   const { data: memberships, error } = await service
     .from("group_memberships")
@@ -235,7 +220,7 @@ export async function listGroupMatches(groupId: string, options?: { limit?: numb
 }
 
 export async function listCurrentUserMatches(options?: { limit?: number }): Promise<AppMatchSummary[]> {
-  const userId = await requireUserId();
+  const userId = await getCurrentUserId();
   const service = createSupabaseServiceClient();
   const groupIds = await listActiveGroupIdsForUser(userId, service);
   if (!groupIds.length) return [];
@@ -266,70 +251,8 @@ export async function listCurrentUserMatches(options?: { limit?: number }): Prom
   return loadMatchViews((data ?? []) as MatchReadRows["matches"], userId, service);
 }
 
-export async function listCurrentUserRankings(): Promise<AppCurrentRanking[]> {
-  const userId = await requireUserId();
-  const service = createSupabaseServiceClient();
-  const groupIds = await listActiveGroupIdsForUser(userId, service);
-  if (!groupIds.length) return [];
-
-  const [{ data: groups, error: groupsError }, { data: memberships, error: membershipsError }] = await Promise.all([
-    service.from("groups").select("id, name").in("id", groupIds),
-    service
-      .from("group_memberships")
-      .select("group_id, user_id")
-      .in("group_id", groupIds)
-      .eq("status", "active")
-      .is("left_at", null),
-  ]);
-  if (groupsError) throw groupsError;
-  if (membershipsError) throw membershipsError;
-
-  const memberRows = (memberships ?? []) as Array<Pick<MembershipRow, "group_id" | "user_id">>;
-  const userIds = [...new Set(memberRows.map((membership) => membership.user_id))];
-  if (!userIds.length) return [];
-
-  const [{ data: profiles, error: profilesError }, { data: ratings, error: ratingsError }] = await Promise.all([
-    service.from("profiles").select("id, display_name").in("id", userIds),
-    service
-      .from("group_rating_states")
-      .select("group_id, user_id, rating, rd, games_played")
-      .in("group_id", groupIds)
-      .in("user_id", userIds),
-  ]);
-  if (profilesError) throw profilesError;
-  if (ratingsError) throw ratingsError;
-
-  const profilesById = new Map((profiles ?? []).map((profile: ProfileRow) => [profile.id, profile.display_name]));
-  const ratingsByGroupAndUser = new Map(
-    ((ratings ?? []) as GroupRatingRow[]).map((rating) => [`${rating.group_id}:${rating.user_id}`, rating]),
-  );
-
-  return ((groups ?? []) as Array<{ id: string; name: string }>)
-    .flatMap((group) => {
-      const members = memberRows
-        .filter((membership) => membership.group_id === group.id)
-        .map((membership) => ({
-          id: membership.user_id,
-          name: profilesById.get(membership.user_id) ?? "Unknown player",
-          rating: Math.round(Number(ratingsByGroupAndUser.get(`${group.id}:${membership.user_id}`)?.rating ?? 1500)),
-        }));
-      const rankedMembers = rankPlayers(members);
-      const currentPlayer = rankedMembers.find((player) => player.id === userId);
-      if (!currentPlayer) return [];
-
-      return [{
-        groupId: group.id,
-        groupName: group.name,
-        rating: currentPlayer.rating,
-        rank: currentPlayer.rank,
-        memberCount: rankedMembers.length,
-      }];
-    })
-    .sort((left, right) => left.groupName.localeCompare(right.groupName) || left.groupId.localeCompare(right.groupId));
-}
-
 export async function listPendingReviewsForCurrentUser(): Promise<AppPendingReview[]> {
-  const userId = await requireUserId();
+  const userId = await getCurrentUserId();
   const service = createSupabaseServiceClient();
   const { data: memberships, error: membershipError } = await service
     .from("group_memberships")
@@ -355,7 +278,7 @@ export async function listPendingReviewsForCurrentUser(): Promise<AppPendingRevi
 }
 
 export async function getGroupMatchDetail(groupId: string, matchId: string): Promise<AppMatchDetail | null> {
-  const userId = await requireUserId();
+  const userId = await getCurrentUserId();
   const service = createSupabaseServiceClient();
   if (!isUuid(groupId) || !isUuid(matchId) || !(await canReadGroup(groupId, userId, service))) return null;
 
@@ -435,95 +358,6 @@ async function loadMatchViews(
   });
 }
 
-
-export async function listCurrentUserActiveMatchDrafts(): Promise<AppActiveMatchDraft[]> {
-  const userId = await requireUserId();
-  const service = createSupabaseServiceClient();
-  const activeGroupIds = await listActiveGroupIdsForUser(userId, service);
-  if (!activeGroupIds.length) {
-    return [];
-  }
-  const drafts = await listVisibleDraftRows(userId, undefined, service, activeGroupIds);
-  return hydrateDraftSummaries(drafts, userId, service);
-}
-
-export async function listGroupActiveMatchDrafts(groupId: string): Promise<AppActiveMatchDraft[]> {
-  const userId = await getCurrentUserId();
-  await ensureCurrentUserCanReadGroup(groupId);
-  const service = createSupabaseServiceClient();
-  const drafts = await listVisibleDraftRows(userId, groupId, service);
-  return hydrateDraftSummaries(drafts, userId, service);
-}
-
-export async function getActiveMatchDraft(draftId: string): Promise<AppActiveMatchDraftDetail | null> {
-  const userId = await requireUserId();
-  const service = createSupabaseServiceClient();
-  const { data, error } = await service
-    .from("active_match_drafts")
-    .select("id, group_id, created_by_user_id, format, team_a_user_ids, team_b_user_ids, games, expires_at")
-    .eq("id", draftId)
-    .is("submitted_match_id", null)
-    .gt("expires_at", new Date().toISOString())
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  const draft = data as ActiveMatchDraftRow | null;
-  if (!draft || !isVisibleDraft(draft, userId)) {
-    return null;
-  }
-
-  const activeGroupIds = await listActiveGroupIdsForUser(userId, service);
-  if (!activeGroupIds.includes(draft.group_id)) {
-    return null;
-  }
-
-  const [summary] = await hydrateDraftSummaries([draft], userId, service);
-  if (!summary) {
-    return null;
-  }
-
-  return {
-    ...summary,
-    canEdit: true,
-    initialMatch: {
-      format: draft.format,
-      teamAUserIds: draft.team_a_user_ids,
-      teamBUserIds: draft.team_b_user_ids,
-      games: parseDraftGames(draft.games),
-    },
-  };
-}
-
-async function listVisibleDraftRows(
-  userId: string,
-  groupId: string | undefined,
-  service: ReturnType<typeof createSupabaseServiceClient>,
-  activeGroupIds?: string[],
-) {
-  let query = service
-    .from("active_match_drafts")
-    .select("id, group_id, created_by_user_id, format, team_a_user_ids, team_b_user_ids, games, expires_at")
-    .is("submitted_match_id", null)
-    .gt("expires_at", new Date().toISOString())
-    .or(`created_by_user_id.eq.${userId},team_a_user_ids.cs.{${userId}},team_b_user_ids.cs.{${userId}}`);
-
-  if (groupId) {
-    query = query.eq("group_id", groupId);
-  } else if (activeGroupIds) {
-    query = query.in("group_id", activeGroupIds);
-  }
-
-  const { data, error } = await query.order("updated_at", { ascending: false });
-  if (error) {
-    throw error;
-  }
-
-  return (data ?? []) as ActiveMatchDraftRow[];
-}
-
 async function listActiveGroupIdsForUser(
   userId: string,
   service: ReturnType<typeof createSupabaseServiceClient>,
@@ -540,80 +374,6 @@ async function listActiveGroupIdsForUser(
   }
 
   return [...new Set((data ?? []).map((membership) => membership.group_id as string))];
-}
-
-async function hydrateDraftSummaries(
-  drafts: ActiveMatchDraftRow[],
-  userId: string,
-  service: ReturnType<typeof createSupabaseServiceClient>,
-): Promise<AppActiveMatchDraft[]> {
-  if (!drafts.length) {
-    return [];
-  }
-
-  const groupIds = [...new Set(drafts.map((draft) => draft.group_id))];
-  const playerIds = [...new Set(drafts.flatMap((draft) => [...draft.team_a_user_ids, ...draft.team_b_user_ids]))];
-  const [{ data: groups, error: groupsError }, { data: profiles, error: profilesError }] = await Promise.all([
-    service.from("groups").select("id, name").in("id", groupIds),
-    service.from("profiles").select("id, display_name").in("id", playerIds),
-  ]);
-
-  if (groupsError) {
-    throw groupsError;
-  }
-
-  if (profilesError) {
-    throw profilesError;
-  }
-
-  const groupsById = new Map((groups ?? []).map((group: { id: string; name: string }) => [group.id, group.name]));
-  const profilesById = new Map((profiles ?? []).map((profile: ProfileRow) => [profile.id, profile.display_name]));
-
-  return drafts.map((draft) => ({
-    id: draft.id,
-    groupId: draft.group_id,
-    groupName: groupsById.get(draft.group_id) ?? "Group",
-    format: draft.format,
-    teamA: draft.team_a_user_ids.map((id: string) => profilesById.get(id) ?? "Unknown player"),
-    teamB: draft.team_b_user_ids.map((id: string) => profilesById.get(id) ?? "Unknown player"),
-    scores: parseDraftGames(draft.games).map((game) => `${game.teamAScore}-${game.teamBScore}`),
-    role: draft.created_by_user_id === userId ? "Creator" : "Participant",
-  }));
-}
-
-function isVisibleDraft(draft: ActiveMatchDraftRow, userId: string) {
-  return (
-    draft.created_by_user_id === userId ||
-    draft.team_a_user_ids.includes(userId) ||
-    draft.team_b_user_ids.includes(userId)
-  );
-}
-
-function parseDraftGames(value: unknown): MatchGameInput[] {
-  if (!Array.isArray(value)) {
-    return [{ teamAScore: 0, teamBScore: 0, winnerTeam: "A" }];
-  }
-
-  return value
-    .map((game) => {
-      const storedGame = game as { teamAScore?: unknown; teamBScore?: unknown; winnerTeam?: unknown };
-      const teamAScore = Number(storedGame.teamAScore ?? 0);
-      const teamBScore = Number(storedGame.teamBScore ?? 0);
-
-      const winnerTeam: "A" | "B" =
-        storedGame.winnerTeam === "A" || storedGame.winnerTeam === "B"
-          ? storedGame.winnerTeam
-          : teamAScore >= teamBScore
-            ? "A"
-            : "B";
-
-      return {
-        teamAScore,
-        teamBScore,
-        winnerTeam,
-      };
-    })
-    .filter((game) => Number.isFinite(game.teamAScore) && Number.isFinite(game.teamBScore));
 }
 
 export async function listGroupPlayers(groupId: string): Promise<AppPlayer[]> {

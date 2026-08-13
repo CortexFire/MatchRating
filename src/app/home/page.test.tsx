@@ -1,10 +1,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import HomePage from "./page";
 
-const appDataMocks = vi.hoisted(() => ({
-  getCurrentProfile: vi.fn(async () => ({ id: "alice-id", name: "Alice Tan", initials: "AT" })),
-  listCurrentUserActiveMatchDrafts: vi.fn(async () => [
+const mocks = vi.hoisted(() => ({
+  getHomePageData: vi.fn(),
+}));
+
+const homeData = {
+  profile: { id: "alice-id", name: "Alice Tan", initials: "AT" },
+  activeDrafts: [
     {
       id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
       groupId: "11111111-1111-4111-8111-111111111111",
@@ -25,16 +29,16 @@ const appDataMocks = vi.hoisted(() => ({
       scores: ["11-8"],
       role: "Participant" as const,
     },
-  ]),
-  listCurrentUserGroups: vi.fn(async () => [
+  ],
+  groups: [
     {
       id: "11111111-1111-4111-8111-111111111111",
       name: "Wednesday Club Ladder",
       description: "Friendly competitive badminton ladder for weekly club nights.",
       memberCount: 8,
     },
-  ]),
-  listCurrentUserMatches: vi.fn(async () => [
+  ],
+  latestMatches: [
     {
       id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
       groupId: "22222222-2222-4222-8222-222222222222",
@@ -55,8 +59,8 @@ const appDataMocks = vi.hoisted(() => ({
       canDispute: true,
       canRevise: false,
     },
-  ]),
-  listCurrentUserRankings: vi.fn(async () => [
+  ],
+  currentRankings: [
     {
       groupId: "11111111-1111-4111-8111-111111111111",
       groupName: "Wednesday Club Ladder",
@@ -64,12 +68,17 @@ const appDataMocks = vi.hoisted(() => ({
       rank: 4,
       memberCount: 8,
     },
-  ]),
-}));
+  ],
+};
 
-vi.mock("@/lib/app-data", () => appDataMocks);
+vi.mock("@/lib/navigation-read-models", () => mocks);
 
 describe("HomePage", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getHomePageData.mockResolvedValue(homeData);
+  });
+
   test("resumes the newest real active draft with its canonical grouped link", async () => {
     const html = renderToStaticMarkup(await HomePage());
 
@@ -81,12 +90,11 @@ describe("HomePage", () => {
     );
     expect(html).not.toContain("Older Draft Club");
     expect(html).not.toContain('href="/groups/new"');
-    expect(appDataMocks.listCurrentUserActiveMatchDrafts).toHaveBeenCalledOnce();
+    expect(mocks.getHomePageData).toHaveBeenCalledOnce();
   });
 
   test("falls back to the groups page when the user has no groups", async () => {
-    appDataMocks.listCurrentUserGroups.mockResolvedValueOnce([]);
-    appDataMocks.listCurrentUserActiveMatchDrafts.mockResolvedValueOnce([]);
+    mocks.getHomePageData.mockResolvedValueOnce({ ...homeData, groups: [], activeDrafts: [] });
 
     const html = renderToStaticMarkup(await HomePage());
 
@@ -95,7 +103,7 @@ describe("HomePage", () => {
   });
 
   test("renders the create-match empty state when there is no active draft", async () => {
-    appDataMocks.listCurrentUserActiveMatchDrafts.mockResolvedValueOnce([]);
+    mocks.getHomePageData.mockResolvedValueOnce({ ...homeData, activeDrafts: [] });
 
     const html = renderToStaticMarkup(await HomePage());
 
@@ -129,18 +137,18 @@ describe("HomePage", () => {
     expect(html).toContain('href="/groups/11111111-1111-4111-8111-111111111111/rankings"');
     expect(html).toContain("#4 of 8");
     expect(html).toContain("1642");
-    expect(appDataMocks.listCurrentUserMatches).toHaveBeenCalledWith({ limit: 3 });
+    expect(mocks.getHomePageData).toHaveBeenCalledOnce();
   });
 
   test("renders no more than three latest result cards when the data source returns extra matches", async () => {
-    const [latestMatch] = await appDataMocks.listCurrentUserMatches();
-    appDataMocks.listCurrentUserMatches.mockClear();
-    appDataMocks.listCurrentUserMatches.mockResolvedValueOnce(
-      Array.from({ length: 4 }, (_, index) => ({
+    const [latestMatch] = homeData.latestMatches;
+    mocks.getHomePageData.mockResolvedValueOnce({
+      ...homeData,
+      latestMatches: Array.from({ length: 4 }, (_, index) => ({
         ...latestMatch,
         id: `latest-match-${index + 1}`,
       })),
-    );
+    });
 
     const html = renderToStaticMarkup(await HomePage());
 
@@ -149,8 +157,7 @@ describe("HomePage", () => {
   });
 
   test("renders empty states for players without matches or rankings", async () => {
-    appDataMocks.listCurrentUserMatches.mockResolvedValueOnce([]);
-    appDataMocks.listCurrentUserRankings.mockResolvedValueOnce([]);
+    mocks.getHomePageData.mockResolvedValueOnce({ ...homeData, latestMatches: [], currentRankings: [] });
 
     const html = renderToStaticMarkup(await HomePage());
 

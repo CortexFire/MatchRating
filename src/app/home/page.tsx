@@ -6,23 +6,11 @@ import { MobileShell } from "@/components/app/mobile-shell";
 import { AvatarInitials } from "@/components/ui/avatar";
 import { MatchResultList } from "@/components/match/match-result-list";
 import { CurrentRankingList } from "@/components/rankings/current-ranking-list";
-import {
-  getCurrentProfile,
-  listCurrentUserActiveMatchDrafts,
-  listCurrentUserGroups,
-  listCurrentUserMatches,
-  listCurrentUserRankings,
-} from "@/lib/app-data";
+import { getHomePageData } from "@/lib/navigation-read-models";
 import { toMatchResultSummary } from "@/lib/matches/match-result-summary";
 
 export default async function HomePage() {
-  const [profile, groups, activeDrafts, latestMatches, currentRankings] = await Promise.all([
-    getCurrentProfile(),
-    listCurrentUserGroups(),
-    listCurrentUserActiveMatchDrafts(),
-    listCurrentUserMatches({ limit: 3 }),
-    listCurrentUserRankings(),
-  ]);
+  const { profile, groups, activeDrafts, latestMatches, currentRankings } = await getHomePageData();
   const primaryGroup = groups[0];
   const primaryDraft = activeDrafts[0];
   const latestMatchResults = latestMatches.slice(0, 3).map(toMatchResultSummary);
