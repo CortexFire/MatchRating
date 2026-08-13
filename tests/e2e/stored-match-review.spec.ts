@@ -56,7 +56,8 @@ test("records, corrects, confirms, and reads one stored match across two users",
   await alice.goto(`/groups/${DEMO_GROUP_ID}/history`);
   const historyMatch = alice.locator(`a[href="${matchPath}"]`);
   await expect(historyMatch).toBeVisible();
-  await expect(historyMatch.getByText("Accepted")).toBeVisible();
+  await expect(historyMatch.getByText("18-21")).toBeVisible();
+  await expect(historyMatch).not.toContainText(/Awaiting review|Disputed/);
 
   await aliceContext.close();
   await beaContext.close();
