@@ -51,12 +51,12 @@ test("records, corrects, confirms, and reads one stored match across two users",
   await alice.goto("/matches/review");
   await alice.locator(`a[href="${matchPath}"]`).click();
   await alice.getByRole("button", { name: "Confirm" }).click();
-  await expect(alice.getByText("Confirmed")).toBeVisible();
+  await expect(alice.getByText("Accepted")).toBeVisible();
 
   await alice.goto(`/groups/${DEMO_GROUP_ID}/history`);
   const historyMatch = alice.locator(`a[href="${matchPath}"]`);
   await expect(historyMatch).toBeVisible();
-  await expect(historyMatch.getByText("Confirmed")).toBeVisible();
+  await expect(historyMatch.getByText("Accepted")).toBeVisible();
 
   await aliceContext.close();
   await beaContext.close();
