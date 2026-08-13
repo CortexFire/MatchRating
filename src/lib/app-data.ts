@@ -96,6 +96,7 @@ type RatingRow = {
   games_played: number;
 };
 
+const getCurrentUserId = cache(requireUserId);
 const canCurrentUserReadGroupCached = cache(async (groupId: string) => {
   if (!isUuid(groupId)) return false;
   const userId = await requireUserId();
@@ -126,7 +127,7 @@ export async function getGroupRatingRebuildStatus(groupId: string): Promise<AppR
 }
 
 export async function getCurrentProfile(): Promise<AppProfile> {
-  const userId = await requireUserId();
+  const userId = await getCurrentUserId();
   const service = createSupabaseServiceClient();
   const { data, error } = await service
     .from("profiles")
@@ -142,7 +143,7 @@ export async function getCurrentProfile(): Promise<AppProfile> {
 }
 
 export async function listCurrentUserGroups(): Promise<AppGroup[]> {
-  const userId = await requireUserId();
+  const userId = await getCurrentUserId();
   const service = createSupabaseServiceClient();
   const { data: memberships, error } = await service
     .from("group_memberships")
@@ -264,7 +265,7 @@ async function queryMatchHistoryRows({
 }
 
 export async function listPendingReviewsForCurrentUser(): Promise<AppPendingReview[]> {
-  const userId = await requireUserId();
+  const userId = await getCurrentUserId();
   const service = createSupabaseServiceClient();
   const { data: memberships, error: membershipError } = await service
     .from("group_memberships")
@@ -290,7 +291,7 @@ export async function listPendingReviewsForCurrentUser(): Promise<AppPendingRevi
 }
 
 export async function getGroupMatchDetail(groupId: string, matchId: string): Promise<AppMatchDetail | null> {
-  const userId = await requireUserId();
+  const userId = await getCurrentUserId();
   const service = createSupabaseServiceClient();
   if (!isUuid(groupId) || !isUuid(matchId) || !(await canReadGroup(groupId, userId, service))) return null;
 
