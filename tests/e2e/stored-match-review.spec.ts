@@ -28,7 +28,9 @@ test("records, corrects, confirms, and reads one stored match across two users",
   const aliceRatingBefore = await aliceMemberRow.textContent();
 
   await alice.getByRole("button", { name: "Submit" }).click();
-  await expect(alice.getByText("Match saved. Ratings updating…")).toBeVisible();
+  await expect(
+    alice.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it."),
+  ).toBeVisible();
 
   await expect.poll(
     () => aliceMemberRow.textContent(),
@@ -49,12 +51,13 @@ test("records, corrects, confirms, and reads one stored match across two users",
   await alice.goto("/matches/review");
   await alice.locator(`a[href="${matchPath}"]`).click();
   await alice.getByRole("button", { name: "Confirm" }).click();
-  await expect(alice.getByText("Confirmed")).toBeVisible();
+  await expect(alice.getByText("Accepted")).toBeVisible();
 
   await alice.goto(`/groups/${DEMO_GROUP_ID}/history`);
   const historyMatch = alice.locator(`a[href="${matchPath}"]`);
   await expect(historyMatch).toBeVisible();
-  await expect(historyMatch.getByText("Confirmed")).toBeVisible();
+  await expect(historyMatch.getByText("18-21")).toBeVisible();
+  await expect(historyMatch).not.toContainText(/Awaiting review|Disputed/);
 
   await aliceContext.close();
   await beaContext.close();
@@ -92,7 +95,9 @@ test("a participant resumes, edits, and submits another player's active draft fr
   await expect(cory.getByLabel("Set 1 Team B score")).toHaveValue("18");
   await cory.getByLabel("Set 1 Team B score").fill("19");
   await cory.getByRole("button", { name: "Submit" }).click();
-  await expect(cory.getByText("Match saved. Ratings updating…")).toBeVisible();
+  await expect(
+    cory.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it."),
+  ).toBeVisible();
 
   await cory.goto("/home");
   await expect(cory.locator(`a[href="${resumeHref}"]`)).toHaveCount(0);
