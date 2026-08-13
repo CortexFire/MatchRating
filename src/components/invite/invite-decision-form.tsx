@@ -44,7 +44,9 @@ export function InviteDecisionForm({
       <div className="rounded-lg border border-stroke bg-white px-4 py-7 text-center">
         <h2 className="text-2xl font-bold leading-8 text-ink">{summary.groupName}</h2>
         <p className="mt-7 text-xs text-muted">{summary.lastActiveText}</p>
-        <p className="mt-3 text-xs text-muted">{summary.memberCount} players</p>
+        <p className="mt-3 text-xs text-muted">
+          {summary.memberCount} {summary.memberCount === 1 ? "player" : "players"}
+        </p>
       </div>
       {mode === "already-member" ? (
         <Button asChild>
