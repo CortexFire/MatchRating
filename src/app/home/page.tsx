@@ -1,28 +1,26 @@
-export const dynamic = "force-dynamic";
+export const unstable_instant = { prefetch: "static" };
 
 import Link from "next/link";
 import { Plus } from "lucide-react";
+import { Suspense } from "react";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { AvatarInitials } from "@/components/ui/avatar";
 import { MatchResultList } from "@/components/match/match-result-list";
 import { CurrentRankingList } from "@/components/rankings/current-ranking-list";
-import {
-  getCurrentProfile,
-  listCurrentUserActiveMatchDrafts,
-  listCurrentUserGroups,
-  listCurrentUserMatches,
-  listCurrentUserRankings,
-} from "@/lib/app-data";
+import { getHomePageData } from "@/lib/navigation-read-models";
 import { toMatchResultSummary } from "@/lib/matches/match-result-summary";
+import HomeLoading from "./loading";
 
-export default async function HomePage() {
-  const [profile, groups, activeDrafts, latestMatches, currentRankings] = await Promise.all([
-    getCurrentProfile(),
-    listCurrentUserGroups(),
-    listCurrentUserActiveMatchDrafts(),
-    listCurrentUserMatches({ limit: 3 }),
-    listCurrentUserRankings(),
-  ]);
+export default function HomePage() {
+  return (
+    <Suspense fallback={<HomeLoading />}>
+      <HomeContent />
+    </Suspense>
+  );
+}
+
+export async function HomeContent() {
+  const { profile, groups, activeDrafts, latestMatches, currentRankings } = await getHomePageData();
   const primaryGroup = groups[0];
   const primaryDraft = activeDrafts[0];
   const latestMatchResults = latestMatches.slice(0, 3).map(toMatchResultSummary);

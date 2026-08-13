@@ -1,14 +1,29 @@
+export const unstable_instant = {
+  prefetch: "static",
+  samples: [{ params: { groupId: "00000000-0000-0000-0000-000000000000" } }],
+};
+
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import { listClaimableGuestProfiles } from "@/app/actions";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { ClaimProfileForm } from "@/components/invite/claim-profile-form";
 import { Card, CardContent } from "@/components/ui/card";
+import GroupLoading from "../loading";
 
-export default async function ClaimProfilePage({
-  params,
-}: {
+type ClaimProfilePageProps = {
   params: Promise<{ groupId: string }>;
-}) {
+};
+
+export default function ClaimProfilePage(props: ClaimProfilePageProps) {
+  return (
+    <Suspense fallback={<GroupLoading />}>
+      <ClaimProfileContent {...props} />
+    </Suspense>
+  );
+}
+
+export async function ClaimProfileContent({ params }: ClaimProfilePageProps) {
   const { groupId } = await params;
   const result = await listClaimableGuestProfiles(groupId);
 

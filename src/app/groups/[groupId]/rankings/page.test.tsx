@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, test, vi } from "vitest";
-import RankingsPage from "./page";
+import { RankingsContent } from "./page";
 
 const mocks = vi.hoisted(() => ({
   getGroupRatingRebuildStatus: vi.fn(),
@@ -20,7 +20,7 @@ beforeEach(() => {
 });
 
 test("renders rankings without the redundant group-isolation explanation", async () => {
-  const html = renderToStaticMarkup(await RankingsPage({ params: Promise.resolve({ groupId: "group-1" }) }));
+  const html = renderToStaticMarkup(await RankingsContent({ params: Promise.resolve({ groupId: "group-1" }) }));
 
   expect(html).toContain("Rankings");
   expect(html).not.toContain("Glicko-2 ratings are isolated to this group.");

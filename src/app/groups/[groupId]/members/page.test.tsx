@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, test, vi } from "vitest";
-import MembersPage from "./page";
+import MembersPage, { MembersContent } from "./page";
 
 const mocks = vi.hoisted(() => ({
   getGroup: vi.fn(),
@@ -32,13 +32,13 @@ beforeEach(() => {
 test("shows when member ratings are still rebuilding", async () => {
   mocks.getGroupRatingRebuildStatus.mockResolvedValue({ id: "job-1", status: "running", canRetry: false });
 
-  const html = renderToStaticMarkup(await MembersPage({ params: Promise.resolve({ groupId }) }));
+  const html = renderToStaticMarkup(await MembersContent({ params: Promise.resolve({ groupId }) }));
 
   expect(html).toContain("Match saved. Ratings updating");
 });
 
 test("reports recency-active players separately from the full membership count", async () => {
-  const html = renderToStaticMarkup(await MembersPage({ params: Promise.resolve({ groupId }) }));
+  const html = renderToStaticMarkup(await MembersContent({ params: Promise.resolve({ groupId }) }));
 
   expect(html).toContain("1 active of 3 members");
   expect(html).not.toContain("3 active players in this group");
@@ -48,8 +48,17 @@ test("uses membership language when the roster is empty", async () => {
   mocks.getGroup.mockResolvedValue({ id: groupId, name: "Wednesday Club", description: "", memberCount: 0 });
   mocks.listGroupPlayers.mockResolvedValue([]);
 
-  const html = renderToStaticMarkup(await MembersPage({ params: Promise.resolve({ groupId }) }));
+  const html = renderToStaticMarkup(await MembersContent({ params: Promise.resolve({ groupId }) }));
 
   expect(html).toContain("No members yet");
   expect(html).not.toContain("No active members yet");
+});
+
+test("renders an immediate group shell before route parameters resolve", () => {
+  const html = renderToStaticMarkup(
+    <MembersPage params={new Promise<never>(() => undefined)} />,
+  );
+
+  expect(html).toContain("Loading group");
+  expect(html).toContain('aria-busy="true"');
 });

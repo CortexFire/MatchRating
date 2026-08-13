@@ -1,18 +1,33 @@
-export const dynamic = "force-dynamic";
+export const unstable_instant = {
+  prefetch: "static",
+  samples: [{ params: { groupId: "00000000-0000-0000-0000-000000000000" } }],
+};
 
 import Link from "next/link";
+import { Suspense } from "react";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { PlayerRow } from "@/components/app/player-row";
 import { ScreenHeader } from "@/components/app/screen-header";
 import { RatingRebuildStatus } from "@/components/match/rating-rebuild-status";
 import { Button } from "@/components/ui/button";
 import { getGroup, getGroupRatingRebuildStatus, listGroupPlayers } from "@/lib/app-data";
+import GroupLoading from "../loading";
 
-export default async function MembersPage({
-  params,
-}: {
+type MembersPageProps = {
   params: Promise<{ groupId: string }>;
-}) {
+};
+
+export default function MembersPage(props: MembersPageProps) {
+  return (
+    <Suspense fallback={<GroupLoading />}>
+      <MembersContent {...props} />
+    </Suspense>
+  );
+}
+
+export async function MembersContent({
+  params,
+}: MembersPageProps) {
   const { groupId } = await params;
   const [group, players, ratingStatus] = await Promise.all([
     getGroup(groupId),

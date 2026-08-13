@@ -1,40 +1,45 @@
-export const dynamic = "force-dynamic";
+export const unstable_instant = {
+  prefetch: "static",
+  samples: [{
+    params: { groupId: "00000000-0000-0000-0000-000000000000" },
+    searchParams: { draftId: null },
+  }],
+};
 
 import Link from "next/link";
+import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import { createGuestPlayers, saveActiveMatchDraft, submitMatch } from "@/app/actions";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { MatchRecorder, type InitialMatchRecording } from "@/components/match/match-recorder";
 import { RatingRebuildStatus } from "@/components/match/rating-rebuild-status";
-import {
-  getActiveMatchDraft,
-  getGroup,
-  getGroupRatingRebuildStatus,
-  listCurrentUserGroups,
-  listGroupPlayers,
-} from "@/lib/app-data";
 import { type MatchFormat } from "@/lib/matches/validation";
+import { getMatchRecorderPageData } from "@/lib/navigation-read-models";
+import GroupMatchLoading from "../loading";
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
-export default async function NewMatchPage({
-  params,
-  searchParams,
-}: {
+type NewMatchPageProps = {
   params: Promise<{ groupId: string }>;
   searchParams: SearchParams;
-}) {
+};
+
+export default function NewMatchPage(props: NewMatchPageProps) {
+  return (
+    <Suspense fallback={<GroupMatchLoading />}>
+      <NewMatchContent {...props} />
+    </Suspense>
+  );
+}
+
+export async function NewMatchContent({ params, searchParams }: NewMatchPageProps) {
   const { groupId } = await params;
   const resolvedSearchParams = await searchParams;
   const draftId = firstValue(resolvedSearchParams.draftId);
-  const [group, groups, players, activeDraft, ratingStatus] = await Promise.all([
-    getGroup(groupId),
-    listCurrentUserGroups(),
-    listGroupPlayers(groupId),
-    draftId ? getActiveMatchDraft(draftId) : Promise.resolve(null),
-    getGroupRatingRebuildStatus(groupId),
-  ]);
-  const matchingDraft = activeDraft?.groupId === groupId ? activeDraft : null;
-  const initialMatch = matchingDraft?.initialMatch ?? parseInitialMatch(resolvedSearchParams, players.map((player) => player.id));
+  const data = await getMatchRecorderPageData(groupId, draftId);
+  if (!data) notFound();
+  const { group, groups, players, draft, ratingStatus } = data;
+  const initialMatch = draft?.initialMatch ?? parseInitialMatch(resolvedSearchParams, players.map((player) => player.id));
 
   return (
     <MobileShell active="Record" recordHref={`/groups/${groupId}/matches/new`}>
@@ -46,7 +51,7 @@ export default async function NewMatchPage({
         canRetry={ratingStatus.canRetry}
         showPending={false}
       />
-      {draftId && !matchingDraft ? (
+      {draftId && !draft ? (
         <section className="flex min-h-full flex-col gap-4">
           <h1 className="text-[22px] font-bold leading-7 text-ink">Active match expired</h1>
           <p className="rounded-lg border border-stroke bg-surface p-4 text-sm text-muted">This active match expired. Start a new match.</p>
@@ -58,12 +63,12 @@ export default async function NewMatchPage({
         <MatchRecorder
           key={groupId}
           groupId={groupId}
-          groupName={group?.name ?? "Group"}
+          groupName={group.name}
           groupOptions={groups.map(({ id, name }) => ({ id, name }))}
           players={players}
           initialMatch={initialMatch}
-          draftId={matchingDraft?.id}
-          canEdit={matchingDraft?.canEdit ?? true}
+          draftId={draft?.id}
+          canEdit={draft?.canEdit ?? true}
           createGuestPlayers={createGuestPlayers}
           saveActiveMatchDraft={saveActiveMatchDraft}
           submitMatchAction={submitMatch}

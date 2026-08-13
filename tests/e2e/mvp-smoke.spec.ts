@@ -47,3 +47,40 @@ test("members page links to a separate invite page", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Join Group" })).toBeVisible();
   await expect(page.getByLabel("Invite URL")).toBeVisible();
 });
+
+test("personalized routes expose instant shells and complete the primary navigation flow", async ({ page }) => {
+  await signInAsDemoPlayer(page, "alice@demo.matchrating.app");
+  const context = page.context();
+  const baseURL = new URL(page.url()).origin;
+
+  await context.addCookies([{
+    name: "next-instant-navigation-testing",
+    value: "1",
+    url: baseURL,
+  }]);
+
+  await page.goto("/home");
+  await expect(page.getByRole("status", { name: "Loading home" })).toBeVisible();
+  await page.goto(`/groups/${DEMO_GROUP_ID}/rankings`);
+  await expect(page.getByRole("status", { name: "Loading group" })).toBeVisible();
+  await page.goto(`/groups/${DEMO_GROUP_ID}/matches/new`);
+  await expect(page.getByRole("status", { name: "Loading match" })).toBeVisible();
+  await page.goto("/matches/history");
+  await expect(page.getByRole("status", { name: "Loading matches" })).toBeVisible();
+
+  await context.clearCookies({ name: "next-instant-navigation-testing" });
+  await page.goto("/home");
+  await expect(page.getByText("Welcome back", { exact: true })).toBeVisible();
+
+  await page.locator("nav:visible").getByRole("link", { name: "Groups" }).click();
+  await expect(page.getByRole("heading", { name: "Groups", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: /Wednesday Club Ladder/ }).click();
+  await expect(page.getByRole("heading", { name: "Wednesday Club Ladder" })).toBeVisible();
+
+  await page.goto(`/groups/${DEMO_GROUP_ID}/rankings`);
+  await expect(page.getByRole("heading", { name: "Rankings" })).toBeVisible();
+  await page.locator("nav:visible").getByRole("link", { name: "Record" }).click();
+  await expect(page.getByRole("heading", { name: "Match Recording" })).toBeVisible();
+  await page.goto("/matches/history");
+  await expect(page.getByRole("heading", { name: "Match history" })).toBeVisible();
+});

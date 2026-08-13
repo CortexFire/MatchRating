@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, test, vi } from "vitest";
-import ClaimProfilePage from "./page";
+import { ClaimProfileContent } from "./page";
 
 const mocks = vi.hoisted(() => ({
   listClaimableGuestProfiles: vi.fn(),
@@ -20,7 +20,7 @@ beforeEach(() => {
 });
 
 test("renders claim choices without the redundant guest-profile label", async () => {
-  const html = renderToStaticMarkup(await ClaimProfilePage({ params: Promise.resolve({ groupId: "group-1" }) }));
+  const html = renderToStaticMarkup(await ClaimProfileContent({ params: Promise.resolve({ groupId: "group-1" }) }));
 
   expect(html).toContain("Are any of these you?");
   expect(html).toContain("Avery Park");

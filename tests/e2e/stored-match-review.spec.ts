@@ -49,12 +49,12 @@ test("records, corrects, confirms, and reads one stored match across two users",
   await expect(bea).toHaveURL(matchPath);
 
   await alice.goto("/matches/review");
-  await alice.locator(`a[href="${matchPath}"]`).click();
+  await alice.locator(`a:visible[href="${matchPath}"]`).click();
   await alice.getByRole("button", { name: "Confirm" }).click();
   await expect(alice.getByText("Accepted")).toBeVisible();
 
   await alice.goto(`/groups/${DEMO_GROUP_ID}/history`);
-  const historyMatch = alice.locator(`a[href="${matchPath}"]`);
+  const historyMatch = alice.locator(`a:visible[href="${matchPath}"]`);
   await expect(historyMatch).toBeVisible();
   await expect(historyMatch.getByText("18-21")).toBeVisible();
   await expect(historyMatch).not.toContainText(/Awaiting review|Disputed/);
@@ -100,9 +100,9 @@ test("a participant resumes, edits, and submits another player's active draft fr
   ).toBeVisible();
 
   await cory.goto("/home");
-  await expect(cory.locator(`a[href="${resumeHref}"]`)).toHaveCount(0);
+  await expect(cory.locator(`a:visible[href="${resumeHref}"]`)).toHaveCount(0);
   await alice.goto("/home");
-  await expect(alice.locator(`a[href="${resumeHref}"]`)).toHaveCount(0);
+  await expect(alice.locator(`a:visible[href="${resumeHref}"]`)).toHaveCount(0);
   await expect(alice.getByRole("link", { name: /Alice def\. Cory/i }).first()).toBeVisible();
 
   await aliceContext.close();

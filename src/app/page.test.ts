@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import Home from "./page";
+import { AuthRedirect } from "./page";
 import { redirect } from "next/navigation";
 
 const authMock = vi.hoisted(() => ({
@@ -24,7 +24,7 @@ describe("root page", () => {
   test("redirects unauthenticated users to login", async () => {
     authMock.getClaims.mockResolvedValue({ data: { claims: null }, error: null });
 
-    await expect(Home()).rejects.toThrow("NEXT_REDIRECT:/login");
+    await expect(AuthRedirect()).rejects.toThrow("NEXT_REDIRECT:/login");
 
     expect(redirect).toHaveBeenCalledWith("/login");
   });
@@ -32,7 +32,7 @@ describe("root page", () => {
   test("redirects authenticated users to home", async () => {
     authMock.getClaims.mockResolvedValue({ data: { claims: { sub: "user-1" } }, error: null });
 
-    await expect(Home()).rejects.toThrow("NEXT_REDIRECT:/home");
+    await expect(AuthRedirect()).rejects.toThrow("NEXT_REDIRECT:/home");
 
     expect(redirect).toHaveBeenCalledWith("/home");
   });

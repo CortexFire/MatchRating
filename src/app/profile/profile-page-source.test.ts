@@ -9,7 +9,7 @@ describe("profile page content contract", () => {
   test("only renders the groups the user belongs to", () => {
     const source = profileSource();
 
-    expect(source).toContain("getCurrentProfile");
+    expect(source).toContain("getPrivateCurrentProfile");
     expect(source).toContain("AvatarInitials");
     expect(source).toContain("Groups");
     expect(source).toContain("listCurrentUserGroups");

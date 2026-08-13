@@ -1,6 +1,10 @@
-export const dynamic = "force-dynamic";
+export const unstable_instant = {
+  prefetch: "static",
+  samples: [{ params: { groupId: "00000000-0000-0000-0000-000000000000" } }],
+};
 
 import { Search } from "lucide-react";
+import { Suspense } from "react";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { PlayerRow } from "@/components/app/player-row";
 import { ScreenHeader } from "@/components/app/screen-header";
@@ -8,12 +12,21 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { RatingRebuildStatus } from "@/components/match/rating-rebuild-status";
 import { getGroupRatingRebuildStatus, listGroupPlayers } from "@/lib/app-data";
+import GroupLoading from "../loading";
 
-export default async function RankingsPage({
-  params,
-}: {
+type RankingsPageProps = {
   params: Promise<{ groupId: string }>;
-}) {
+};
+
+export default function RankingsPage(props: RankingsPageProps) {
+  return (
+    <Suspense fallback={<GroupLoading />}>
+      <RankingsContent {...props} />
+    </Suspense>
+  );
+}
+
+export async function RankingsContent({ params }: RankingsPageProps) {
   const { groupId } = await params;
   const [players, ratingStatus] = await Promise.all([listGroupPlayers(groupId), getGroupRatingRebuildStatus(groupId)]);
   const recordHref = `/groups/${groupId}/matches/new`;

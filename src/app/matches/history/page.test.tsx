@@ -1,10 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import HistoryPage from "./page";
+import { MatchHistoryContent } from "./page";
 
 const mocks = vi.hoisted(() => ({
   listCurrentUserGroups: vi.fn(),
-  listCurrentUserMatches: vi.fn(),
+  listMatchHistoryPage: vi.fn(),
 }));
 
 vi.mock("@/lib/app-data", () => mocks);
@@ -17,7 +17,7 @@ beforeEach(() => {
     description: "",
     memberCount: 8,
   }]);
-  mocks.listCurrentUserMatches.mockResolvedValue([{
+  mocks.listMatchHistoryPage.mockResolvedValue({ matches: [{
     id: "match-1",
     groupId: "group-1",
     groupName: "Wednesday Club",
@@ -36,12 +36,12 @@ beforeEach(() => {
     canConfirm: false,
     canDispute: true,
     canRevise: false,
-  }]);
+  }], nextCursor: "next-page" });
 });
 
 describe("player match history", () => {
   test("renders cross-group matches with participant headings, no accepted pill, and navigation links", async () => {
-    const html = renderToStaticMarkup(await HistoryPage());
+    const html = renderToStaticMarkup(await MatchHistoryContent());
 
     expect(html).toContain("Match history");
     expect(html).toContain("Wednesday Club");
@@ -51,13 +51,15 @@ describe("player match history", () => {
     expect(html).toContain('href="/groups/group-1/matches/match-1"');
     expect(html).toContain('href="/home"');
     expect(html).toContain('href="/groups/group-1/matches/new"');
+    expect(html).toContain("Load older matches");
+    expect(mocks.listMatchHistoryPage).toHaveBeenCalledWith({});
   });
 
   test("renders the history empty state and Record fallback without groups", async () => {
     mocks.listCurrentUserGroups.mockResolvedValueOnce([]);
-    mocks.listCurrentUserMatches.mockResolvedValueOnce([]);
+    mocks.listMatchHistoryPage.mockResolvedValueOnce({ matches: [], nextCursor: null });
 
-    const html = renderToStaticMarkup(await HistoryPage());
+    const html = renderToStaticMarkup(await MatchHistoryContent());
 
     expect(html).toContain("No matches recorded yet.");
     expect(html).toContain('aria-label="Record"');

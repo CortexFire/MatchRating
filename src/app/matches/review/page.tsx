@@ -1,13 +1,23 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
+import { Suspense } from "react";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { MatchResultList } from "@/components/match/match-result-list";
 import { listCurrentUserGroups, listPendingReviewsForCurrentUser } from "@/lib/app-data";
 import { toMatchResultSummary } from "@/lib/matches/match-result-summary";
+import MatchesLoading from "../loading";
 
-export const dynamic = "force-dynamic";
+export const unstable_instant = { prefetch: "static" };
 
-export default async function ReviewMatchesPage() {
+export default function ReviewMatchesPage() {
+  return (
+    <Suspense fallback={<MatchesLoading />}>
+      <ReviewMatchesContent />
+    </Suspense>
+  );
+}
+
+export async function ReviewMatchesContent() {
   const [groups, matches] = await Promise.all([
     listCurrentUserGroups(),
     listPendingReviewsForCurrentUser(),

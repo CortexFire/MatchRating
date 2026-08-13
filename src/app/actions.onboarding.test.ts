@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { updateTag } from "next/cache";
 import * as actions from "@/app/actions";
 
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
+  updateTag: vi.fn(),
 }));
 
 const supabaseMocks = vi.hoisted(() => {
@@ -118,6 +120,7 @@ describe("onboarding actions", () => {
       display_name: "Maya Chen",
       is_guest: false,
     });
+    expect(updateTag).toHaveBeenCalledWith("profile:user-1");
   });
 
   test("claimGuestProfiles rejects guest merges that duplicate a match participant", async () => {

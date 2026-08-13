@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, test, vi } from "vitest";
-import ReviseMatchPage from "./page";
+import { ReviseMatchContent } from "./page";
 
 const mocks = vi.hoisted(() => ({
   getGroupMatchDetail: vi.fn(),
@@ -42,7 +42,7 @@ test("surfaces a failed rating rebuild on the revision route", async () => {
     canRetry: false,
   });
 
-  const html = renderToStaticMarkup(await ReviseMatchPage({
+  const html = renderToStaticMarkup(await ReviseMatchContent({
     params: Promise.resolve({ groupId: "group-1", matchId: "match-1" }),
   }));
 
@@ -50,7 +50,7 @@ test("surfaces a failed rating rebuild on the revision route", async () => {
 });
 
 test("prefills the stored revision without an auxiliary text field", async () => {
-  const html = renderToStaticMarkup(await ReviseMatchPage({
+  const html = renderToStaticMarkup(await ReviseMatchContent({
     params: Promise.resolve({ groupId: "group-1", matchId: "match-1" }),
   }));
 
@@ -69,7 +69,7 @@ test("allows an accepted current participant to open the correction flow", async
     canDispute: true,
   });
 
-  const html = renderToStaticMarkup(await ReviseMatchPage({
+  const html = renderToStaticMarkup(await ReviseMatchContent({
     params: Promise.resolve({ groupId: "group-1", matchId: "match-1" }),
   }));
 
@@ -79,7 +79,7 @@ test("allows an accepted current participant to open the correction flow", async
 test("does not fetch group players when the match is inaccessible", async () => {
   mocks.getGroupMatchDetail.mockResolvedValue(null);
 
-  await expect(ReviseMatchPage({
+  await expect(ReviseMatchContent({
     params: Promise.resolve({ groupId: "group-1", matchId: "missing-match" }),
   })).rejects.toThrow("NEXT_NOT_FOUND");
   expect(mocks.listGroupPlayers).not.toHaveBeenCalled();

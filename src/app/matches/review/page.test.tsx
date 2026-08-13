@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test, vi } from "vitest";
-import ReviewMatchesPage from "./page";
+import { ReviewMatchesContent } from "./page";
 
 vi.mock("@/lib/app-data", () => ({
   listCurrentUserGroups: vi.fn(async () => [{ id: "group-1", name: "Club", description: "", memberCount: 2 }]),
@@ -14,7 +14,7 @@ vi.mock("@/lib/app-data", () => ({
 }));
 
 test("renders pending stored reviews with canonical grouped links", async () => {
-  const html = renderToStaticMarkup(await ReviewMatchesPage());
+  const html = renderToStaticMarkup(await ReviewMatchesContent());
 
   expect(html).toContain("Alice def. Bea");
   expect(html).toContain("1 - 0");

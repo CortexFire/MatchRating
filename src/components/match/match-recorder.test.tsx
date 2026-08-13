@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { Activity } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { matchRecorderPlayers } from "./match-recorder.test-fixtures";
 import { MobileShell } from "../app/mobile-shell";
@@ -587,6 +588,23 @@ describe("MatchRecorder", () => {
     expect(screen.getByRole("link", { name: "Home" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Record" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Groups" })).toBeTruthy();
+  });
+
+  test("closes transient player selection while preserving the match when its route is hidden", () => {
+    const recorder = (
+      <MatchRecorder players={matchRecorderPlayers} initialMatch={editableDoublesMatch} />
+    );
+    const view = render(<Activity mode="visible">{recorder}</Activity>);
+
+    fireEvent.change(screen.getByLabelText("Set 1 Team A score"), { target: { value: "19" } });
+    fireEvent.click(screen.getByLabelText("Team B empty player slot 2"));
+    expect(screen.getByRole("heading", { name: "Player Select" })).toBeTruthy();
+
+    view.rerender(<Activity mode="hidden">{recorder}</Activity>);
+    view.rerender(<Activity mode="visible">{recorder}</Activity>);
+
+    expect(screen.getByRole("heading", { name: "Match Recording" })).toBeTruthy();
+    expect((screen.getByLabelText("Set 1 Team A score") as HTMLInputElement).value).toBe("19");
   });
 
   test("starts a fresh match with blank score placeholders and Team A selected", () => {

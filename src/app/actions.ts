@@ -1,7 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
@@ -20,6 +20,7 @@ import {
 } from "@/lib/auth/callback-intent";
 import { getTrustedPublicSiteOrigin } from "@/lib/auth/public-site-origin";
 import { DEFAULT_AUTH_NEXT_PATH, getSafeAuthNextPath } from "@/lib/auth/next-path";
+import { profileCacheTag } from "@/lib/personalized-cache";
 import {
   validateMatchSubmission,
   type MatchSubmissionInput,
@@ -472,6 +473,7 @@ export async function completeOnboardingProfile(input: {
       throw error;
     }
 
+    updateTag(profileCacheTag(userId));
     revalidatePath("/onboarding");
     return { ok: true, data: { profileId: data.id } };
   } catch (error) {

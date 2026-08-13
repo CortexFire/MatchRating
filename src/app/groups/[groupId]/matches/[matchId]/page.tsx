@@ -1,15 +1,35 @@
-export const dynamic = "force-dynamic";
+export const unstable_instant = {
+  prefetch: "static",
+  samples: [
+    {
+      params: {
+        groupId: "00000000-0000-0000-0000-000000000000",
+        matchId: "00000000-0000-0000-0000-000000000000",
+      },
+    },
+  ],
+};
 
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { MatchResultConfirmation } from "@/components/match/match-result-confirmation";
 import { getGroupMatchDetail } from "@/lib/app-data";
+import GroupMatchLoading from "../loading";
 
-export default async function MatchPage({
-  params,
-}: {
+type MatchPageProps = {
   params: Promise<{ groupId: string; matchId: string }>;
-}) {
+};
+
+export default function MatchPage(props: MatchPageProps) {
+  return (
+    <Suspense fallback={<GroupMatchLoading />}>
+      <MatchContent {...props} />
+    </Suspense>
+  );
+}
+
+export async function MatchContent({ params }: MatchPageProps) {
   const { groupId, matchId } = await params;
   const match = await getGroupMatchDetail(groupId, matchId);
   if (!match) notFound();

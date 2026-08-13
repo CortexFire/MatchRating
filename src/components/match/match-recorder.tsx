@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Medal, Plus, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type ActionResult, type MatchCommandResult } from "@/app/actions";
@@ -122,6 +122,13 @@ export function MatchRecorder({
     gamesReadyForSubmission(games) &&
     !isSubmitting;
   const recorderEditable = canEdit && !isSubmitting;
+
+  useLayoutEffect(() => () => {
+    setPlayerSelectOpen(false);
+    setPlayerFilter("all");
+    setPlayerSearch("");
+    setMessage("");
+  }, []);
 
   useEffect(() => {
     saveActiveMatchDraftRef.current = saveActiveMatchDraft;

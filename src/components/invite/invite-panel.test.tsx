@@ -1,6 +1,7 @@
 /* @vitest-environment jsdom */
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { Activity } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { InvitePanel } from "./invite-panel";
 
@@ -56,5 +57,30 @@ describe("InvitePanel", () => {
       );
       expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy();
     });
+  });
+
+  test("clears copied feedback when a preserved route is hidden", async () => {
+    const inviteUrl = "https://matches.example.com/join/22222222-2222-4222-8222-222222222222";
+    const view = render(
+      <Activity mode="visible">
+        <InvitePanel inviteUrl={inviteUrl} />
+      </Activity>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    await screen.findByRole("button", { name: "Copied" });
+
+    view.rerender(
+      <Activity mode="hidden">
+        <InvitePanel inviteUrl={inviteUrl} />
+      </Activity>,
+    );
+    view.rerender(
+      <Activity mode="visible">
+        <InvitePanel inviteUrl={inviteUrl} />
+      </Activity>,
+    );
+
+    expect(screen.getByRole("button", { name: "Copy" })).toBeTruthy();
   });
 });

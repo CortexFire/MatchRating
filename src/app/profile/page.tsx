@@ -1,18 +1,29 @@
-export const dynamic = "force-dynamic";
+export const unstable_instant = { prefetch: "static" };
 
 import Link from "next/link";
 import { ChevronRight, Pencil, UsersRound } from "lucide-react";
+import { Suspense } from "react";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { ScreenHeader } from "@/components/app/screen-header";
 import { AvatarInitials } from "@/components/ui/avatar";
 import { signOut } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { getCurrentProfile, listCurrentUserGroups } from "@/lib/app-data";
+import { listCurrentUserGroups } from "@/lib/app-data";
+import { getPrivateCurrentProfile } from "@/lib/personalized-cache";
+import ProfileLoading from "./loading";
 
-export default async function ProfilePage() {
+export default function ProfilePage() {
+  return (
+    <Suspense fallback={<ProfileLoading />}>
+      <ProfileContent />
+    </Suspense>
+  );
+}
+
+export async function ProfileContent() {
   const [profile, groups] = await Promise.all([
-    getCurrentProfile(),
+    getPrivateCurrentProfile(),
     listCurrentUserGroups(),
   ]);
   const primaryGroup = groups[0];
