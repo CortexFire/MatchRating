@@ -62,4 +62,17 @@ describe("InviteDecisionForm", () => {
     expect(screen.queryByRole("button", { name: "No thanks" })).toBeNull();
     expect(actionMocks.joinGroupByInvite).not.toHaveBeenCalled();
   });
+
+  test("uses singular player wording for a one-player invite", () => {
+    render(
+      <InviteDecisionForm
+        token="invite-token"
+        summary={{ ...summary, memberCount: 1 }}
+        mode="invite"
+      />,
+    );
+
+    expect(screen.getByText("1 player")).toBeTruthy();
+    expect(screen.queryByText("1 players")).toBeNull();
+  });
 });

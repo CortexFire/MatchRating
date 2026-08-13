@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 
 export function InvitePanel({ inviteUrl }: { inviteUrl: string }) {
   const [copied, setCopied] = useState(false);
-  const displayInviteUrl = inviteUrl.replace(/^https?:\/\//, "").replace("/join/", "/j/");
+  const displayInviteUrl = inviteUrl.replace(/^https?:\/\//, "");
   const shareText = useMemo(() => `Join my badminton rankings group: ${inviteUrl}`, [inviteUrl]);
 
   return (
@@ -45,6 +45,9 @@ export function InvitePanel({ inviteUrl }: { inviteUrl: string }) {
           onClick={async () => {
             if (navigator.share) {
               await navigator.share({ text: shareText, url: inviteUrl });
+            } else {
+              await navigator.clipboard.writeText(inviteUrl);
+              setCopied(true);
             }
           }}
         >

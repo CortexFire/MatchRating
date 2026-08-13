@@ -202,6 +202,65 @@ describe("invite actions", () => {
     expect(result).toEqual({ ok: false, message: "duplicate active invite" });
   });
 
+  test("returns the invite created concurrently after a duplicate insert", async () => {
+    supabaseMocks.inviteLookup.maybeSingle
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({
+        data: { id: "44444444-4444-4444-8444-444444444444" },
+        error: null,
+      });
+    supabaseMocks.inviteInsertResult.single.mockResolvedValue({
+      data: null,
+      error: Object.assign(new Error("duplicate active invite"), { code: "23505" }),
+    });
+
+    const result = await (actions as typeof actions & {
+      getOrCreateInvite: (groupId: string) => Promise<actions.ActionResult<{ token: string; url: string }>>;
+    }).getOrCreateInvite("group-1");
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        token: "44444444-4444-4444-8444-444444444444",
+        url: "https://matches.example.com/join/44444444-4444-4444-8444-444444444444",
+      },
+    });
+    expect(supabaseMocks.inviteLookup.maybeSingle).toHaveBeenCalledTimes(2);
+  });
+
+  test("returns the recovery lookup error after a duplicate insert", async () => {
+    const originalInsertError = Object.assign(new Error("duplicate active invite"), { code: "23505" });
+    const recoveryLookupError = new Error("could not load concurrently created invite");
+    supabaseMocks.inviteLookup.maybeSingle
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({ data: null, error: recoveryLookupError });
+    supabaseMocks.inviteInsertResult.single.mockResolvedValue({ data: null, error: originalInsertError });
+
+    const result = await (actions as typeof actions & {
+      getOrCreateInvite: (groupId: string) => Promise<actions.ActionResult<{ token: string; url: string }>>;
+    }).getOrCreateInvite("group-1");
+
+    expect(result).toEqual({ ok: false, message: "could not load concurrently created invite" });
+    expect(supabaseMocks.invitesTable.insert).toHaveBeenCalledTimes(1);
+    expect(supabaseMocks.inviteLookup.maybeSingle).toHaveBeenCalledTimes(2);
+  });
+
+  test("retains the original duplicate insert error when recovery finds no invite", async () => {
+    const originalInsertError = Object.assign(new Error("duplicate active invite"), { code: "23505" });
+    supabaseMocks.inviteLookup.maybeSingle
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({ data: null, error: null });
+    supabaseMocks.inviteInsertResult.single.mockResolvedValue({ data: null, error: originalInsertError });
+
+    const result = await (actions as typeof actions & {
+      getOrCreateInvite: (groupId: string) => Promise<actions.ActionResult<{ token: string; url: string }>>;
+    }).getOrCreateInvite("group-1");
+
+    expect(result).toEqual({ ok: false, message: "duplicate active invite" });
+    expect(supabaseMocks.invitesTable.insert).toHaveBeenCalledTimes(1);
+    expect(supabaseMocks.inviteLookup.maybeSingle).toHaveBeenCalledTimes(2);
+  });
+
   test("loads invite summaries by invite id", async () => {
     supabaseMocks.inviteLookup.maybeSingle.mockResolvedValue({
       data: {
