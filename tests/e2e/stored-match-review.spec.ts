@@ -28,7 +28,9 @@ test("records, corrects, confirms, and reads one stored match across two users",
   const aliceRatingBefore = await aliceMemberRow.textContent();
 
   await alice.getByRole("button", { name: "Submit" }).click();
-  await expect(alice.getByText("Match saved. Ratings updating…")).toBeVisible();
+  await expect(
+    alice.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it."),
+  ).toBeVisible();
 
   await expect.poll(
     () => aliceMemberRow.textContent(),
@@ -92,7 +94,9 @@ test("a participant resumes, edits, and submits another player's active draft fr
   await expect(cory.getByLabel("Set 1 Team B score")).toHaveValue("18");
   await cory.getByLabel("Set 1 Team B score").fill("19");
   await cory.getByRole("button", { name: "Submit" }).click();
-  await expect(cory.getByText("Match saved. Ratings updating…")).toBeVisible();
+  await expect(
+    cory.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it."),
+  ).toBeVisible();
 
   await cory.goto("/home");
   await expect(cory.locator(`a[href="${resumeHref}"]`)).toHaveCount(0);
