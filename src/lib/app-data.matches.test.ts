@@ -461,6 +461,37 @@ describe("stored match reads", () => {
     expect(draft?.initialMatch.games).toEqual([{ teamAScore: 12, teamBScore: 12, winnerTeam: "A" }]);
   });
 
+  test("keeps active-draft readers read-only while filtering expired drafts", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-08-13T12:00:00.000Z");
+    vi.setSystemTime(now);
+    (rowsByTable.active_match_drafts[0] as { expires_at: string }).expires_at = "2026-08-13T11:59:59.999Z";
+
+    try {
+      const [currentUserDrafts, groupDrafts, draft] = await Promise.all([
+        listCurrentUserActiveMatchDrafts(),
+        listGroupActiveMatchDrafts(GROUP_ONE),
+        getActiveMatchDraft("30303030-3030-4030-8030-303030303030"),
+      ]);
+
+      expect(currentUserDrafts).toEqual([]);
+      expect(groupDrafts).toEqual([]);
+      expect(draft).toBeNull();
+
+      const draftQueries = queriesByTable.active_match_drafts;
+      const selectQueries = draftQueries.filter((query) => query.select.mock.calls.length > 0);
+      expect(selectQueries).toHaveLength(3);
+      for (const query of selectQueries) {
+        expect(query.gt).toHaveBeenCalledWith("expires_at", now.toISOString());
+      }
+      for (const query of draftQueries) {
+        expect(query.delete).not.toHaveBeenCalled();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("hides current-user drafts after the user leaves their group", async () => {
     rowsByTable.group_memberships = [];
 
