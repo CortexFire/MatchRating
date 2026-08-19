@@ -38,7 +38,42 @@ describe("ClaimProfileForm", () => {
         groupId: "group-1",
         guestProfileIds: ["guest-1", "guest-2"],
       });
-      expect(redirects).toEqual(["/groups/group-1"]);
+      expect(redirects).toEqual(["/home"]);
     });
+  });
+
+  test("skipping redirects home without claiming profiles", () => {
+    const redirects: string[] = [];
+    render(
+      <ClaimProfileForm
+        groupId="group-1"
+        profiles={[{ id: "guest-1", name: "Jordan Lee", rating: 1631, rank: 3 }]}
+        onRedirect={(url) => redirects.push(url)}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+
+    expect(actionMocks.claimGuestProfiles).not.toHaveBeenCalled();
+    expect(redirects).toEqual(["/home"]);
+  });
+
+  test("exposes and toggles the selected profile pressed state", () => {
+    render(
+      <ClaimProfileForm
+        groupId="group-1"
+        profiles={[{ id: "guest-1", name: "Jordan Lee", rating: 1631, rank: 3 }]}
+      />,
+    );
+
+    const profile = screen.getByRole("button", { name: "Select Jordan Lee" });
+
+    expect(profile.getAttribute("aria-pressed")).toBe("false");
+
+    fireEvent.click(profile);
+    expect(profile.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(profile);
+    expect(profile.getAttribute("aria-pressed")).toBe("false");
   });
 });

@@ -2,11 +2,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test, vi } from "vitest";
 import { GroupsContent } from "./groups/page";
 import { NewGroupContent } from "./groups/new/page";
-import { ReviewMatchesContent } from "./matches/review/page";
 import { ProfileContent } from "./profile/page";
 
 const appDataMocks = vi.hoisted(() => ({
-  listPendingReviewsForCurrentUser: vi.fn(async () => []),
   listCurrentUserGroups: vi.fn(async () => [
     {
       id: "11111111-1111-4111-8111-111111111111",
@@ -53,12 +51,6 @@ describe("top-level navigation record links", () => {
     const html = renderToStaticMarkup(await NewGroupContent());
 
     expect(html).not.toContain("Ratings, history, and rankings stay independent per group.");
-  });
-
-  test("matches review links Record to the current user's primary group", async () => {
-    const html = renderToStaticMarkup(await ReviewMatchesContent());
-
-    expect(html).toContain(recordHref);
   });
 
   test("Record falls back to groups when there is no current group", async () => {

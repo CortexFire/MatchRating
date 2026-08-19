@@ -1,6 +1,7 @@
-import Link from "next/link";
+import clsx from "clsx";
 import { Home, Plus, UsersRound } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { NavigationSyncProvider, SyncAwareLink } from "@/components/app/navigation-sync";
+import styles from "./mobile-shell.module.css";
 
 const navItems = [
   { label: "Home", href: "/home", icon: Home },
@@ -22,51 +23,47 @@ export function MobileShell({
   recordHref?: string;
 }) {
   return (
-    <main className="h-dvh overflow-hidden bg-app-bg text-ink">
-      <div
-        className={cn(
-          "mx-auto flex h-dvh w-full max-w-[430px] flex-col overflow-hidden bg-app-bg",
-          surfaceClassName,
-        )}
-      >
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="flex min-h-full flex-col gap-5 px-4 py-8 pb-6">{children}</div>
-        </div>
-        {showNav ? (
-          <nav className="grid h-[78px] shrink-0 grid-cols-3 items-center border-t border-stroke bg-surface/95 px-4 backdrop-blur">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = active === item.label;
-              const href = item.primary && recordHref ? recordHref : item.href;
+    <NavigationSyncProvider>
+      <main className={styles.viewport}>
+        <div className={clsx(styles.shell, surfaceClassName)}>
+          <div className={styles.scrollArea}>
+            <div className={styles.content}>{children}</div>
+          </div>
+          {showNav ? (
+            <nav className={styles.navigation}>
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = active === item.label;
+                const href = item.primary && recordHref ? recordHref : item.href;
 
-              return (
-                <Link
-                  key={item.label}
-                  href={href}
-                  aria-label={item.label}
-                  aria-current={isActive ? "page" : undefined}
-                  className={cn(
-                    "mx-auto inline-flex size-12 items-center justify-center rounded-lg text-muted transition hover:text-action focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action",
-                    isActive && "text-action",
-                    item.primary &&
-                      "size-14 rounded-full border-4 border-muted bg-surface text-muted hover:border-action hover:text-action",
-                    item.primary && isActive && "border-action text-action bg-green-200",
-                  )}
-                >
-                  <Icon
-                    aria-hidden="true"
-                    className={cn(
-                      "stroke-[2.7]",
-                      item.primary ? "size-8" : "size-9",
-                      isActive && "fill-green-200",
+                return (
+                  <SyncAwareLink
+                    key={item.label}
+                    href={href}
+                    aria-label={item.label}
+                    aria-current={isActive ? "page" : undefined}
+                    className={clsx(
+                      styles.navigationLink,
+                      isActive && styles.navigationLinkActive,
+                      item.primary && styles.primaryNavigationLink,
+                      item.primary && isActive && styles.primaryNavigationLinkActive,
                     )}
-                  />
-                </Link>
-              );
-            })}
-          </nav>
-        ) : null}
-      </div>
-    </main>
+                  >
+                    <Icon
+                      aria-hidden="true"
+                      className={clsx(
+                        styles.navigationIcon,
+                        item.primary ? styles.primaryNavigationIcon : styles.standardNavigationIcon,
+                        isActive && styles.navigationIconActive,
+                      )}
+                    />
+                  </SyncAwareLink>
+                );
+              })}
+            </nav>
+          ) : null}
+        </div>
+      </main>
+    </NavigationSyncProvider>
   );
 }

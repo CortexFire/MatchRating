@@ -56,7 +56,6 @@ describe("design token contract", () => {
       "src/components/app/match-row.tsx",
       "src/components/app/screen-header.tsx",
       "src/components/match/match-recorder.tsx",
-      "src/components/match/review-panel.tsx",
       "src/components/invite/invite-panel.tsx",
       "src/components/groups/create-group-form.tsx",
       "src/components/auth/login-form.tsx",

@@ -10,7 +10,8 @@ import {
   type AppRatingRebuildStatus,
 } from "@/lib/app-data";
 import { buildMatchViews, type MatchReadRows } from "@/lib/matches/read-model";
-import { type MatchFormat, type MatchGameInput } from "@/lib/matches/validation";
+import { type ActiveMatchDraftGameInput } from "@/lib/matches/drafts";
+import { type MatchFormat } from "@/lib/matches/validation";
 
 export type HomePageData = {
   profile: AppProfile;
@@ -81,7 +82,6 @@ type RawMatchBundle = {
   revisions: MatchReadRows["revisions"];
   participants: MatchReadRows["participants"];
   games: MatchReadRows["games"];
-  confirmations: MatchReadRows["confirmations"];
   ratingEvents: MatchReadRows["ratingEvents"];
   profiles: MatchReadRows["profiles"];
 };
@@ -125,7 +125,7 @@ export async function getHomePageData(): Promise<HomePageData> {
     profile: toProfile(raw.profile),
     groups,
     activeDrafts: toDraftSummaries(raw.drafts, raw.actorUserId, groups, raw.profiles),
-    latestMatches: toMatches(raw.matchBundle, raw.actorUserId).slice(0, 3),
+    latestMatches: toMatches(raw.matchBundle, raw.actorUserId, raw.memberships).slice(0, 3),
     currentRankings: toCurrentRankings(groups, raw.memberships, raw.ratings, raw.actorUserId),
   };
 }
@@ -146,7 +146,7 @@ export async function getGroupPageData(groupId: string): Promise<GroupPageData |
     group,
     activeDrafts: toDraftSummaries(raw.drafts, raw.actorUserId, [group], raw.profiles),
     ratingStatus: toRatingStatus(raw.ratingStatus),
-    recentMatches: toMatches(raw.matchBundle, raw.actorUserId).slice(0, 5),
+    recentMatches: toMatches(raw.matchBundle, raw.actorUserId, raw.memberships).slice(0, 5),
     players: toPlayers(groupId, raw.memberships, raw.ratings),
   };
 }
@@ -260,16 +260,32 @@ function toDraftSummaries(
 ): AppActiveMatchDraft[] {
   const groupNames = new Map(groups.map((group) => [group.id, group.name]));
   const profileNames = new Map(profiles.map((profile) => [profile.id, profile.display_name]));
-  return drafts.map((draft) => ({
-    id: draft.id,
-    groupId: draft.group_id,
-    groupName: groupNames.get(draft.group_id) ?? "Group",
-    format: draft.format,
-    teamA: draft.team_a_user_ids.map((id) => profileNames.get(id) ?? "Unknown player"),
-    teamB: draft.team_b_user_ids.map((id) => profileNames.get(id) ?? "Unknown player"),
-    scores: parseDraftGames(draft.games).map((game) => `${game.teamAScore}-${game.teamBScore}`),
-    role: draft.created_by_user_id === actorUserId ? "Creator" : "Participant",
-  }));
+  return drafts.map((draft) => {
+    const scores = parseDraftGames(draft.games).flatMap((game) => {
+      if (game.teamAScore === null && game.teamBScore === null) return [];
+      return [`${game.teamAScore ?? "?"}-${game.teamBScore ?? "?"}`];
+    });
+    return {
+      id: draft.id,
+      groupId: draft.group_id,
+      groupName: groupNames.get(draft.group_id) ?? "Group",
+      format: draft.format,
+      teamA: toDraftTeamNames(draft.team_a_user_ids, draft.format, profileNames),
+      teamB: toDraftTeamNames(draft.team_b_user_ids, draft.format, profileNames),
+      scores: scores.length ? scores : ["Score pending"],
+      role: draft.created_by_user_id === actorUserId ? "Creator" : "Participant",
+    };
+  });
+}
+
+function toDraftTeamNames(
+  playerIds: string[],
+  format: MatchFormat,
+  profileNames: Map<string, string>,
+) {
+  const expectedSize = format === "singles" ? 1 : 2;
+  const names = playerIds.map((id) => profileNames.get(id) ?? "Unknown player");
+  return [...names, ...Array.from({ length: expectedSize - names.length }, () => "Open slot")];
 }
 
 function toDraftDetail(
@@ -291,15 +307,21 @@ function toDraftDetail(
   };
 }
 
-function toMatches(bundle: RawMatchBundle, actorUserId: string): AppMatchSummary[] {
+function toMatches(
+  bundle: RawMatchBundle,
+  actorUserId: string,
+  memberships: RawMembership[],
+): AppMatchSummary[] {
   return buildMatchViews({
     currentUserId: actorUserId,
+    currentUserAdminGroupIds: memberships
+      .filter((membership) => membership.user_id === actorUserId && membership.role !== "member")
+      .map((membership) => membership.group_id),
     groups: bundle.groups ?? [],
     matches: bundle.matches ?? [],
     revisions: bundle.revisions ?? [],
     participants: bundle.participants ?? [],
     games: bundle.games ?? [],
-    confirmations: bundle.confirmations ?? [],
     ratingEvents: bundle.ratingEvents ?? [],
     profiles: bundle.profiles ?? [],
   });
@@ -317,20 +339,27 @@ function toProfile(profile: RawProfile): AppProfile {
   return { id: profile.id, name: profile.display_name, initials: initialsFor(profile.display_name) };
 }
 
-function parseDraftGames(value: unknown): MatchGameInput[] {
-  if (!Array.isArray(value)) return [{ teamAScore: 0, teamBScore: 0, winnerTeam: "A" }];
-  return value.flatMap((stored): MatchGameInput[] => {
+function parseDraftGames(value: unknown): ActiveMatchDraftGameInput[] {
+  if (!Array.isArray(value)) return [{ teamAScore: null, teamBScore: null, winnerTeam: "A" }];
+  return value.flatMap((stored): ActiveMatchDraftGameInput[] => {
     if (!stored || typeof stored !== "object") return [];
     const game = stored as { teamAScore?: unknown; teamBScore?: unknown; winnerTeam?: unknown };
-    const teamAScore = Number(game.teamAScore ?? 0);
-    const teamBScore = Number(game.teamBScore ?? 0);
-    if (!Number.isFinite(teamAScore) || !Number.isFinite(teamBScore)) return [];
+    const teamAScore = game.teamAScore === null || game.teamAScore === undefined
+      ? null
+      : Number(game.teamAScore);
+    const teamBScore = game.teamBScore === null || game.teamBScore === undefined
+      ? null
+      : Number(game.teamBScore);
+    if (
+      (teamAScore !== null && !Number.isFinite(teamAScore)) ||
+      (teamBScore !== null && !Number.isFinite(teamBScore))
+    ) return [];
     return [{
       teamAScore,
       teamBScore,
       winnerTeam: game.winnerTeam === "A" || game.winnerTeam === "B"
         ? game.winnerTeam
-        : teamAScore >= teamBScore ? "A" : "B",
+        : teamAScore !== null && teamBScore !== null && teamBScore > teamAScore ? "B" : "A",
     }];
   });
 }

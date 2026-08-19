@@ -39,8 +39,7 @@ export async function MatchContent({ params }: MatchPageProps) {
       <MatchResultConfirmation
         groupId={groupId}
         groupName={match.groupName}
-        canConfirm={match.canConfirm}
-        canDispute={match.canDispute}
+        canCorrect={match.canCorrect}
         canRevise={match.canRevise}
         match={{
           id: match.id,
@@ -49,7 +48,7 @@ export async function MatchContent({ params }: MatchPageProps) {
           winnerTeam: match.winnerTeam,
           clubName: match.groupName,
           submittedAt: formatSubmittedAt(match.submittedAt),
-          disputeUntil: formatDisputeUntil(match.disputeUntil),
+          correctionUntil: formatCorrectionUntil(match.correctionUntil),
           teamA: { label: "Team A", players: match.teamA },
           teamB: { label: "Team B", players: match.teamB },
           sets: match.games.map((game) => ({
@@ -64,7 +63,7 @@ export async function MatchContent({ params }: MatchPageProps) {
   );
 }
 
-function formatDisputeUntil(value: string) {
+function formatCorrectionUntil(value: string) {
   return new Intl.DateTimeFormat("en-US", {
     dateStyle: "medium",
     timeZone: "America/Los_Angeles",

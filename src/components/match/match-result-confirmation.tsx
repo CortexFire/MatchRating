@@ -1,9 +1,9 @@
 import { ArrowLeft, ArrowRight, ChevronDown, Medal } from "lucide-react";
+import clsx from "clsx";
 import Link from "next/link";
-import { cn } from "../../lib/utils";
-import { MatchReviewActions } from "./match-review-actions";
 import { Badge } from "@/components/ui/badge";
 import { DEFAULT_RATING } from "@/lib/ratings/glicko2";
+import styles from "./match-result-confirmation.module.css";
 
 type TeamKey = "A" | "B";
 
@@ -36,7 +36,7 @@ export type MatchResultConfirmationData = {
   winnerTeam: TeamKey;
   clubName: string;
   submittedAt: string;
-  disputeUntil: string;
+  correctionUntil: string;
   teamA: Team;
   teamB: Team;
   sets: SetScore[];
@@ -45,70 +45,60 @@ export type MatchResultConfirmationData = {
 export function MatchResultConfirmation({
   groupId,
   groupName,
-  canConfirm,
-  canDispute,
+  canCorrect,
   canRevise,
   match,
 }: {
   groupId: string;
   groupName: string;
-  canConfirm: boolean;
-  canDispute: boolean;
+  canCorrect: boolean;
   canRevise: boolean;
   match: MatchResultConfirmationData;
 }) {
   return (
-    <section className="flex min-h-full flex-col gap-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="max-w-[230px] text-[26px] font-bold leading-[30px] text-ink">Match Result</h1>
+    <section className={styles.screen}>
+      <div className={styles.header}>
+        <div className={styles.headerTitle}>
+          <h1 className={styles.title}>Match Result</h1>
         </div>
         <button
           type="button"
-          className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full bg-selection px-3 text-xs font-bold text-ink transition hover:bg-victory focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+          className={styles.groupButton}
           aria-label={`Current group ${groupName}`}
         >
           {groupName}
-          <ChevronDown aria-hidden="true" className="size-4" />
+          <ChevronDown aria-hidden="true" className={styles.groupIcon} />
         </button>
       </div>
 
-      <article className="rounded-lg border border-stroke bg-surface px-4 pb-6 pt-4 shadow-sm">
-        <div className="flex items-start justify-between gap-3 text-sm">
-          <h2 className="font-bold leading-5 text-muted">{match.clubName}</h2>
-          <p className="shrink-0 text-right text-xs leading-5 text-muted">{match.submittedAt}</p>
+      <article className={styles.card}>
+        <div className={styles.matchMeta}>
+          <h2 className={styles.clubName}>{match.clubName}</h2>
+          <p className={styles.submittedAt}>{match.submittedAt}</p>
         </div>
 
-        <div className="mt-8 grid grid-cols-2 gap-7 px-1">
+        <div className={styles.teams}>
           <TeamSummary team={match.teamA} winner={match.winnerTeam === "A"} />
           <TeamSummary team={match.teamB} winner={match.winnerTeam === "B"} />
         </div>
 
-        <div className="mt-9 flex flex-col gap-4">
+        <div className={styles.sets}>
           {match.sets.map((set) => (
             <SetScoreRow key={set.label} set={set} />
           ))}
         </div>
 
-        <div className="mt-12">
-          <div className="flex items-center justify-between gap-3">
-            <Badge tone={match.status === "confirmed" ? "victory" : "neutral"}>{displayStatus(match.status)}</Badge>
-            {canDispute ? <p className="text-sm font-semibold text-muted">Dispute until {match.disputeUntil}</p> : null}
+        <div className={styles.reviewSection}>
+          <div className={styles.reviewMeta}>
+            {match.status !== "pending_confirmation" ? <Badge tone={match.status === "confirmed" ? "victory" : "neutral"}>{displayStatus(match.status)}</Badge> : null}
+            {canCorrect || canRevise ? <p className={styles.deadline}>Correct until {match.correctionUntil}</p> : null}
           </div>
-          {canConfirm || canDispute ? (
-            <MatchReviewActions
-              groupId={groupId}
-              matchId={match.id}
-              revisionId={match.revisionId}
-              canConfirm={canConfirm}
-              canDispute={canDispute}
-            />
-          ) : match.status === "disputed" && canRevise ? (
+          {canCorrect || (match.status === "disputed" && canRevise) ? (
             <Link
               href={`/groups/${groupId}/matches/${match.id}/revise`}
-              className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg border border-stroke bg-surface px-4 text-sm font-semibold text-ink"
+              className={styles.reviseLink}
             >
-              Revise result
+              Correct result
             </Link>
           ) : null}
         </div>
@@ -120,34 +110,28 @@ export function MatchResultConfirmation({
 function displayStatus(status: MatchResultConfirmationData["status"]) {
   if (status === "confirmed") return "Accepted";
   if (status === "disputed") return "Disputed";
-  return "Awaiting review";
+  return null;
 }
 
 function TeamSummary({ team, winner }: { team: Team; winner: boolean }) {
   return (
-    <div className="flex min-w-0 flex-col items-center gap-3">
+    <div className={styles.teamSummary}>
       <div
-        className={cn(
-          "flex min-h-7 items-center gap-2 text-lg font-bold leading-7",
-          winner ? "text-ink" : "text-muted",
-        )}
+        className={clsx(styles.teamLabel, winner ? styles.winningText : styles.mutedText)}
       >
-        {winner ? <Medal aria-hidden="true" className="size-6 text-selection-stroke" /> : null}
+        {winner ? <Medal aria-hidden="true" className={styles.medal} /> : null}
         <h3>{team.label}</h3>
       </div>
       <div
-        className={cn(
-          "flex min-h-[112px] w-full flex-col justify-center gap-4 rounded-lg border px-3 py-4",
-          winner ? "border-victory-stroke bg-victory" : "border-stroke bg-surface",
-        )}
+        className={clsx(styles.teamCard, winner ? styles.winningSurface : styles.neutralSurface)}
       >
         {team.players.map((player, index) => (
-          <div key={`${team.label}-${player.name}-${index}`} className="flex items-center gap-2">
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-app-bg text-sm font-bold text-ink">
+          <div key={`${team.label}-${player.name}-${index}`} className={styles.player}>
+            <span className={styles.avatar}>
               {player.initials}
             </span>
-            <div className="min-w-0">
-              <p className="truncate text-lg font-bold leading-6 text-ink">{player.name}</p>
+            <div className={styles.playerDetails}>
+              <p className={styles.playerName}>{player.name}</p>
               <RatingChange ratingChange={player.ratingChange} />
             </div>
           </div>
@@ -161,7 +145,7 @@ function RatingChange({ ratingChange }: { ratingChange?: Player["ratingChange"] 
   const previous = ratingChange?.previous ?? DEFAULT_RATING;
 
   return (
-    <p className="mt-1 whitespace-nowrap text-[11px] leading-4 tabular-nums text-muted">
+    <p className={styles.ratingChange}>
       {previous.rating} → {ratingChange ? ratingChange.next.rating : "…"}
     </p>
   );
@@ -170,10 +154,10 @@ function RatingChange({ ratingChange }: { ratingChange?: Player["ratingChange"] 
 function SetScoreRow({ set }: { set: SetScore }) {
   return (
     <div>
-      <div className="border-b border-stroke pb-1">
-        <h3 className="text-lg font-bold leading-7 text-muted">{set.label}</h3>
+      <div className={styles.setHeader}>
+        <h3 className={styles.setTitle}>{set.label}</h3>
       </div>
-      <div className="grid grid-cols-[1fr_50px_1fr] items-center gap-3 px-3 pt-3">
+      <div className={styles.scoreRow}>
         <ScoreTile score={set.teamAScore} result={set.winner === "A" ? "Win" : "Loss"} />
         <SetArrow winner={set.winner} />
         <ScoreTile score={set.teamBScore} result={set.winner === "B" ? "Win" : "Loss"} />
@@ -186,9 +170,9 @@ function SetArrow({ winner }: { winner: TeamKey }) {
   const Icon = winner === "A" ? ArrowLeft : ArrowRight;
 
   return (
-    <div className="flex justify-center text-muted">
-      <Icon aria-hidden="true" className="h-5 w-14 max-w-full stroke-[1.5]" />
-      <span className="sr-only">Winner: Team {winner}</span>
+    <div className={styles.setArrow}>
+      <Icon aria-hidden="true" className={styles.arrowIcon} />
+      <span className={styles.visuallyHidden}>Winner: Team {winner}</span>
     </div>
   );
 }
@@ -198,13 +182,10 @@ function ScoreTile({ score, result }: { score: number; result: "Win" | "Loss" })
 
   return (
     <div
-      className={cn(
-        "flex min-h-20 min-w-0 flex-col items-center justify-center rounded-lg border px-2 py-2",
-        won ? "border-victory-stroke bg-victory" : "border-stroke bg-surface",
-      )}
+      className={clsx(styles.scoreTile, won ? styles.winningSurface : styles.neutralSurface)}
     >
-      <p className="text-[40px] font-bold leading-10 tabular-nums text-ink">{score}</p>
-      <p className="mt-1 text-sm leading-5 text-muted">{result}</p>
+      <p className={styles.scoreValue}>{score}</p>
+      <p className={styles.scoreResult}>{result}</p>
     </div>
   );
 }

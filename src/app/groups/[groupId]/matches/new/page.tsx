@@ -9,7 +9,7 @@ export const unstable_instant = {
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { createGuestPlayers, saveActiveMatchDraft, submitMatch } from "@/app/actions";
+import { createGuestPlayers, submitMatch, syncActiveMatchDraft } from "@/app/actions";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { MatchRecorder, type InitialMatchRecording } from "@/components/match/match-recorder";
 import { RatingRebuildStatus } from "@/components/match/rating-rebuild-status";
@@ -70,7 +70,7 @@ export async function NewMatchContent({ params, searchParams }: NewMatchPageProp
           draftId={draft?.id}
           canEdit={draft?.canEdit ?? true}
           createGuestPlayers={createGuestPlayers}
-          saveActiveMatchDraft={saveActiveMatchDraft}
+          saveActiveMatchDraft={syncActiveMatchDraft}
           submitMatchAction={submitMatch}
         />
       )}

@@ -1,6 +1,7 @@
 import { createSupabaseServerClient, createSupabaseServiceClient, requireUserId } from "@/lib/supabase/server";
 import { cache } from "react";
-import { type MatchFormat, type MatchGameInput } from "@/lib/matches/validation";
+import { type MatchFormat } from "@/lib/matches/validation";
+import { type ActiveMatchDraftGameInput } from "@/lib/matches/drafts";
 import {
   buildMatchViews,
   type MatchReadRows,
@@ -45,7 +46,7 @@ export type AppActiveMatchDraftDetail = AppActiveMatchDraft & {
     format: MatchFormat;
     teamAUserIds: string[];
     teamBUserIds: string[];
-    games: MatchGameInput[];
+    games: ActiveMatchDraftGameInput[];
   };
 };
 
@@ -104,7 +105,6 @@ const canCurrentUserReadGroupCached = cache(async (groupId: string) => {
 });
 
 export type AppMatchSummary = MatchView;
-export type AppPendingReview = MatchView;
 export type AppMatchDetail = MatchView;
 
 export type AppRatingRebuildStatusValue = "queued" | "running" | "completed" | "failed" | null;
@@ -264,32 +264,6 @@ async function queryMatchHistoryRows({
   return (data ?? []) as MatchReadRows["matches"];
 }
 
-export async function listPendingReviewsForCurrentUser(): Promise<AppPendingReview[]> {
-  const userId = await getCurrentUserId();
-  const service = createSupabaseServiceClient();
-  const { data: memberships, error: membershipError } = await service
-    .from("group_memberships")
-    .select("group_id")
-    .eq("user_id", userId)
-    .eq("status", "active")
-    .is("left_at", null);
-  if (membershipError) throw membershipError;
-  const groupIds = [...new Set((memberships ?? []).map((row: { group_id: string }) => row.group_id))];
-  if (!groupIds.length) return [];
-
-  const { data, error } = await service
-    .from("matches")
-    .select("id, group_id, active_revision_id, status, submitted_at, review_started_at")
-    .in("group_id", groupIds)
-    .eq("status", "pending_confirmation")
-    .not("active_revision_id", "is", null)
-    .order("review_started_at", { ascending: true })
-    .order("id", { ascending: true });
-  if (error) throw error;
-  const matches = await loadMatchViews((data ?? []) as MatchReadRows["matches"], userId, service);
-  return matches.filter((match) => match.canConfirm);
-}
-
 export async function getGroupMatchDetail(groupId: string, matchId: string): Promise<AppMatchDetail | null> {
   const userId = await getCurrentUserId();
   const service = createSupabaseServiceClient();
@@ -341,15 +315,21 @@ async function loadMatchViews(
   if (!matches.length) return [];
   const groupIds = [...new Set(matches.map((match) => match.group_id))];
   const revisionIds = [...new Set(matches.map((match) => match.active_revision_id))];
-  const [groupsResult, revisionsResult, participantsResult, gamesResult, confirmationsResult, ratingEventsResult] = await Promise.all([
+  const [groupsResult, membershipsResult, revisionsResult, participantsResult, gamesResult, ratingEventsResult] = await Promise.all([
     service.from("groups").select("id, name").in("id", groupIds),
+    service
+      .from("group_memberships")
+      .select("group_id, role")
+      .in("group_id", groupIds)
+      .eq("user_id", currentUserId)
+      .eq("status", "active")
+      .is("left_at", null),
     service.from("match_revisions").select("id, match_id, submitted_by_user_id, format").in("id", revisionIds),
     service.from("match_participants").select("revision_id, user_id, team, slot").in("revision_id", revisionIds),
     service.from("match_games").select("revision_id, game_number, team_a_score, team_b_score, winner_team").in("revision_id", revisionIds),
-    service.from("match_confirmations").select("revision_id, user_id, action, created_at").in("revision_id", revisionIds),
     service.from("rating_events").select("revision_id, user_id, sequence, before_rating, before_rd, after_rating, after_rd").in("revision_id", revisionIds),
   ]);
-  const firstError = [groupsResult, revisionsResult, participantsResult, gamesResult, confirmationsResult, ratingEventsResult]
+  const firstError = [groupsResult, membershipsResult, revisionsResult, participantsResult, gamesResult, ratingEventsResult]
     .find((result) => result.error)?.error;
   if (firstError) throw firstError;
 
@@ -360,12 +340,14 @@ async function loadMatchViews(
 
   return buildMatchViews({
     currentUserId,
+    currentUserAdminGroupIds: ((membershipsResult.data ?? []) as Array<{ group_id: string; role: MembershipRow["role"] }>)
+      .filter((membership) => membership.role !== "member")
+      .map((membership) => membership.group_id),
     matches,
     groups: (groupsResult.data ?? []) as MatchReadRows["groups"],
     revisions: (revisionsResult.data ?? []) as MatchReadRows["revisions"],
     participants,
     games: (gamesResult.data ?? []) as MatchReadRows["games"],
-    confirmations: (confirmationsResult.data ?? []) as MatchReadRows["confirmations"],
     ratingEvents: (ratingEventsResult.data ?? []) as MatchReadRows["ratingEvents"],
     profiles: (profilesResult.data ?? []) as MatchReadRows["profiles"],
   });

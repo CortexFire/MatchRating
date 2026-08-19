@@ -13,26 +13,25 @@ function match(id: string, status: AppMatchSummary["status"] = "confirmed"): App
     submittedByUserId: "alice",
     status,
     submittedAt: "2026-08-07T20:00:00.000Z",
-    reviewStartedAt: "2026-08-07T20:00:00.000Z",
-    disputeUntil: "2026-09-06T20:00:00.000Z",
+    correctionStartedAt: "2026-08-07T20:00:00.000Z",
+    correctionUntil: "2026-09-06T20:00:00.000Z",
     format: "singles",
     teamA: [{ id: "alice", name: "Alice Tan", initials: "AT" }],
     teamB: [{ id: "bea", name: "Bea Rivera", initials: "BR" }],
     games: [{ gameNumber: 1, teamAScore: 21, teamBScore: 18, winnerTeam: "A" }],
     winnerTeam: "A",
     ratingSummary: "2 rating changes",
-    canConfirm: false,
-    canDispute: true,
+    canCorrect: true,
     canRevise: false,
   };
 }
 
 describe("MatchRow", () => {
-  test("formats a complete AppMatchSummary without a presentation adapter", () => {
+  test("formats a pending AppMatchSummary without an awaiting-review indicator", () => {
     const html = renderToStaticMarkup(<MatchRow match={match("match-1", "pending_confirmation")} />);
 
     expect(html).toContain('href="/groups/group-1/matches/match-1"');
-    expect(html).toContain("Awaiting review");
+    expect(html).not.toContain("Awaiting review");
     expect(html).toContain("Alice Tan vs Bea Rivera");
     expect(html).toContain("21-18");
     expect(html).toContain("Aug 7, 2026, 1:00 PM");
@@ -41,7 +40,7 @@ describe("MatchRow", () => {
 });
 
 describe("RecentMatchList", () => {
-  test("omits rating changes and accepted status while retaining review statuses", () => {
+  test("omits rating changes, accepted status, and pending indicators while retaining disputes", () => {
     const html = renderToStaticMarkup(
       <RecentMatchList
         matches={[match("confirmed"), match("pending", "pending_confirmation"), match("disputed", "disputed")]}
@@ -51,7 +50,7 @@ describe("RecentMatchList", () => {
 
     expect(html).not.toContain("2 rating changes");
     expect(html).not.toContain("Accepted");
-    expect(html).toContain("Awaiting review");
+    expect(html).not.toContain("Awaiting review");
     expect(html).toContain("Disputed");
   });
 

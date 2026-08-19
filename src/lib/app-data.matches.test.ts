@@ -8,7 +8,6 @@ import {
   listMatchHistoryPage,
   listGroupMatches,
   listGroupPlayers,
-  listPendingReviewsForCurrentUser,
 } from "./app-data";
 
 const reactMocks = vi.hoisted(() => ({
@@ -484,17 +483,6 @@ describe("stored match reads", () => {
       { id: ratedAtDefaultId, rating: 1500, rank: 2 },
       { id: unplayedId, rating: 1500, rank: 3 },
       { id: OPPONENT, rating: 1400, rank: 4 },
-    ]);
-  });
-
-  test("lists only confirmable matches with the oldest review first", async () => {
-    rowsByTable.match_confirmations = [];
-    const matches = await listPendingReviewsForCurrentUser();
-
-    expect(matches.map((match) => match.id)).toEqual([MATCH_OLD, MATCH_NEW]);
-    expect(queriesByTable.matches[0].order.mock.calls).toEqual([
-      ["review_started_at", { ascending: true }],
-      ["id", { ascending: true }],
     ]);
   });
 

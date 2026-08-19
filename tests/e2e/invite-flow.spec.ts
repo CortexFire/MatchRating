@@ -110,9 +110,9 @@ test("a demo player accepts a new group invite and sees the already-member state
     await expectProjectContext(bea, testInfo);
     await signInAsDemoPlayer(bea, "bea@demo.matchrating.app");
     await bea.goto(inviteUrl.toString());
-    await bea.getByRole("button", { name: "Accept" }).click();
-    await expect(bea).toHaveURL(`/groups/${groupId}`);
     await expect(bea.getByRole("heading", { name: groupName })).toBeVisible();
+    await bea.getByRole("button", { name: "Accept" }).click();
+    await expect(bea).toHaveURL("/home");
 
     await bea.goto(inviteUrl.toString());
     await expect(bea.getByRole("heading", { name: "You're already in" })).toBeVisible();

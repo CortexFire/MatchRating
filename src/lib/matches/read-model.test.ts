@@ -4,11 +4,12 @@ import { buildMatchViews } from "./read-model";
 describe("buildMatchViews", () => {
   afterEach(() => vi.useRealTimers());
 
-  test("hydrates ordered teams and games and identifies an eligible opposing reviewer", () => {
+  test("hydrates ordered teams and games and gives a participant correction access", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-08T20:00:00.000Z"));
     const [match] = buildMatchViews({
       currentUserId: "opponent",
+      currentUserAdminGroupIds: [],
       groups: [{ id: "group-1", name: "Wednesday Club" }],
       matches: [{
         id: "match-1",
@@ -35,7 +36,6 @@ describe("buildMatchViews", () => {
         { revision_id: "revision-1", game_number: 1, team_a_score: 21, team_b_score: 17, winner_team: "A" },
         { revision_id: "revision-1", game_number: 3, team_a_score: 21, team_b_score: 16, winner_team: "A" },
       ],
-      confirmations: [],
       ratingEvents: [{ revision_id: "revision-1", user_id: "submitter", sequence: 1, before_rating: 1500, before_rd: 350, after_rating: 1512, after_rd: 280 }],
       profiles: [
         { id: "submitter", display_name: "Alice Tan" },
@@ -50,10 +50,9 @@ describe("buildMatchViews", () => {
       groupName: "Wednesday Club",
       revisionId: "revision-1",
       winnerTeam: "A",
-      reviewStartedAt: "2026-08-07T20:00:00.000Z",
-      disputeUntil: "2026-09-06T20:00:00.000Z",
-      canConfirm: true,
-      canDispute: true,
+      correctionStartedAt: "2026-08-07T20:00:00.000Z",
+      correctionUntil: "2026-09-06T20:00:00.000Z",
+      canCorrect: true,
       canRevise: false,
       ratingSummary: "1 rating change",
       teamA: [{ id: "submitter", name: "Alice Tan" }, { id: "partner", name: "Cory Shah" }],
@@ -69,6 +68,7 @@ describe("buildMatchViews", () => {
   test("aggregates unordered numeric-string rating events into each player's match change", () => {
     const [match] = buildMatchViews({
       currentUserId: "opponent",
+      currentUserAdminGroupIds: [],
       groups: [{ id: "group-1", name: "Wednesday Club" }],
       matches: [{ id: "match-1", group_id: "group-1", active_revision_id: "revision-1", status: "confirmed", submitted_at: "2026-08-07T20:00:00.000Z", review_started_at: "2026-08-07T20:00:00.000Z" }],
       revisions: [{ id: "revision-1", match_id: "match-1", submitted_by_user_id: "submitter", format: "singles" }],
@@ -78,7 +78,6 @@ describe("buildMatchViews", () => {
         { revision_id: "revision-1", user_id: "without-event", team: "B", slot: 2 },
       ],
       games: [{ revision_id: "revision-1", game_number: 1, team_a_score: 21, team_b_score: 18, winner_team: "A" }],
-      confirmations: [],
       ratingEvents: [
         { revision_id: "revision-1", user_id: "submitter", sequence: "2", before_rating: "1511.4", before_rd: "200.4", after_rating: "1524.6", after_rd: "140.6" },
         { revision_id: "revision-1", user_id: "submitter", sequence: "1", before_rating: "1499.5", before_rd: "349.6", after_rating: "1511.4", after_rd: "200.4" },
@@ -93,7 +92,7 @@ describe("buildMatchViews", () => {
     expect(match.teamB[1].ratingChange).toBeUndefined();
   });
 
-  test("derives confirmation and rolling dispute permissions independently", () => {
+  test("allows participants and group admins to correct but rejects neutral members", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-08T20:00:00.000Z"));
     const shared = {
@@ -109,16 +108,20 @@ describe("buildMatchViews", () => {
       profiles: [{ id: "submitter", display_name: "Alice" }, { id: "opponent", display_name: "Bea" }],
     };
 
-    expect(buildMatchViews({ ...shared, currentUserId: "submitter", confirmations: [] })[0]).toMatchObject({
-      canConfirm: false,
-      canDispute: true,
+    expect(buildMatchViews({ ...shared, currentUserId: "submitter", currentUserAdminGroupIds: [] })[0]).toMatchObject({
+      canCorrect: true,
       canRevise: false,
     });
     expect(buildMatchViews({
       ...shared,
-      currentUserId: "opponent",
-      confirmations: [{ revision_id: "revision-1", user_id: "opponent", action: "confirmed", created_at: "2026-08-07T20:05:00.000Z" }],
-    })[0]).toMatchObject({ canConfirm: false, canDispute: true });
+      currentUserId: "group-admin",
+      currentUserAdminGroupIds: ["group-1"],
+    })[0]).toMatchObject({ canCorrect: true, canRevise: false });
+    expect(buildMatchViews({
+      ...shared,
+      currentUserId: "neutral-member",
+      currentUserAdminGroupIds: [],
+    })[0]).toMatchObject({ canCorrect: false, canRevise: false });
   });
 
   test("expires disputes at 30 days and reserves legacy revision for disputed matches", () => {
@@ -126,20 +129,26 @@ describe("buildMatchViews", () => {
     vi.setSystemTime(new Date("2026-09-06T20:00:00.000Z"));
     const shared = {
       currentUserId: "participant",
+      currentUserAdminGroupIds: [],
       groups: [{ id: "group-1", name: "Club" }],
       matches: [{ id: "match-1", group_id: "group-1", active_revision_id: "revision-1", status: "confirmed" as const, submitted_at: "2026-08-07T20:00:00.000Z", review_started_at: "2026-08-07T20:00:00.000Z" }],
       revisions: [{ id: "revision-1", match_id: "match-1", submitted_by_user_id: "participant", format: "singles" as const }],
       participants: [{ revision_id: "revision-1", user_id: "participant", team: "A" as const, slot: 1 }],
       games: [{ revision_id: "revision-1", game_number: 1, team_a_score: 21, team_b_score: 18, winner_team: "A" as const }],
-      confirmations: [],
       ratingEvents: [],
       profiles: [{ id: "participant", display_name: "Alice" }],
     };
 
-    expect(buildMatchViews(shared)[0]).toMatchObject({ canDispute: false, canRevise: false });
+    expect(buildMatchViews(shared)[0]).toMatchObject({ canCorrect: false, canRevise: false });
     expect(buildMatchViews({
       ...shared,
       matches: [{ ...shared.matches[0], status: "disputed" as const, review_started_at: "2026-08-08T20:00:00.000Z" }],
-    })[0]).toMatchObject({ canConfirm: false, canDispute: false, canRevise: true });
+    })[0]).toMatchObject({ canCorrect: false, canRevise: true });
+    expect(buildMatchViews({
+      ...shared,
+      currentUserId: "group-owner",
+      currentUserAdminGroupIds: ["group-1"],
+      matches: [{ ...shared.matches[0], status: "disputed" as const, review_started_at: "2026-08-08T20:00:00.000Z" }],
+    })[0]).toMatchObject({ canCorrect: false, canRevise: true });
   });
 });

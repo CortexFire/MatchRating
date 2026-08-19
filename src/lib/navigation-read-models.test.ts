@@ -152,6 +152,73 @@ describe("navigation read models", () => {
     expect(mocks.rpc.mock.calls).toEqual([["get_group_page_data", { p_group_id: groupId, p_match_limit: 5 }]]);
   });
 
+  test("summarizes partial draft teams and scores without inventing zeroes", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: {
+        actorUserId: actorId,
+        profile: { id: actorId, display_name: "Alice Tan" },
+        groups: [{ id: groupId, name: "Wednesday Club", description: "Weekly ladder" }],
+        memberships,
+        ratings,
+        drafts: [{
+          ...draft,
+          format: "doubles",
+          team_a_user_ids: [actorId],
+          team_b_user_ids: [],
+          games: [
+            { teamAScore: 21, teamBScore: null, winnerTeam: "A" },
+            { teamAScore: null, teamBScore: null, winnerTeam: "B" },
+          ],
+        }],
+        profiles: [{ id: actorId, display_name: "Alice Tan" }],
+        matchBundle,
+      },
+      error: null,
+    });
+
+    const result = await getHomePageData();
+
+    expect(result.activeDrafts[0]).toMatchObject({
+      teamA: ["Alice Tan", "Open slot"],
+      teamB: ["Open slot", "Open slot"],
+      scores: ["21-?"],
+    });
+  });
+
+  test("hydrates nullable scores for an incomplete recorder draft", async () => {
+    const partialDraft = {
+      ...draft,
+      team_b_user_ids: [],
+      games: [{ teamAScore: null, teamBScore: 18, winnerTeam: "B" }],
+    };
+    mocks.rpc.mockResolvedValue({
+      data: {
+        actorUserId: actorId,
+        group: { id: groupId, name: "Wednesday Club", description: "Weekly ladder" },
+        groups: [{ id: groupId, name: "Wednesday Club", description: "Weekly ladder" }],
+        memberships,
+        ratings,
+        draft: partialDraft,
+        profiles: [
+          { id: actorId, display_name: "Alice Tan" },
+          { id: opponentId, display_name: "Bea Rivera" },
+        ],
+        ratingStatus: { id: null, status: null, canRetry: false },
+      },
+      error: null,
+    });
+
+    const result = await getMatchRecorderPageData(groupId, draftId);
+
+    expect(result?.draft?.initialMatch).toEqual({
+      format: "singles",
+      teamAUserIds: [actorId],
+      teamBUserIds: [],
+      games: [{ teamAScore: null, teamBScore: 18, winnerTeam: "B" }],
+    });
+    expect(result?.draft?.scores).toEqual(["?-18"]);
+  });
+
   test("returns null for malformed or inaccessible groups without leaking a second query", async () => {
     await expect(getGroupPageData("not-a-uuid")).resolves.toBeNull();
     expect(mocks.createSupabaseServerClient).not.toHaveBeenCalled();

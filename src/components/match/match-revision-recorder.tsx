@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { disputeAndReviseMatch, reviseMatch } from "@/app/actions";
+import { correctMatch, reviseMatch } from "@/app/actions";
 import { MatchRecorder, type InitialMatchRecording } from "@/components/match/match-recorder";
 import { type AppPlayer } from "@/lib/app-data";
 import { type MatchSubmissionInput } from "@/lib/matches/validation";
@@ -19,7 +19,7 @@ export function MatchRevisionRecorder({
   groupName: string;
   matchId: string;
   expectedRevisionId: string;
-  mode: "dispute" | "revise";
+  mode: "correct" | "revise";
   players: AppPlayer[];
   initialMatch: InitialMatchRecording;
 }) {
@@ -36,8 +36,8 @@ export function MatchRevisionRecorder({
       teamBUserIds: input.teamBUserIds,
       games: input.games,
     };
-    const result = mode === "dispute"
-      ? await disputeAndReviseMatch(payload)
+    const result = mode === "correct"
+      ? await correctMatch(payload)
       : await reviseMatch(payload);
     if (result.ok) {
       router.push(`/groups/${groupId}/matches/${matchId}`);
