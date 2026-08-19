@@ -66,8 +66,10 @@ select ok(
 );
 select ok(
   not has_function_privilege('authenticated', 'public.apply_rating_rebuild(uuid,bigint,jsonb,jsonb)', 'EXECUTE')
-    and has_function_privilege('service_role', 'public.apply_rating_rebuild(uuid,bigint,jsonb,jsonb)', 'EXECUTE'),
-  'rating worker RPCs are restricted to the service role'
+    and not has_function_privilege('service_role', 'public.apply_rating_rebuild(uuid,bigint,jsonb,jsonb)', 'EXECUTE')
+    and has_function_privilege('service_role', 'public.begin_incremental_rating_rebuild(uuid,uuid)', 'EXECUTE')
+    and has_function_privilege('service_role', 'public.apply_incremental_rating_rebuild(uuid,bigint,integer,jsonb,jsonb)', 'EXECUTE'),
+  'only canonical incremental rating worker RPCs are executable by the service role'
 );
 select ok(
   has_function_privilege('authenticated', 'public.command_create_group(uuid,text,text)', 'EXECUTE')

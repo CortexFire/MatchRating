@@ -16,6 +16,7 @@ export type RatingState = {
 export type RatingResult = {
   opponent: RatingState;
   score: 0 | 0.5 | 1;
+  expectedScore?: number;
 };
 
 export type RatingOptions = {
@@ -30,14 +31,29 @@ export type HistoricalMatch = {
   format: MatchFormat;
   teamAUserIds: string[];
   teamBUserIds: string[];
-  games: Array<{ teamAScore: number; teamBScore: number; winnerTeam: "A" | "B" }>;
+  games: Array<{
+    gameId: string;
+    gameNumber: number;
+    teamAScore: number;
+    teamBScore: number;
+    winnerTeam: "A" | "B";
+  }>;
 };
 
 export type RatingEvent = {
   matchId: string;
   revisionId: string;
+  gameId: string;
+  gameNumber: number;
+  occurredAt: string;
+  format: MatchFormat;
+  team: Team;
   userId: string;
   sequence: number;
+  expectedScore: number;
+  actualScore: 0 | 1;
+  pointsFor: number;
+  pointsAgainst: number;
   before: RatingState;
   after: RatingState;
 };
@@ -73,6 +89,10 @@ function expectedScore(mu: number, opponentMu: number, opponentPhi: number) {
   return 1 / (1 + Math.exp(-g(opponentPhi) * (mu - opponentMu)));
 }
 
+function ratingExpectation(player: RatingState, opponent: RatingState) {
+  return expectedScore(toMu(player.rating), toMu(opponent.rating), toPhi(opponent.rd));
+}
+
 function clampRatingState(state: RatingState): RatingState {
   return {
     rating: Number(state.rating.toFixed(6)),
@@ -105,20 +125,19 @@ export function updateRatingPeriod(
     opponentMu: toMu(result.opponent.rating),
     opponentPhi: toPhi(result.opponent.rd),
     score: result.score,
+    expectation: result.expectedScore ?? ratingExpectation(player, result.opponent),
   }));
 
   const variance =
     1 /
     convertedResults.reduce((sum, result) => {
-      const expectation = expectedScore(mu, result.opponentMu, result.opponentPhi);
-      return sum + g(result.opponentPhi) ** 2 * expectation * (1 - expectation);
+      return sum + g(result.opponentPhi) ** 2 * result.expectation * (1 - result.expectation);
     }, 0);
 
   const delta =
     variance *
     convertedResults.reduce((sum, result) => {
-      const expectation = expectedScore(mu, result.opponentMu, result.opponentPhi);
-      return sum + g(result.opponentPhi) * (result.score - expectation);
+      return sum + g(result.opponentPhi) * (result.score - result.expectation);
     }, 0);
 
   const sigmaPrime = computeVolatility({
@@ -135,8 +154,7 @@ export function updateRatingPeriod(
     mu +
     phiPrime ** 2 *
       convertedResults.reduce((sum, result) => {
-        const expectation = expectedScore(mu, result.opponentMu, result.opponentPhi);
-        return sum + g(result.opponentPhi) * (result.score - expectation);
+        return sum + g(result.opponentPhi) * (result.score - result.expectation);
       }, 0);
 
   return clampRatingState({
@@ -243,7 +261,12 @@ export function updateDoublesGame(
   teamA: readonly [RatingState, RatingState],
   teamB: readonly [RatingState, RatingState],
   winnerTeam: Team,
-): { teamA: [RatingState, RatingState]; teamB: [RatingState, RatingState] } {
+): {
+  teamA: [RatingState, RatingState];
+  teamB: [RatingState, RatingState];
+  expectationA: number;
+  expectationB: number;
+} {
   const expectationA = teamExpectation(teamA, teamB);
   const expectationB = 1 - expectationA;
   const scoreA = winnerTeam === "A" ? 1 : 0;
@@ -255,6 +278,7 @@ export function updateDoublesGame(
         {
           opponent: effectiveOpponentForTeamExpectation(player, teamB, expectationA),
           score: scoreA,
+          expectedScore: expectationA,
         },
       ]),
     ) as [RatingState, RatingState],
@@ -263,9 +287,12 @@ export function updateDoublesGame(
         {
           opponent: effectiveOpponentForTeamExpectation(player, teamA, expectationB),
           score: scoreB,
+          expectedScore: expectationB,
         },
       ]),
     ) as [RatingState, RatingState],
+    expectationA,
+    expectationB,
   };
 }
 
@@ -283,8 +310,13 @@ function getRating(map: Map<string, RatingState>, userId: string) {
 function setRatingWithEvent(
   ratings: Map<string, RatingState>,
   events: RatingEvent[],
+  sequenceOffset: number,
   match: HistoricalMatch,
+  game: HistoricalMatch["games"][number],
+  team: Team,
   userId: string,
+  expected: number,
+  actual: 0 | 1,
   before: RatingState,
   after: RatingState,
 ) {
@@ -292,8 +324,17 @@ function setRatingWithEvent(
   events.push({
     matchId: match.id,
     revisionId: match.revisionId,
+    gameId: game.gameId,
+    gameNumber: game.gameNumber,
+    occurredAt: match.submittedAt,
+    format: match.format,
+    team,
     userId,
-    sequence: events.length + 1,
+    sequence: sequenceOffset + events.length + 1,
+    expectedScore: expected,
+    actualScore: actual,
+    pointsFor: team === "A" ? game.teamAScore : game.teamBScore,
+    pointsAgainst: team === "A" ? game.teamBScore : game.teamAScore,
     before,
     after,
   });
@@ -302,6 +343,7 @@ function setRatingWithEvent(
 export function rebuildGroupRatingsFromMatches(
   matches: HistoricalMatch[],
   initialRatings: Map<string, RatingState> = new Map(),
+  sequenceOffset = 0,
 ): { ratings: Map<string, RatingState>; events: RatingEvent[] } {
   const ratings = new Map<string, RatingState>(
     Array.from(initialRatings.entries()).map(([userId, rating]) => [userId, { ...rating }]),
@@ -315,21 +357,36 @@ export function rebuildGroupRatingsFromMatches(
   for (const match of orderedMatches) {
     const validated = validateMatchSubmission({ ...match, groupId: "rating-rebuild" });
 
-    for (const game of validated.games) {
+    for (const [gameIndex, validatedGame] of validated.games.entries()) {
+      const game = match.games[gameIndex];
+      if (
+        !game?.gameId
+        || !Number.isSafeInteger(game.gameNumber)
+        || game.gameNumber < 1
+        || game.teamAScore !== validatedGame.teamAScore
+        || game.teamBScore !== validatedGame.teamBScore
+        || game.winnerTeam !== validatedGame.winnerTeam
+      ) {
+        throw new Error("Invalid historical game identity");
+      }
       if (validated.format === "singles") {
         const teamAUserId = validated.teamAUserIds[0];
         const teamBUserId = validated.teamBUserIds[0];
         const beforeA = getRating(ratings, teamAUserId);
         const beforeB = getRating(ratings, teamBUserId);
+        const expectationA = ratingExpectation(beforeA, beforeB);
+        const expectationB = ratingExpectation(beforeB, beforeA);
+        const actualA: 0 | 1 = game.winnerTeam === "A" ? 1 : 0;
+        const actualB: 0 | 1 = game.winnerTeam === "B" ? 1 : 0;
         const afterA = updateRatingPeriod(beforeA, [
-          { opponent: beforeB, score: game.winnerTeam === "A" ? 1 : 0 },
+          { opponent: beforeB, score: actualA, expectedScore: expectationA },
         ]);
         const afterB = updateRatingPeriod(beforeB, [
-          { opponent: beforeA, score: game.winnerTeam === "B" ? 1 : 0 },
+          { opponent: beforeA, score: actualB, expectedScore: expectationB },
         ]);
 
-        setRatingWithEvent(ratings, events, match, teamAUserId, beforeA, afterA);
-        setRatingWithEvent(ratings, events, match, teamBUserId, beforeB, afterB);
+        setRatingWithEvent(ratings, events, sequenceOffset, match, game, "A", teamAUserId, expectationA, actualA, beforeA, afterA);
+        setRatingWithEvent(ratings, events, sequenceOffset, match, game, "B", teamBUserId, expectationB, actualB, beforeB, afterB);
       } else {
         const teamAIds = validated.teamAUserIds as [string, string];
         const teamBIds = validated.teamBUserIds as [string, string];
@@ -342,12 +399,14 @@ export function rebuildGroupRatingsFromMatches(
           RatingState,
         ];
         const updated = updateDoublesGame(beforeTeamA, beforeTeamB, game.winnerTeam);
+        const actualA: 0 | 1 = game.winnerTeam === "A" ? 1 : 0;
+        const actualB: 0 | 1 = game.winnerTeam === "B" ? 1 : 0;
 
         teamAIds.forEach((userId, index) => {
-          setRatingWithEvent(ratings, events, match, userId, beforeTeamA[index], updated.teamA[index]);
+          setRatingWithEvent(ratings, events, sequenceOffset, match, game, "A", userId, updated.expectationA, actualA, beforeTeamA[index], updated.teamA[index]);
         });
         teamBIds.forEach((userId, index) => {
-          setRatingWithEvent(ratings, events, match, userId, beforeTeamB[index], updated.teamB[index]);
+          setRatingWithEvent(ratings, events, sequenceOffset, match, game, "B", userId, updated.expectationB, actualB, beforeTeamB[index], updated.teamB[index]);
         });
       }
     }
