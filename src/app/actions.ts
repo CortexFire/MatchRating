@@ -119,13 +119,6 @@ const claimGuestProfilesSchema = z.object({
   guestProfileIds: z.array(z.string().min(1)).min(1).max(12),
 });
 
-const confirmSchema = z.object({
-  groupId: z.string().uuid(),
-  matchId: z.string().uuid(),
-  revisionId: z.string().uuid(),
-  commandId: z.string().uuid(),
-});
-
 const retryRatingSchema = z.object({
   jobId: z.string().uuid(),
   commandId: z.string().uuid(),
@@ -893,23 +886,6 @@ export async function submitMatch(input: ActiveDraftInput & RequiredCommandMetad
   return result;
 }
 
-export async function confirmMatchRevision(input: z.infer<typeof confirmSchema>): Promise<ActionResult<{ revisionId: string }>> {
-  const parsed = confirmSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, message: parsed.error.issues[0]?.message ?? "Could not confirm match." };
-  }
-  const result = await executeCommand<{ revisionId: string }>("command_review_match", {
-    p_command_id: parsed.data.commandId,
-    p_revision_id: parsed.data.revisionId,
-    p_action: "confirmed",
-  }, "Could not review match.");
-  if (result.ok) {
-    revalidatePath("/groups");
-    revalidatePath("/matches/review");
-    revalidatePath(`/groups/${parsed.data.groupId}/matches/${parsed.data.matchId}`);
-  }
-  return result;
-}
 export async function reviseMatch(input: z.infer<typeof reviseSchema>): Promise<ActionResult<MatchCommandResult>> {
   const parsed = reviseSchema.safeParse(input);
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Could not revise match." };
@@ -928,7 +904,7 @@ export async function reviseMatch(input: z.infer<typeof reviseSchema>): Promise<
   return result;
 }
 
-export async function disputeAndReviseMatch(input: z.infer<typeof reviseSchema>): Promise<ActionResult<MatchCommandResult>> {
+export async function correctMatch(input: z.infer<typeof reviseSchema>): Promise<ActionResult<MatchCommandResult>> {
   const parsed = reviseSchema.safeParse(input);
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Could not correct match." };
   const validated = validateMatchSubmission(parsed.data);
@@ -947,7 +923,6 @@ export async function disputeAndReviseMatch(input: z.infer<typeof reviseSchema>)
 }
 
 function revalidateMatchPaths(groupId: string, matchId: string) {
-  revalidatePath("/matches/review");
   revalidateRatingPaths(groupId);
   revalidatePath(`/groups/${groupId}/history`);
   revalidatePath(`/groups/${groupId}/matches/${matchId}`);

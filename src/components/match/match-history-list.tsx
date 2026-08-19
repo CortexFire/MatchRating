@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import clsx from "clsx";
 import { Search } from "lucide-react";
 import { MatchRow } from "@/components/app/match-row";
 import { Input } from "@/components/ui/input";
 import { type MatchHistoryPage } from "@/lib/matches/history-pagination";
-import { cn } from "@/lib/utils";
+import styles from "./match-history-list.module.css";
 
-type Filter = "all" | "pending_confirmation" | "disputed";
+type Filter = "all" | "disputed";
 type PendingRequest = "replace" | "append" | null;
 type HistoryQuery = { filter: Filter; search: string };
 
@@ -96,31 +97,30 @@ export function MatchHistoryList({
   const canLoadMore = nextCursor && queriesMatch(displayedQuery, activeQuery);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex gap-2">
+    <div className={styles.history}>
+      <div className={styles.filters}>
         <FilterButton active={filter === "all"} onClick={() => setFilter("all")}>All</FilterButton>
-        <FilterButton active={filter === "pending_confirmation"} onClick={() => setFilter("pending_confirmation")}>Awaiting review</FilterButton>
         <FilterButton active={filter === "disputed"} onClick={() => setFilter("disputed")}>Disputed</FilterButton>
       </div>
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-        <Input value={search} onChange={(event) => setSearch(event.target.value)} maxLength={80} className="pl-9" placeholder="Search matches" />
+      <div className={styles.searchField}>
+        <Search aria-hidden="true" className={styles.searchIcon} />
+        <Input value={search} onChange={(event) => setSearch(event.target.value)} maxLength={80} className={styles.searchInput} placeholder="Search matches" />
       </div>
-      {pendingRequest === "replace" ? <p role="status" aria-live="polite" className="text-sm text-muted">Loading history…</p> : null}
+      {pendingRequest === "replace" ? <p role="status" aria-live="polite" className={styles.loading}>Loading history…</p> : null}
       {matches.length ? (
-        <div className="flex flex-col gap-3">
+        <div className={styles.matchList}>
           {matches.map((match) => (
             <MatchRow key={match.id} match={match} showGroupName={showGroupName} heading="participants" />
           ))}
         </div>
       ) : (
-        <p className="rounded-lg border border-stroke bg-surface p-4 text-sm text-muted">
+        <p className={styles.emptyState}>
           {hasDisplayedQuery ? "No matches match these filters." : "No matches recorded yet."}
         </p>
       )}
       {error ? (
-        <div className="flex flex-col items-start gap-2">
-          <p role="alert" className="text-sm text-danger">{error}</p>
+        <div className={styles.errorState}>
+          <p role="alert" className={styles.errorMessage}>{error}</p>
           {failedReplacement ? (
             <button
               type="button"
@@ -130,7 +130,7 @@ export function MatchHistoryList({
                 query: failedReplacement.search,
                 cursor: null,
               })}
-              className="text-sm font-semibold text-action underline-offset-2 hover:underline"
+              className={styles.retryButton}
             >
               Retry loading history
             </button>
@@ -147,7 +147,7 @@ export function MatchHistoryList({
             query: debouncedSearch,
             cursor: nextCursor,
           })}
-          className="inline-flex min-h-10 items-center justify-center rounded-lg border border-stroke bg-surface px-4 text-sm font-semibold text-ink disabled:opacity-60"
+          className={styles.loadMoreButton}
         >
           {pendingRequest === "append" ? "Loading…" : "Load older matches"}
         </button>
@@ -162,10 +162,7 @@ function FilterButton({ active, onClick, children }: { active: boolean; onClick:
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={cn(
-        "inline-flex h-7 items-center rounded-full border px-2.5 text-xs font-semibold",
-        active ? "border-selection-stroke bg-selection text-ink" : "border-stroke bg-surface text-muted",
-      )}
+      className={clsx(styles.filterButton, active ? styles.filterButtonActive : styles.filterButtonInactive)}
     >
       {children}
     </button>

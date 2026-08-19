@@ -17,4 +17,20 @@ describe("toCommandError", () => {
       message: "Could not save match.",
     });
   });
+
+  test("explains that off-team match changes require an admin role", () => {
+    expect(toCommandError({ code: "MRMAT", message: "forbidden" }, "Could not save match.")).toEqual({
+      ok: false,
+      code: "NOT_MATCH_EDITOR",
+      message: "Only match participants or group admins can do that.",
+    });
+  });
+
+  test("preserves a correction-window expiry as deadline-specific guidance", () => {
+    expect(toCommandError({ code: "MREXP", message: "expired" }, "Could not correct match.")).toEqual({
+      ok: false,
+      code: "CORRECTION_EXPIRED",
+      message: "The 30-day correction window has expired.",
+    });
+  });
 });

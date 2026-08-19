@@ -12,16 +12,15 @@ const match: AppMatchSummary = {
   format: "singles",
   status: "confirmed",
   submittedAt: "2026-08-07T20:00:00.000Z",
-  reviewStartedAt: "2026-08-07T20:00:00.000Z",
-  disputeUntil: "2026-09-06T20:00:00.000Z",
+  correctionStartedAt: "2026-08-07T20:00:00.000Z",
+  correctionUntil: "2026-09-06T20:00:00.000Z",
   submittedByUserId: "11111111-1111-4111-8111-111111111111",
   teamA: [{ id: "11111111-1111-4111-8111-111111111111", name: "Alice Tan", initials: "AT" }],
   teamB: [{ id: "22222222-2222-4222-8222-222222222222", name: "Bea Rivera", initials: "BR" }],
   games: [{ gameNumber: 1, teamAScore: 21, teamBScore: 18, winnerTeam: "A" }],
   winnerTeam: "A",
   ratingSummary: "Ratings applied",
-  canConfirm: false,
-  canDispute: true,
+  canCorrect: true,
   canRevise: false,
 };
 
@@ -76,20 +75,11 @@ describe("MatchRow", () => {
     };
     const { getByText, queryByText } = render(<MatchRow match={doublesMatch} heading="participants" />);
 
-    const participantHeading = getByText("Alice Tan / Cory Shah vs Bea Rivera / Dev Okafor");
-    expect(participantHeading.className).toContain("font-semibold");
-    expect(participantHeading.className).not.toContain("capitalize");
+    expect(getByText("Alice Tan / Cory Shah vs Bea Rivera / Dev Okafor")).toBeTruthy();
     expect(queryByText("doubles")).toBeNull();
   });
 
-  test("retains capitalization styling for format headings", async () => {
-    const { MatchRow } = await import("./match-row");
-    const { getByText } = render(<MatchRow match={match} />);
-
-    expect(getByText("singles").className).toContain("capitalize");
-  });
-
-  test("only displays badges for pending and disputed matches", async () => {
+  test("omits pending review indicators while retaining the disputed badge", async () => {
     const { MatchRow } = await import("./match-row");
     const { getByText, queryByText } = render(
       <>
@@ -99,23 +89,18 @@ describe("MatchRow", () => {
       </>,
     );
 
-    expect(getByText("Awaiting review").className).toContain("shrink-0");
-    expect(getByText("Awaiting review").className).toContain("whitespace-nowrap");
+    expect(queryByText("Awaiting review")).toBeNull();
     expect(getByText("Disputed")).toBeTruthy();
     expect(queryByText("Accepted")).toBeNull();
   });
 
-  test("keeps scores intact while allowing the heading row to wrap whole badges", async () => {
+  test("keeps scores intact for pending matches without exposing a review indicator", async () => {
     const { MatchRow } = await import("./match-row");
-    const { getByText } = render(<MatchRow match={{ ...match, status: "pending_confirmation" }} />);
-
-    const heading = getByText("singles");
-    expect(heading.parentElement?.className).toContain("flex-wrap");
+    const { getByText, queryByText } = render(<MatchRow match={{ ...match, status: "pending_confirmation" }} />);
 
     const score = getByText("21-18");
-    expect(score.className).toContain("shrink-0");
-    expect(score.className).toContain("whitespace-nowrap");
-    expect(score.className).toContain("tabular-nums");
+    expect(score).toBeTruthy();
+    expect(queryByText("Awaiting review")).toBeNull();
   });
 
   test("omits the rating summary while retaining the submission date when requested", async () => {

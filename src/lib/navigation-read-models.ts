@@ -82,7 +82,6 @@ type RawMatchBundle = {
   revisions: MatchReadRows["revisions"];
   participants: MatchReadRows["participants"];
   games: MatchReadRows["games"];
-  confirmations: MatchReadRows["confirmations"];
   ratingEvents: MatchReadRows["ratingEvents"];
   profiles: MatchReadRows["profiles"];
 };
@@ -126,7 +125,7 @@ export async function getHomePageData(): Promise<HomePageData> {
     profile: toProfile(raw.profile),
     groups,
     activeDrafts: toDraftSummaries(raw.drafts, raw.actorUserId, groups, raw.profiles),
-    latestMatches: toMatches(raw.matchBundle, raw.actorUserId).slice(0, 3),
+    latestMatches: toMatches(raw.matchBundle, raw.actorUserId, raw.memberships).slice(0, 3),
     currentRankings: toCurrentRankings(groups, raw.memberships, raw.ratings, raw.actorUserId),
   };
 }
@@ -147,7 +146,7 @@ export async function getGroupPageData(groupId: string): Promise<GroupPageData |
     group,
     activeDrafts: toDraftSummaries(raw.drafts, raw.actorUserId, [group], raw.profiles),
     ratingStatus: toRatingStatus(raw.ratingStatus),
-    recentMatches: toMatches(raw.matchBundle, raw.actorUserId).slice(0, 5),
+    recentMatches: toMatches(raw.matchBundle, raw.actorUserId, raw.memberships).slice(0, 5),
     players: toPlayers(groupId, raw.memberships, raw.ratings),
   };
 }
@@ -308,15 +307,21 @@ function toDraftDetail(
   };
 }
 
-function toMatches(bundle: RawMatchBundle, actorUserId: string): AppMatchSummary[] {
+function toMatches(
+  bundle: RawMatchBundle,
+  actorUserId: string,
+  memberships: RawMembership[],
+): AppMatchSummary[] {
   return buildMatchViews({
     currentUserId: actorUserId,
+    currentUserAdminGroupIds: memberships
+      .filter((membership) => membership.user_id === actorUserId && membership.role !== "member")
+      .map((membership) => membership.group_id),
     groups: bundle.groups ?? [],
     matches: bundle.matches ?? [],
     revisions: bundle.revisions ?? [],
     participants: bundle.participants ?? [],
     games: bundle.games ?? [],
-    confirmations: bundle.confirmations ?? [],
     ratingEvents: bundle.ratingEvents ?? [],
     profiles: bundle.profiles ?? [],
   });

@@ -1,0 +1,94 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.title {
+  margin: 0;
+  color: var(--muted);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 28px;
+  text-align: center;
+}
+
+.profileList {
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 8px;
+}
+
+.profileItems {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profileButton {
+  display: flex;
+  min-height: 58px;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  padding: 0 12px;
+  color: var(--ink);
+  text-align: left;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.profileButton:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}
+
+.selectedProfileButton {
+  border-color: var(--selection-stroke);
+  background: var(--selection);
+}
+
+.unselectedProfileButton {
+  background: var(--surface);
+}
+
+.profileName {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.profileRating {
+  min-width: 56px;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 8px 12px;
+  text-align: center;
+}
+
+.rank,
+.rating {
+  display: block;
+}
+
+.rank {
+  color: var(--action);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.rating {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.message {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}

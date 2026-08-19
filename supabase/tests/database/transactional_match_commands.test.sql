@@ -10,7 +10,8 @@ values
   ('11111111-1111-4111-8111-111111111111', 'Owner', 'Owner', ''),
   ('22222222-2222-4222-8222-222222222222', 'Member', 'Member', ''),
   ('33333333-3333-4333-8333-333333333333', 'Opponent', 'Opponent', ''),
-  ('44444444-4444-4444-8444-444444444444', 'Outsider', 'Outsider', '');
+  ('44444444-4444-4444-8444-444444444444', 'Outsider', 'Outsider', ''),
+  ('55555555-5555-4555-8555-555555555555', 'Neutral Member', 'Neutral', 'Member');
 
 insert into public.groups (id, owner_user_id, name)
 values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111', 'Test Ladder');
@@ -19,7 +20,8 @@ insert into public.group_memberships (group_id, user_id, role, status)
 values
   ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111', 'owner', 'active'),
   ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '22222222-2222-4222-8222-222222222222', 'member', 'active'),
-  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '33333333-3333-4333-8333-333333333333', 'member', 'active');
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '33333333-3333-4333-8333-333333333333', 'member', 'active'),
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '55555555-5555-4555-8555-555555555555', 'member', 'active');
 
 create temporary view test_group_matches as
 select id from public.matches where group_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -50,7 +52,7 @@ select ok(
       'public.command_revise_match(uuid,uuid,uuid,public.match_format,uuid[],uuid[],jsonb)',
       'EXECUTE'
     )
-    and has_function_privilege(
+    and not has_function_privilege(
       'authenticated',
       'public.command_review_match(uuid,uuid,public.confirmation_action)',
       'EXECUTE'
@@ -179,7 +181,7 @@ select throws_ok(
 
 select set_config(
   'request.jwt.claims',
-  '{"sub":"11111111-1111-4111-8111-111111111111","role":"authenticated"}',
+  '{"sub":"55555555-5555-4555-8555-555555555555","role":"authenticated"}',
   true
 );
 select throws_ok(
@@ -194,9 +196,9 @@ select throws_ok(
       '[{"teamAScore":21,"teamBScore":18,"winnerTeam":"A"}]'::jsonb
     )
   $$,
-  'MRVAL',
-  'Submitter must play in the match',
-  'a neutral scorer cannot create an unreviewable match'
+  'MRMAT',
+  'Only match participants or group admins can do that',
+  'a neutral member cannot submit a match'
 );
 select is((select count(*) from test_group_matches), 1::bigint, 'neutral submission rejection makes no aggregate writes');
 
@@ -218,7 +220,7 @@ select throws_ok(
   ),
   'MR409',
   'Match is not disputed',
-  'a pending match cannot be revised without a dispute'
+  'an accepted match cannot use the legacy disputed revision command'
 );
 
 select set_config(
@@ -226,16 +228,9 @@ select set_config(
   '{"sub":"33333333-3333-4333-8333-333333333333","role":"authenticated"}',
   true
 );
-select throws_ok(
-  format(
-    'select public.command_review_match(%L, %L, %L)',
-    '15151515-1515-4515-8515-151515151515',
-    (select value->>'revisionId' from match_command_test_state where name = 'first-submit'),
-    'disputed'
-  ),
-  'MRVAL',
-  'Disputes must include a corrected result',
-  'the review command rejects a dispute without a corrected result'
+select ok(
+  not has_function_privilege('authenticated', 'public.command_review_match(uuid,uuid,public.confirmation_action)', 'EXECUTE'),
+  'the manual review command is unavailable'
 );
 
 update public.matches
@@ -244,7 +239,7 @@ where id = (select (value->>'matchId')::uuid from match_command_test_state where
 
 select set_config(
   'request.jwt.claims',
-  '{"sub":"11111111-1111-4111-8111-111111111111","role":"authenticated"}',
+  '{"sub":"55555555-5555-4555-8555-555555555555","role":"authenticated"}',
   true
 );
 select throws_ok(
@@ -258,9 +253,9 @@ select throws_ok(
     '{33333333-3333-4333-8333-333333333333}',
     '[{"teamAScore":21,"teamBScore":17,"winnerTeam":"A"}]'
   ),
-  'MR403',
-  'Only current match participants can revise',
-  'a non-participant cannot add themselves to a disputed revision'
+  'MRMAT',
+  'Only match participants or group admins can do that',
+  'a neutral member cannot revise a disputed match'
 );
 select is((select count(*) from test_group_revisions), 1::bigint, 'unauthorized revision rejection leaves history unchanged');
 
@@ -303,21 +298,9 @@ select throws_ok(
 );
 select is((select count(*) from test_group_revisions), 2::bigint, 'stale revision rejection leaves revision history unchanged');
 
-select set_config(
-  'request.jwt.claims',
-  '{"sub":"33333333-3333-4333-8333-333333333333","role":"authenticated"}',
-  true
-);
-select throws_ok(
-  format(
-    'select public.command_review_match(%L, %L, %L)',
-    '06060606-0606-4606-8606-060606060606',
-    (select value->>'revisionId' from match_command_test_state where name = 'first-submit'),
-    'confirmed'
-  ),
-  'MR409',
-  'Match revision is no longer pending',
-  'an obsolete revision cannot be confirmed'
+select ok(
+  not has_function_privilege('authenticated', 'public.command_review_match(uuid,uuid,public.confirmation_action)', 'EXECUTE'),
+  'obsolete revisions cannot be manually confirmed'
 );
 
 insert into match_command_test_state (name, value)
@@ -332,13 +315,13 @@ select 'atomic-revision', public.command_dispute_and_revise_match(
 );
 select is(
   (select status::text from public.matches where id = (select (value->>'matchId')::uuid from match_command_test_state where name = 'first-submit')),
-  'pending_confirmation',
-  'atomic correction leaves the replacement revision pending confirmation'
+  'confirmed',
+  'atomic correction accepts the replacement revision immediately'
 );
 select is(
-  (select action::text from public.match_confirmations where revision_id = (select (value->>'revisionId')::uuid from match_command_test_state where name = 'revision')),
-  'disputed',
-  'atomic correction records the review decision on the replaced revision'
+  (select count(*) from public.match_confirmations where revision_id = (select (value->>'revisionId')::uuid from match_command_test_state where name = 'revision')),
+  0::bigint,
+  'atomic correction does not create a manual review decision'
 );
 select is(
   (select active_revision_id from public.matches where id = (select (value->>'matchId')::uuid from match_command_test_state where name = 'first-submit')),
@@ -364,24 +347,14 @@ select is(
   'an identical atomic correction retry does not duplicate the revision'
 );
 
-select set_config(
-  'request.jwt.claims',
-  '{"sub":"22222222-2222-4222-8222-222222222222","role":"authenticated"}',
-  true
-);
-select lives_ok(
-  format(
-    'select public.command_review_match(%L, %L, %L)',
-    '07070707-0707-4707-8707-070707070707',
-    (select value->>'revisionId' from match_command_test_state where name = 'atomic-revision'),
-    'confirmed'
-  ),
-  'an opposing participant can confirm the corrected pending revision'
+select ok(
+  not has_function_privilege('authenticated', 'public.command_review_match(uuid,uuid,public.confirmation_action)', 'EXECUTE'),
+  'a corrected result requires no manual confirmation'
 );
 select is(
   (select status::text from public.matches where id = (select (value->>'matchId')::uuid from match_command_test_state where name = 'first-submit')),
   'confirmed',
-  'confirmation and match status update commit together'
+  'the corrected result remains accepted'
 );
 select throws_ok(
   format(

@@ -9,20 +9,14 @@ export async function GET(request: Request) {
   }
 
   const service = createSupabaseServiceClient();
-  const [runs, draftCleanup, autoAcceptance] = await Promise.all([
+  const [runs, draftCleanup] = await Promise.all([
     dispatchRecoverableRatingJobs(),
     service.from("active_match_drafts").delete().lt("expires_at", new Date().toISOString()).is("submitted_match_id", null),
-    service.rpc("auto_accept_expired_match_reviews"),
   ]);
   if (draftCleanup.error) {
     console.error("active_draft_cleanup_failed", { error: draftCleanup.error.message });
   }
-  if (autoAcceptance.error) {
-    console.error("match_review_auto_acceptance_failed", { error: autoAcceptance.error.message });
-    return NextResponse.json({ message: "Maintenance failed" }, { status: 500 });
-  }
   return NextResponse.json({
     dispatched: runs.filter(Boolean).length,
-    autoAccepted: Number(autoAcceptance.data ?? 0),
   });
 }

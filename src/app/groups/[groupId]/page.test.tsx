@@ -35,10 +35,10 @@ const players = [
 ];
 const recentMatches = ["pending_confirmation", "confirmed", "disputed"].map((status, index) => ({
   id: `match-${index + 1}`, groupId, groupName: group.name, revisionId: `revision-${index + 1}`, submittedByUserId: "alice",
-  status: status as "pending_confirmation" | "confirmed" | "disputed", submittedAt: `2026-08-0${7 - index}T20:00:00.000Z`, reviewStartedAt: `2026-08-0${7 - index}T20:00:00.000Z`, disputeUntil: `2026-09-0${6 - index}T20:00:00.000Z`, format: "singles" as const,
+  status: status as "pending_confirmation" | "confirmed" | "disputed", submittedAt: `2026-08-0${7 - index}T20:00:00.000Z`, correctionStartedAt: `2026-08-0${7 - index}T20:00:00.000Z`, correctionUntil: `2026-09-0${6 - index}T20:00:00.000Z`, format: "singles" as const,
   teamA: [{ id: "alice", name: "Alice Tan", initials: "AT" }], teamB: [{ id: "bea", name: "Bea Rivera", initials: "BR" }],
   games: [{ gameNumber: 1, teamAScore: 21, teamBScore: 18, winnerTeam: "A" as const }], winnerTeam: "A" as const,
-  ratingSummary: "2 rating changes", canConfirm: false, canDispute: status !== "disputed", canRevise: status === "disputed",
+  ratingSummary: "2 rating changes", canCorrect: status !== "disputed", canRevise: status === "disputed",
 }));
 
 describe("GroupPage", () => {
@@ -67,14 +67,14 @@ describe("GroupPage", () => {
     expect(mocks.getGroupPageData.mock.calls).toEqual([[groupId]]);
   });
 
-  test("renders pending and disputed recents without confirmed or rating-change labels", async () => {
+  test("renders disputed recents without pending, confirmed, or rating-change labels", async () => {
     const html = renderToStaticMarkup(await GroupContent({ params: Promise.resolve({ groupId }) }));
 
     expect(html).toContain("Active matches");
     expect(html).toContain("Alice Tan vs Bea Chen");
     expect(html).toContain("Match saved. Ratings updating");
     expect(html).toContain("Recent Matches");
-    expect(html).toContain("Awaiting review");
+    expect(html).not.toContain("Awaiting review");
     expect(html).toContain("Disputed");
     expect(html).not.toContain("Accepted");
     expect(html).not.toContain("2 rating changes");

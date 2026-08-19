@@ -504,7 +504,7 @@ export function MatchRecorder({
       if (submitMatchAction) {
         const result = await submitMatchAction(input);
         if (result.ok) {
-          completeSubmission("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.");
+          completeSubmission("Match saved. Ratings updated immediately. Participants and group admins have 30 days to correct it.");
         } else {
           if (submittedDraftId) replaceDraftIdInUrl(submittedDraftId);
           submissionInProgress.current = false;
@@ -514,7 +514,7 @@ export function MatchRecorder({
         return;
       }
 
-      completeSubmission(`Submitted. Team ${validated.matchWinnerTeam} wins. Ratings updated immediately; opponents may review it, and participants have 30 days to correct it.`);
+      completeSubmission(`Submitted. Team ${validated.matchWinnerTeam} wins. Ratings updated immediately. Participants and group admins have 30 days to correct it.`);
     } catch (error) {
       if (activeDraftId.current) replaceDraftIdInUrl(activeDraftId.current);
       submissionInProgress.current = false;

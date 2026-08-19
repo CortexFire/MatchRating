@@ -1,6 +1,8 @@
 import Link from "next/link";
+import clsx from "clsx";
 import { Badge } from "@/components/ui/badge";
 import { type AppMatchSummary } from "@/lib/app-data";
+import styles from "./match-row.module.css";
 
 const submittedAtFormatter = new Intl.DateTimeFormat("en-US", {
   dateStyle: "medium",
@@ -27,24 +29,24 @@ export function MatchRow({
   return (
     <Link
       href={`/groups/${match.groupId}/matches/${match.id}`}
-      className="block rounded-lg border border-stroke bg-surface p-3 transition hover:border-selection-stroke"
+      className={styles.row}
     >
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className={`text-sm font-semibold text-ink${heading === "format" ? " capitalize" : ""}`}>
+      <div className={styles.summary}>
+        <div className={styles.details}>
+          <div className={styles.headingRow}>
+            <p className={clsx(styles.heading, heading === "format" && styles.formatHeading)}>
               {heading === "participants" ? participants : match.format}
             </p>
-            {status ? <Badge className="shrink-0 whitespace-nowrap">{status}</Badge> : null}
+            {status ? <Badge className={styles.statusBadge}>{status}</Badge> : null}
           </div>
-          {heading === "format" ? <p className="mt-1 truncate text-xs text-muted">{participants}</p> : null}
-          {showGroupName ? <p className="mt-1 truncate text-xs text-muted">{match.groupName}</p> : null}
+          {heading === "format" ? <p className={styles.subtitle}>{participants}</p> : null}
+          {showGroupName ? <p className={styles.subtitle}>{match.groupName}</p> : null}
         </div>
-        <p className="shrink-0 whitespace-nowrap text-right text-sm font-bold tabular-nums text-ink">
+        <p className={styles.score}>
           {match.games.map((game) => `${game.teamAScore}-${game.teamBScore}`).join(", ")}
         </p>
       </div>
-      <div className="mt-3 flex items-center justify-between text-xs text-muted">
+      <div className={styles.metadata}>
         <span>{formatSubmittedAt(match.submittedAt)}</span>
         {showRatingSummary ? <span>{match.ratingSummary}</span> : null}
       </div>
@@ -53,7 +55,6 @@ export function MatchRow({
 }
 
 function displayStatus(status: AppMatchSummary["status"]) {
-  if (status === "pending_confirmation") return "Awaiting review";
   if (status === "disputed") return "Disputed";
   return null;
 }

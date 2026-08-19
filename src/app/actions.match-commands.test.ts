@@ -668,39 +668,6 @@ describe("transactional match actions", () => {
     expect(supabaseMocks.rpc).not.toHaveBeenCalled();
   });
 
-  test("forwards the client command ID when confirming a revision", async () => {
-    supabaseMocks.rpc.mockResolvedValue({
-      data: { revisionId: "33333333-3333-4333-8333-333333333333" },
-      error: null,
-    });
-    const confirm = actions.confirmMatchRevision as unknown as (input: {
-      groupId: string;
-      matchId: string;
-      revisionId: string;
-      commandId: string;
-    }) => ReturnType<typeof actions.confirmMatchRevision>;
-
-    const result = await confirm({
-      groupId: "66666666-6666-4666-8666-666666666666",
-      matchId: "22222222-2222-4222-8222-222222222222",
-      revisionId: "33333333-3333-4333-8333-333333333333",
-      commandId: "88888888-8888-4888-8888-888888888888",
-    });
-
-    expect(result).toEqual({
-      ok: true,
-      data: { revisionId: "33333333-3333-4333-8333-333333333333" },
-    });
-    expect(supabaseMocks.rpc).toHaveBeenCalledWith("command_review_match", {
-      p_command_id: "88888888-8888-4888-8888-888888888888",
-      p_revision_id: "33333333-3333-4333-8333-333333333333",
-      p_action: "confirmed",
-    });
-    expect(nextCacheMocks.revalidatePath).toHaveBeenCalledWith(
-      "/groups/66666666-6666-4666-8666-666666666666/matches/22222222-2222-4222-8222-222222222222",
-    );
-  });
-
   test("forwards the selected winner with a revised game", async () => {
     await actions.reviseMatch({
       commandId: "88888888-8888-4888-8888-888888888888",
@@ -727,8 +694,8 @@ describe("transactional match actions", () => {
     );
   });
 
-  test("atomically disputes and revises without free-text metadata", async () => {
-    const result = await actions.disputeAndReviseMatch({
+  test("atomically corrects a match without free-text metadata", async () => {
+    const result = await actions.correctMatch({
       commandId: "88888888-8888-4888-8888-888888888888",
       groupId: "66666666-6666-4666-8666-666666666666",
       matchId: "22222222-2222-4222-8222-222222222222",
@@ -751,6 +718,29 @@ describe("transactional match actions", () => {
     });
   });
 
+  test("returns deadline-specific guidance when the correction window expired", async () => {
+    supabaseMocks.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: "MREXP", message: "Match correction window has expired" },
+    });
+
+    const result = await actions.correctMatch({
+      commandId: "88888888-8888-4888-8888-888888888888",
+      groupId: "66666666-6666-4666-8666-666666666666",
+      matchId: "22222222-2222-4222-8222-222222222222",
+      expectedRevisionId: "33333333-3333-4333-8333-333333333333",
+      format: "singles",
+      teamAUserIds: ["11111111-1111-4111-8111-111111111111"],
+      teamBUserIds: ["77777777-7777-4777-8777-777777777777"],
+      games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "A" }],
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      message: "The 30-day correction window has expired.",
+    });
+  });
+
   test.each([
     ["submission", () => actions.submitMatch({
       commandId: "55555555-5555-4555-8555-555555555555",
@@ -770,7 +760,7 @@ describe("transactional match actions", () => {
       teamBUserIds: ["77777777-7777-4777-8777-777777777777"],
       games: [{ teamAScore: 21, teamBScore: 18, winnerTeam: "C" }],
     } as unknown as Parameters<typeof actions.reviseMatch>[0])],
-    ["dispute-and-revision", () => actions.disputeAndReviseMatch({
+    ["correction", () => actions.correctMatch({
       commandId: "88888888-8888-4888-8888-888888888888",
       groupId: "66666666-6666-4666-8666-666666666666",
       matchId: "22222222-2222-4222-8222-222222222222",
@@ -779,7 +769,7 @@ describe("transactional match actions", () => {
       teamAUserIds: ["11111111-1111-4111-8111-111111111111"],
       teamBUserIds: ["77777777-7777-4777-8777-777777777777"],
       games: [{ teamAScore: 21, teamBScore: 18 }],
-    } as Parameters<typeof actions.disputeAndReviseMatch>[0])],
+    } as Parameters<typeof actions.correctMatch>[0])],
   ])("rejects malformed winners before invoking the %s command", async (_command, run) => {
     await expect(run()).resolves.toMatchObject({ ok: false });
     expect(supabaseMocks.rpc).not.toHaveBeenCalled();
