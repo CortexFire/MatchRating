@@ -2,9 +2,10 @@ export type DomainErrorCode =
   | "UNAUTHENTICATED"
   | "NOT_GROUP_MEMBER"
   | "NOT_GROUP_ADMIN"
+  | "NOT_MATCH_EDITOR"
   | "INVALID_INPUT"
   | "STALE_REVISION"
-  | "NOT_OPPOSING_REVIEWER"
+  | "CORRECTION_EXPIRED"
   | "COMMAND_CONFLICT"
   | "UNKNOWN";
 
@@ -18,8 +19,9 @@ const errorMessages: Partial<Record<DomainErrorCode, string>> = {
   UNAUTHENTICATED: "Please sign in to continue.",
   NOT_GROUP_MEMBER: "You are not an active member of this group.",
   NOT_GROUP_ADMIN: "Only group admins can do that.",
+  NOT_MATCH_EDITOR: "Only match participants or group admins can do that.",
   STALE_REVISION: "This match changed before your revision could be saved. Refresh and try again.",
-  NOT_OPPOSING_REVIEWER: "One player from the opposing team must confirm or dispute.",
+  CORRECTION_EXPIRED: "The 30-day correction window has expired.",
   COMMAND_CONFLICT: "This request ID was already used for a different action.",
 };
 
@@ -27,9 +29,10 @@ const databaseCodeMap: Record<string, DomainErrorCode> = {
   MR401: "UNAUTHENTICATED",
   MR403: "NOT_GROUP_MEMBER",
   MRADM: "NOT_GROUP_ADMIN",
+  MRMAT: "NOT_MATCH_EDITOR",
   MRVAL: "INVALID_INPUT",
   MR409: "STALE_REVISION",
-  MRREV: "NOT_OPPOSING_REVIEWER",
+  MREXP: "CORRECTION_EXPIRED",
   MRCMD: "COMMAND_CONFLICT",
 };
 

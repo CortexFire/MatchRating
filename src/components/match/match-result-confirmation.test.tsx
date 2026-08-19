@@ -14,7 +14,7 @@ const match = {
   winnerTeam: "A" as const,
   clubName: "Downtown Rec Club",
   submittedAt: "Aug 2nd, 2026 @ 8:53pm",
-  disputeUntil: "Sep 1, 2026",
+  correctionUntil: "Sep 1, 2026",
   teamA: {
     label: "Team A",
     players: [
@@ -37,15 +37,14 @@ const match = {
 };
 
 describe("MatchResultConfirmation", () => {
-  test("renders the confirmation screen content and actions", () => {
+  test("renders an accepted result with one correction action and no confirmation", () => {
     const html = renderToStaticMarkup(
       <MatchResultConfirmation
         groupId="demo"
         groupName="Downtown Rec"
-        canConfirm={true}
-        canDispute={true}
+        canCorrect={true}
         canRevise={false}
-        match={match}
+        match={{ ...match, status: "confirmed" }}
       />,
     );
 
@@ -59,18 +58,20 @@ describe("MatchResultConfirmation", () => {
     expect(html).toContain("Set 1");
     expect(html).toContain("Set 2");
     expect(html).toContain("Set 3");
-    expect(html).toContain("Confirm");
-    expect(html).toContain("Dispute");
-    expect(html).toContain("Dispute until Sep 1, 2026");
+    expect(html).toContain("Accepted");
+    expect(html).toContain("Correct result");
+    expect(html).toContain("Correct until Sep 1, 2026");
+    expect(html).not.toContain(">Confirm<");
+    expect(html).not.toContain(">Dispute<");
+    expect(html).not.toContain("Awaiting review");
   });
 
-  test("links dispute to a prefilled new match route", () => {
+  test("links correction to the prefilled revision route", () => {
     const html = renderToStaticMarkup(
       <MatchResultConfirmation
         groupId="demo"
         groupName="Downtown Rec"
-        canConfirm={true}
-        canDispute={true}
+        canCorrect={true}
         canRevise={false}
         match={match}
       />,
@@ -81,30 +82,45 @@ describe("MatchResultConfirmation", () => {
     );
   });
 
-  test("shows accepted status with the rolling dispute action", () => {
+  test("hides correction after the rolling window closes", () => {
     const html = renderToStaticMarkup(
       <MatchResultConfirmation
         groupId="demo"
         groupName="Downtown Rec"
-        canConfirm={false}
-        canDispute={true}
+        canCorrect={false}
         canRevise={false}
         match={{ ...match, status: "confirmed" }}
       />,
     );
 
     expect(html).toContain("Accepted");
-    expect(html).toContain("Dispute until Sep 1, 2026");
-    expect(html).toContain("Dispute");
+    expect(html).not.toContain("Correct until Sep 1, 2026");
+    expect(html).not.toContain("Correct result");
+  });
+
+  test("shows disputed status and revise link without unavailable review actions", () => {
+    const html = renderToStaticMarkup(
+      <MatchResultConfirmation
+        groupId="demo"
+        groupName="Downtown Rec"
+        canCorrect={false}
+        canRevise={true}
+        match={{ ...match, status: "disputed" }}
+      />,
+    );
+
+    expect(html).toContain("Disputed");
+    expect(html).toContain('href="/groups/demo/matches/match-1/revise"');
+    expect(html).toContain(">Correct result<");
     expect(html).not.toContain(">Confirm<");
   });
+
   test("renders compact completed and pending player rating changes without deviations", () => {
     const html = renderToStaticMarkup(
       <MatchResultConfirmation
         groupId="demo"
         groupName="Downtown Rec"
-        canConfirm={false}
-        canDispute={false}
+        canCorrect={false}
         canRevise={false}
         match={{
           ...match,
@@ -116,7 +132,6 @@ describe("MatchResultConfirmation", () => {
 
     expect(html).toContain("1488 → 1512");
     expect(html).toContain("1777 → …");
-    expect(html).toContain("whitespace-nowrap");
     expect(html).not.toContain("Previous");
     expect(html).not.toContain("New 1512");
     expect(html).not.toContain("±");

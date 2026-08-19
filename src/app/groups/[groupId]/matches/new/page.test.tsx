@@ -15,6 +15,7 @@ vi.mock("@/app/actions", () => ({
   createGuestPlayers: vi.fn(),
   retryRatingRebuild: vi.fn(),
   saveActiveMatchDraft: vi.fn(),
+  syncActiveMatchDraft: vi.fn(),
   submitMatch: vi.fn(),
 }));
 vi.mock("@/lib/navigation-read-models", () => ({

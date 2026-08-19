@@ -10,8 +10,8 @@ const match = {
   submittedByUserId: "alice",
   status: "confirmed",
   submittedAt: "2026-08-07T20:00:00.000Z",
-  reviewStartedAt: "2026-08-07T20:00:00.000Z",
-  disputeUntil: "2026-09-06T20:00:00.000Z",
+  correctionStartedAt: "2026-08-07T20:00:00.000Z",
+  correctionUntil: "2026-09-06T20:00:00.000Z",
   format: "doubles",
   teamA: [{ id: "alice", name: "Alice Tan", initials: "AT" }],
   teamB: [{ id: "bea", name: "Bea Rivera", initials: "BR" }],
@@ -22,8 +22,7 @@ const match = {
   ],
   winnerTeam: "B",
   ratingSummary: "2 rating changes",
-  canConfirm: false,
-  canDispute: false,
+  canCorrect: false,
   canRevise: true,
 } satisfies MatchView;
 

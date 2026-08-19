@@ -27,27 +27,26 @@ export type MatchView = {
   submittedByUserId: string;
   status: MatchStatus;
   submittedAt: string;
-  reviewStartedAt: string;
-  disputeUntil: string;
+  correctionStartedAt: string;
+  correctionUntil: string;
   format: MatchFormat;
   teamA: MatchPlayer[];
   teamB: MatchPlayer[];
   games: MatchGame[];
   winnerTeam: TeamCode;
   ratingSummary: string;
-  canConfirm: boolean;
-  canDispute: boolean;
+  canCorrect: boolean;
   canRevise: boolean;
 };
 
 export type MatchReadRows = {
   currentUserId: string;
+  currentUserAdminGroupIds: string[];
   groups: Array<{ id: string; name: string }>;
   matches: Array<{ id: string; group_id: string; active_revision_id: string; status: MatchStatus; submitted_at: string; review_started_at: string }>;
   revisions: Array<{ id: string; match_id: string; submitted_by_user_id: string; format: MatchFormat }>;
   participants: Array<{ revision_id: string; user_id: string; team: TeamCode; slot: number }>;
   games: Array<{ revision_id: string; game_number: number; team_a_score: number; team_b_score: number; winner_team: TeamCode }>;
-  confirmations: Array<{ revision_id: string; user_id: string; action: "confirmed" | "disputed"; created_at: string }>;
   ratingEvents: Array<{
     revision_id: string;
     user_id: string;
@@ -62,6 +61,7 @@ export type MatchReadRows = {
 
 export function buildMatchViews(rows: MatchReadRows): MatchView[] {
   const groups = new Map(rows.groups.map((group) => [group.id, group.name]));
+  const adminGroupIds = new Set(rows.currentUserAdminGroupIds);
   const revisions = new Map(rows.revisions.map((revision) => [revision.id, revision]));
   const profiles = new Map(rows.profiles.map((profile) => [profile.id, profile.display_name]));
 
@@ -108,16 +108,13 @@ export function buildMatchViews(rows: MatchReadRows): MatchView[] {
         } : {}),
       };
     };
-    const submitterTeam = revisionParticipants.find((participant) => participant.user_id === revision.submitted_by_user_id)?.team;
     const currentParticipant = revisionParticipants.find((participant) => participant.user_id === rows.currentUserId);
-    const alreadyReviewed = rows.confirmations.some(
-      (confirmation) => confirmation.revision_id === revision.id && confirmation.user_id === rows.currentUserId,
-    );
+    const canModerate = adminGroupIds.has(match.group_id);
     const ratingCount = rows.ratingEvents.filter((event) => event.revision_id === revision.id).length;
     const teamAWins = revisionGames.filter((game) => game.winnerTeam === "A").length;
     const teamBWins = revisionGames.length - teamAWins;
-    const disputeUntil = new Date(new Date(match.review_started_at).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
-    const disputeWindowOpen = Date.now() < new Date(disputeUntil).getTime();
+    const correctionUntil = new Date(new Date(match.review_started_at).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const correctionWindowOpen = Date.now() < new Date(correctionUntil).getTime();
 
     return [{
       id: match.id,
@@ -127,21 +124,20 @@ export function buildMatchViews(rows: MatchReadRows): MatchView[] {
       submittedByUserId: revision.submitted_by_user_id,
       status: match.status,
       submittedAt: match.submitted_at,
-      reviewStartedAt: match.review_started_at,
-      disputeUntil,
+      correctionStartedAt: match.review_started_at,
+      correctionUntil,
       format: revision.format,
       teamA: revisionParticipants.filter((participant) => participant.team === "A").map(toPlayer),
       teamB: revisionParticipants.filter((participant) => participant.team === "B").map(toPlayer),
       games: revisionGames,
       winnerTeam: teamAWins > teamBWins ? "A" : "B",
       ratingSummary: ratingCount ? `${ratingCount} rating ${ratingCount === 1 ? "change" : "changes"}` : "Ratings updating…",
-      canConfirm: match.status === "pending_confirmation"
-        && Boolean(currentParticipant && submitterTeam && currentParticipant.team !== submitterTeam)
-        && !alreadyReviewed,
-      canDispute: Boolean(currentParticipant)
-        && disputeWindowOpen
+      canCorrect: Boolean(currentParticipant || canModerate)
+        && correctionWindowOpen
         && (match.status === "pending_confirmation" || match.status === "confirmed"),
-      canRevise: Boolean(currentParticipant) && disputeWindowOpen && match.status === "disputed",
+      canRevise: Boolean(currentParticipant || canModerate)
+        && correctionWindowOpen
+        && match.status === "disputed",
     } satisfies MatchView];
   });
 }

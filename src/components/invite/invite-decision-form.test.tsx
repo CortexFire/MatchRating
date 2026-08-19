@@ -40,6 +40,19 @@ describe("InviteDecisionForm", () => {
     });
   });
 
+  test("accepting an invite without claimable profiles redirects home", async () => {
+    const redirects: string[] = [];
+    actionMocks.joinGroupByInvite.mockResolvedValue({ ok: true, data: { groupId: "group-1", claimableProfileCount: 0 } });
+
+    render(<InviteDecisionForm token="invite-token" summary={summary} mode="invite" onRedirect={(url) => redirects.push(url)} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+
+    await waitFor(() => {
+      expect(redirects).toEqual(["/home"]);
+    });
+  });
+
   test("decline redirects without redeeming the invite", () => {
     const redirects: string[] = [];
 

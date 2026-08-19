@@ -54,7 +54,7 @@ describe("maintenance route", () => {
     expect(mocks.createSupabaseServiceClient).not.toHaveBeenCalled();
   });
 
-  test("recovers rating jobs, cleans drafts, and auto-accepts expired reviews", async () => {
+  test("recovers rating jobs and cleans expired drafts without review maintenance", async () => {
     vi.useFakeTimers();
     const now = new Date("2026-08-13T10:00:00.000Z");
     vi.setSystemTime(now);
@@ -68,16 +68,7 @@ describe("maintenance route", () => {
     expect(mocks.draftLt.mock.calls).toEqual([["expires_at", now.toISOString()]]);
     expect(mocks.draftIs.mock.calls).toEqual([["submitted_match_id", null]]);
     expect(mocks.dispatchRecoverableRatingJobs).toHaveBeenCalledTimes(1);
-    expect(mocks.rpc).toHaveBeenCalledWith("auto_accept_expired_match_reviews");
-    await expect(response.json()).resolves.toEqual({ dispatched: 1, autoAccepted: 2 });
-  });
-
-  test("returns a failing response when automatic acceptance fails", async () => {
-    mocks.rpc.mockResolvedValue({ data: null, error: { message: "database unavailable" } });
-
-    const response = await GET(request());
-
-    expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toEqual({ message: "Maintenance failed" });
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({ dispatched: 1 });
   });
 });

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import clsx from "clsx";
 import { claimGuestProfiles, type ClaimableGuestProfile } from "@/app/actions";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import styles from "./claim-profile-form.module.css";
 
 function redirectTo(url: string) {
   window.location.assign(url);
@@ -35,15 +36,15 @@ export function ClaimProfileForm({
         return;
       }
 
-      onRedirect(`/groups/${result.data.groupId}`);
+      onRedirect("/home");
     });
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <h1 className="text-center text-xl font-bold leading-7 text-muted">Are any of these you?</h1>
-      <div className="rounded-lg border border-stroke bg-white p-2">
-        <div className="flex flex-col gap-2">
+    <div className={styles.form}>
+      <h1 className={styles.title}>Are any of these you?</h1>
+      <div className={styles.profileList}>
+        <div className={styles.profileItems}>
           {profiles.map((profile) => {
             const selected = selectedIds.includes(profile.id);
             return (
@@ -51,16 +52,17 @@ export function ClaimProfileForm({
                 key={profile.id}
                 type="button"
                 aria-label={`Select ${profile.name}`}
+                aria-pressed={selected}
                 onClick={() => toggle(profile.id)}
-                className={cn(
-                  "flex min-h-[58px] items-center justify-between gap-3 rounded-lg border px-3 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action",
-                  selected ? "border-victory-stroke bg-selection" : "border-stroke bg-surface",
+                className={clsx(
+                  styles.profileButton,
+                  selected ? styles.selectedProfileButton : styles.unselectedProfileButton,
                 )}
               >
-                <span className="text-sm font-bold text-ink">{profile.name}</span>
-                <span className="min-w-14 rounded-lg border border-stroke bg-surface px-3 py-2 text-center">
-                  <span className="block text-sm font-bold text-action">#{profile.rank}</span>
-                  <span className="block text-[10px] font-semibold text-muted">{profile.rating}</span>
+                <span className={styles.profileName}>{profile.name}</span>
+                <span className={styles.profileRating}>
+                  <span className={styles.rank}>#{profile.rank}</span>
+                  <span className={styles.rating}>{profile.rating}</span>
                 </span>
               </button>
             );
@@ -70,10 +72,10 @@ export function ClaimProfileForm({
       <Button type="button" disabled={isPending || selectedIds.length === 0} onClick={submitClaim}>
         {isPending ? "Claiming" : "That's me"}
       </Button>
-      <Button type="button" variant="secondary" onClick={() => onRedirect(`/groups/${groupId}`)}>
+      <Button type="button" variant="secondary" onClick={() => onRedirect("/home")}>
         Skip
       </Button>
-      {message ? <p className="text-sm text-muted">{message}</p> : null}
+      {message ? <p className={styles.message}>{message}</p> : null}
     </div>
   );
 }

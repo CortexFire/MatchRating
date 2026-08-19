@@ -3,7 +3,7 @@ import { DEMO_GROUP_ID, signInAsDemoPlayer } from "./demo-auth";
 
 test.setTimeout(60_000);
 
-test("records, corrects, confirms, and reads one stored match across two users", async ({ browser }) => {
+test("an owner submits off-team and an admin corrects the accepted result", async ({ browser }) => {
   const aliceContext = await browser.newContext();
   const beaContext = await browser.newContext();
   const alice = await aliceContext.newPage();
@@ -13,51 +13,50 @@ test("records, corrects, confirms, and reads one stored match across two users",
   await alice.goto(`/groups/${DEMO_GROUP_ID}/matches/new`);
   await alice.getByRole("button", { name: "singles" }).click();
   await alice.getByLabel("Team A empty player slot 1").click();
-  await alice.getByRole("button", { name: "Select Alice Tan" }).click();
+  await alice.getByRole("button", { name: "Select Cory Shah" }).click();
   await alice.getByRole("button", { name: "Select Team B: Empty slot 1" }).click();
-  await alice.getByRole("button", { name: "Select Bea Rivera" }).click();
+  await alice.getByRole("button", { name: "Select Dev Okafor" }).click();
   await alice.getByRole("button", { name: "Add players" }).click();
-  await alice.getByLabel("Set 1 Team A score").fill("21");
-  await alice.getByLabel("Set 1 Team B score").fill("18");
+  await alice.getByLabel("Set 1 Team A score").fill("22");
+  await alice.getByLabel("Set 1 Team B score").fill("20");
   await expect(alice.getByText("Draft saved.")).toBeVisible();
-
-  await signInAsDemoPlayer(bea, "bea@demo.matchrating.app");
-  await bea.goto(`/groups/${DEMO_GROUP_ID}/members`);
-  const aliceMemberRow = bea.getByRole("article").filter({ hasText: "Alice Tan" });
-  await expect(aliceMemberRow).toBeVisible();
-  const aliceRatingBefore = await aliceMemberRow.textContent();
 
   await alice.getByRole("button", { name: "Submit" }).click();
   await expect(
-    alice.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it."),
+    alice.getByText("Match saved. Ratings updated immediately. Participants and group admins have 30 days to correct it."),
   ).toBeVisible();
 
-  await expect.poll(
-    () => aliceMemberRow.textContent(),
-    { timeout: 30_000, message: "the open members list should refresh after ratings finish" },
-  ).not.toBe(aliceRatingBefore);
+  await alice.goto(`/groups/${DEMO_GROUP_ID}/history`);
+  const submittedMatch = alice
+    .locator(`a[href^="/groups/${DEMO_GROUP_ID}/matches/"]`)
+    .filter({ hasText: "Cory Shah vs Dev Okafor" })
+    .filter({ hasText: "22-20" })
+    .first();
+  await expect(submittedMatch).toBeVisible();
+  await expect(submittedMatch).toContainText("22-20");
+  const matchPath = await submittedMatch.getAttribute("href");
+  expect(matchPath).toMatch(new RegExp(`^/groups/${DEMO_GROUP_ID}/matches/[0-9a-f-]+$`));
 
-  await bea.goto("/matches/review");
-  await bea.getByRole("link", { name: /Alice def\. Bea/i }).first().click();
-  await expect(bea).toHaveURL(new RegExp(`/groups/${DEMO_GROUP_ID}/matches/[^/]+$`));
-  const detailUrl = bea.url();
-  const matchPath = new URL(detailUrl).pathname;
-  await bea.getByRole("link", { name: "Dispute" }).click();
-  await bea.getByLabel("Set 1 Team A score").fill("18");
-  await bea.getByLabel("Set 1 Team B score").fill("21");
+  await signInAsDemoPlayer(bea, "bea@demo.matchrating.app");
+  await bea.goto(matchPath!);
+  await expect(bea.getByText("Accepted")).toBeVisible();
+  await expect(bea.getByRole("button", { name: "Confirm" })).toHaveCount(0);
+  await bea.getByRole("link", { name: "Correct result" }).click();
+  await bea.getByLabel("Set 1 Team A score").fill("20");
+  await bea.getByLabel("Set 1 Team B score").fill("22");
   await bea.getByRole("button", { name: "Submit" }).click();
-  await expect(bea).toHaveURL(matchPath);
-
-  await alice.goto("/matches/review");
-  await alice.locator(`a:visible[href="${matchPath}"]`).click();
-  await alice.getByRole("button", { name: "Confirm" }).click();
-  await expect(alice.getByText("Accepted")).toBeVisible();
+  await expect(bea).toHaveURL(matchPath!);
+  await expect(bea.getByText("Accepted")).toBeVisible();
+  await expect(bea.getByRole("button", { name: "Confirm" })).toHaveCount(0);
 
   await alice.goto(`/groups/${DEMO_GROUP_ID}/history`);
-  const historyMatch = alice.locator(`a:visible[href="${matchPath}"]`);
+  const historyMatch = alice.locator(`a:visible[href="${matchPath}"]`).first();
   await expect(historyMatch).toBeVisible();
-  await expect(historyMatch.getByText("18-21")).toBeVisible();
+  await expect(historyMatch.getByText("20-22")).toBeVisible();
   await expect(historyMatch).not.toContainText(/Awaiting review|Disputed/);
+
+  await bea.goto("/matches/review");
+  await expect(bea).toHaveURL(/\/matches\/history$/);
 
   await aliceContext.close();
   await beaContext.close();
@@ -96,7 +95,7 @@ test("a participant resumes, edits, and submits another player's active draft fr
   await cory.getByLabel("Set 1 Team B score").fill("19");
   await cory.getByRole("button", { name: "Submit" }).click();
   await expect(
-    cory.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it."),
+    cory.getByText("Match saved. Ratings updated immediately. Participants and group admins have 30 days to correct it."),
   ).toBeVisible();
 
   await cory.goto("/home");
@@ -107,4 +106,42 @@ test("a participant resumes, edits, and submits another player's active draft fr
 
   await aliceContext.close();
   await coryContext.close();
+});
+
+test("synchronizes the newest partial draft before navigation and deletes it only when blank", async ({ page }) => {
+  await signInAsDemoPlayer(page, "alice@demo.matchrating.app");
+  await page.goto(`/groups/${DEMO_GROUP_ID}/matches/new`);
+  await page.getByRole("button", { name: "singles" }).click();
+  await page.getByLabel("Team A empty player slot 1").click();
+  await page.getByRole("button", { name: "Select Alice Tan" }).click();
+  await page.getByRole("button", { name: "Select Team B: Empty slot 1" }).click();
+  await page.getByRole("button", { name: "Select Cory Shah" }).click();
+  await page.getByRole("button", { name: "Add players" }).click();
+  await page.getByLabel("Set 1 Team A score").fill("21");
+  await page.getByLabel("Set 1 Team B score").fill("18");
+  await expect(page.getByText("Draft saved.")).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(
+    `/groups/${DEMO_GROUP_ID}/matches/new\\?draftId=[0-9a-f-]+$`,
+  ));
+  const draftPath = `${new URL(page.url()).pathname}${new URL(page.url()).search}`;
+
+  await page.getByLabel("Set 1 Team B score").fill("19");
+  await page.locator("nav:visible").getByRole("link", { name: "Home" }).click();
+  await expect(page).toHaveURL(/\/home$/);
+  await expect(page.getByText("Alice Tan vs Cory Shah")).toBeVisible();
+  await expect(page.getByText("21-19")).toBeVisible();
+
+  await page.locator(`a:visible[href="${draftPath}"]`).first().click();
+  await page.getByLabel("Set 1 Team A score").fill("");
+  await page.getByLabel("Set 1 Team B score").fill("");
+  await page.locator("nav:visible").getByRole("link", { name: "Home" }).click();
+  await expect(page.locator(`a:visible[href="${draftPath}"]`).first()).toBeVisible();
+  await expect(page.getByText("Score pending")).toBeVisible();
+
+  await page.locator(`a:visible[href="${draftPath}"]`).first().click();
+  await expect(page.getByRole("heading", { name: "Match Recording" })).toBeVisible();
+  await page.getByLabel("Remove Alice from Team A").click();
+  await page.getByLabel("Remove Cory from Team B").click();
+  await page.locator("nav:visible").getByRole("link", { name: "Home" }).click();
+  await expect(page.locator(`a:visible[href="${draftPath}"]`)).toHaveCount(0);
 });

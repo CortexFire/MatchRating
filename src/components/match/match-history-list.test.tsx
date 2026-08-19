@@ -8,17 +8,17 @@ import { MatchHistoryList } from "./match-history-list";
 const matches = [
   {
     id: "match-1", groupId: "group-1", groupName: "Club", revisionId: "revision-1", submittedByUserId: "alice",
-    status: "pending_confirmation" as const, submittedAt: "2026-08-07T20:00:00.000Z", reviewStartedAt: "2026-08-07T20:00:00.000Z", disputeUntil: "2026-09-06T20:00:00.000Z", format: "singles" as const,
+    status: "pending_confirmation" as const, submittedAt: "2026-08-07T20:00:00.000Z", correctionStartedAt: "2026-08-07T20:00:00.000Z", correctionUntil: "2026-09-06T20:00:00.000Z", format: "singles" as const,
     teamA: [{ id: "alice", name: "Alice Tan", initials: "AT" }], teamB: [{ id: "bea", name: "Bea Rivera", initials: "BR" }],
     games: [{ gameNumber: 1, teamAScore: 21, teamBScore: 18, winnerTeam: "A" as const }], winnerTeam: "A" as const,
-    ratingSummary: "2 rating changes", canConfirm: true, canDispute: true, canRevise: false,
+    ratingSummary: "2 rating changes", canCorrect: true, canRevise: false,
   },
   {
     id: "match-2", groupId: "group-1", groupName: "Weekend Club", revisionId: "revision-2", submittedByUserId: "cory",
-    status: "disputed" as const, submittedAt: "2026-08-06T20:00:00.000Z", reviewStartedAt: "2026-08-06T20:00:00.000Z", disputeUntil: "2026-09-05T20:00:00.000Z", format: "doubles" as const,
+    status: "disputed" as const, submittedAt: "2026-08-06T20:00:00.000Z", correctionStartedAt: "2026-08-06T20:00:00.000Z", correctionUntil: "2026-09-05T20:00:00.000Z", format: "doubles" as const,
     teamA: [{ id: "cory", name: "Cory Shah", initials: "CS" }, { id: "dev", name: "Dev Okafor", initials: "DO" }], teamB: [{ id: "eli", name: "Eli Stone", initials: "ES" }, { id: "faye", name: "Faye Kim", initials: "FK" }],
     games: [{ gameNumber: 1, teamAScore: 17, teamBScore: 21, winnerTeam: "B" as const }], winnerTeam: "B" as const,
-    ratingSummary: "Ratings updating…", canConfirm: false, canDispute: false, canRevise: false,
+    ratingSummary: "Ratings updating…", canCorrect: false, canRevise: false,
   },
 ];
 
@@ -28,14 +28,16 @@ describe("MatchHistoryList", () => {
     vi.stubGlobal("fetch", vi.fn());
   });
 
-  test("uses team matchups as history card headings and retains review-state pills", () => {
+  test("uses team matchups as history card headings and exposes only all and disputed filters", () => {
     render(<MatchHistoryList initialPage={{ matches, nextCursor: null }} />);
     expect(screen.getByText(/Alice Tan vs Bea Rivera/)).toBeTruthy();
     expect(screen.getByText("Cory Shah / Dev Okafor vs Eli Stone / Faye Kim")).toBeTruthy();
     expect(screen.queryByText("singles")).toBeNull();
     expect(screen.queryByText("doubles")).toBeNull();
     expect(screen.queryByText("Accepted")).toBeNull();
-    expect(screen.getByRole("link", { name: /Awaiting review/ })).toBeTruthy();
+    expect(screen.queryByText("Awaiting review")).toBeNull();
+    expect(screen.getByRole("button", { name: "All" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Disputed" })).toBeTruthy();
     expect(screen.getByRole("link", { name: /Disputed/ })).toBeTruthy();
   });
 
@@ -133,18 +135,18 @@ describe("MatchHistoryList", () => {
 
   test("ignores a stale filter response that finishes after the current request", async () => {
     let resolveDisputed!: (response: Response) => void;
-    let resolvePending!: (response: Response) => void;
+    let resolveAll!: (response: Response) => void;
     vi.mocked(fetch)
       .mockReturnValueOnce(new Promise((resolve) => { resolveDisputed = resolve; }))
-      .mockReturnValueOnce(new Promise((resolve) => { resolvePending = resolve; }));
+      .mockReturnValueOnce(new Promise((resolve) => { resolveAll = resolve; }));
     render(<MatchHistoryList initialPage={{ matches, nextCursor: null }} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Disputed" }));
     await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole("button", { name: "Awaiting review" }));
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
     await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2));
 
-    resolvePending(new Response(JSON.stringify({ matches: [matches[0]], nextCursor: null })));
+    resolveAll(new Response(JSON.stringify({ matches: [matches[0]], nextCursor: null })));
     await waitFor(() => expect(screen.queryByText("Cory Shah / Dev Okafor vs Eli Stone / Faye Kim")).toBeNull());
 
     resolveDisputed(new Response(JSON.stringify({ matches: [matches[1]], nextCursor: null })));

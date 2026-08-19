@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { completeOnboardingProfile } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import styles from "./onboarding-form.module.css";
 
 function redirectTo(url: string) {
   window.location.assign(url);
@@ -30,35 +31,35 @@ export function OnboardingForm({
         return;
       }
 
-      onRedirect(inviteToken ? `/join/${inviteToken}` : "/groups/new");
+      onRedirect(inviteToken ? `/join/${inviteToken}` : "/home");
     });
   }
 
   return (
-    <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-      <h1 className="text-center text-2xl font-bold leading-8 text-muted">Tell us about yourself</h1>
-      <label className="flex flex-col gap-2 rounded-lg border border-stroke bg-white px-3 py-2 text-sm font-semibold text-muted">
+    <form className={styles.form} onSubmit={handleSubmit}>
+      <h1 className={styles.title}>Tell us about yourself</h1>
+      <label className={styles.field}>
         First name
         <Input
-          className="h-8 border-0 bg-transparent px-0 text-xl text-ink focus:ring-0"
+          className={styles.textInput}
           value={firstName}
           onChange={(event) => setFirstName(event.target.value)}
           required
         />
       </label>
-      <label className="flex flex-col gap-2 rounded-lg border border-stroke bg-white px-3 py-2 text-sm font-semibold text-muted">
+      <label className={styles.field}>
         Last name
         <Input
-          className="h-8 border-0 bg-transparent px-0 text-xl text-ink focus:ring-0"
+          className={styles.textInput}
           value={lastName}
           onChange={(event) => setLastName(event.target.value)}
           required
         />
       </label>
-      <Button type="submit" disabled={isPending} className="mt-2 min-h-[52px] text-base">
+      <Button type="submit" disabled={isPending} className={styles.submitButton}>
         {isPending ? "Saving" : "Next"}
       </Button>
-      {message ? <p className="text-sm text-muted">{message}</p> : null}
+      {message ? <p className={styles.message}>{message}</p> : null}
     </form>
   );
 }

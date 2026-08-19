@@ -23,10 +23,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.getGroupMatchDetail.mockResolvedValue({
     id: "match-1", groupId: "group-1", groupName: "Club", revisionId: "revision-1", submittedByUserId: "alice",
-    status: "pending_confirmation", submittedAt: "2026-08-07T20:00:00.000Z", reviewStartedAt: "2026-08-07T20:00:00.000Z", disputeUntil: "2026-09-06T20:00:00.000Z", format: "singles",
+    status: "pending_confirmation", submittedAt: "2026-08-07T20:00:00.000Z", correctionStartedAt: "2026-08-07T20:00:00.000Z", correctionUntil: "2026-09-06T20:00:00.000Z", format: "singles",
     teamA: [{ id: "alice", name: "Alice Tan", initials: "AT" }], teamB: [{ id: "bea", name: "Bea Rivera", initials: "BR" }],
     games: [{ gameNumber: 1, teamAScore: 21, teamBScore: 18, winnerTeam: "B" }], winnerTeam: "B",
-    ratingSummary: "2 rating changes", canConfirm: true, canDispute: true, canRevise: false,
+    ratingSummary: "2 rating changes", canCorrect: true, canRevise: false,
   });
   mocks.listGroupPlayers.mockResolvedValue([
     { id: "alice", name: "Alice Tan", initials: "AT", role: "Member", rating: 1500, rd: 350, rank: 1, gamesPlayed: 1, status: "Active" },
@@ -65,8 +65,7 @@ test("allows an accepted current participant to open the correction flow", async
   mocks.getGroupMatchDetail.mockResolvedValue({
     ...(await mocks.getGroupMatchDetail()),
     status: "confirmed",
-    canConfirm: false,
-    canDispute: true,
+    canCorrect: true,
   });
 
   const html = renderToStaticMarkup(await ReviseMatchContent({

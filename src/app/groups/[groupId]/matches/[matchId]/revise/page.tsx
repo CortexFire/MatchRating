@@ -35,8 +35,8 @@ export async function ReviseMatchContent({ params }: ReviseMatchPageProps) {
   const match = await getGroupMatchDetail(groupId, matchId);
   if (!match) notFound();
 
-  const mode = (match.status === "pending_confirmation" || match.status === "confirmed") && match.canDispute
-    ? "dispute"
+  const mode = (match.status === "pending_confirmation" || match.status === "confirmed") && match.canCorrect
+    ? "correct"
     : match.status === "disputed" && match.canRevise
       ? "revise"
       : null;

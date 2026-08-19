@@ -1,8 +1,11 @@
 "use client";
 
+import clsx from "clsx";
 import { ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useNavigationSync } from "@/components/app/navigation-sync";
 import { type AppGroup } from "@/lib/app-data";
+import styles from "./group-switcher.module.css";
 
 export type GroupOption = Pick<AppGroup, "id" | "name">;
 
@@ -16,23 +19,30 @@ export function GroupSwitcher({
   disabled?: boolean;
 }) {
   const router = useRouter();
+  const syncBeforeNavigation = useNavigationSync();
   const currentGroup = groups.find((group) => group.id === currentGroupId);
 
-  function switchGroup(nextGroupId: string) {
+  async function switchGroup(nextGroupId: string) {
     if (nextGroupId === currentGroupId) {
       return;
     }
 
-    if (window.confirm("Switch groups? Your current match setup will be discarded.")) {
+    if (!window.confirm("Switch groups? Your current draft will be saved before switching.")) return;
+
+    try {
+      await syncBeforeNavigation();
+    } catch {
+      // Leaving after a failed sync is the selected product behavior.
+    } finally {
       router.push(`/groups/${nextGroupId}/matches/new`);
     }
   }
 
   return (
-    <div className="relative inline-flex min-h-11 items-center rounded-full bg-victory text-sm font-bold text-ink">
+    <div className={styles.container}>
       <select
         aria-label={`Current group ${currentGroup?.name ?? "Group"}`}
-        className={`min-h-11 appearance-none bg-transparent py-2 pl-4 ${groups.length > 1 ? "pr-10" : "pr-4"} focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action disabled:cursor-default`}
+        className={clsx(styles.select, groups.length > 1 ? styles.selectWithIndicator : styles.selectWithoutIndicator)}
         value={currentGroupId}
         disabled={disabled || groups.length <= 1}
         onChange={(event) => switchGroup(event.target.value)}
@@ -41,7 +51,7 @@ export function GroupSwitcher({
           <option key={group.id} value={group.id}>{group.name}</option>
         ))}
       </select>
-      {groups.length > 1 ? <ChevronDown aria-hidden className="pointer-events-none absolute right-4 size-4 stroke-[3]" /> : null}
+      {groups.length > 1 ? <ChevronDown aria-hidden className={styles.indicator} /> : null}
     </div>
   );
 }
