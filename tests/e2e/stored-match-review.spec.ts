@@ -108,3 +108,41 @@ test("a participant resumes, edits, and submits another player's active draft fr
   await aliceContext.close();
   await coryContext.close();
 });
+
+test("synchronizes the newest partial draft before navigation and deletes it only when blank", async ({ page }) => {
+  await signInAsDemoPlayer(page, "alice@demo.matchrating.app");
+  await page.goto(`/groups/${DEMO_GROUP_ID}/matches/new`);
+  await page.getByRole("button", { name: "singles" }).click();
+  await page.getByLabel("Team A empty player slot 1").click();
+  await page.getByRole("button", { name: "Select Alice Tan" }).click();
+  await page.getByRole("button", { name: "Select Team B: Empty slot 1" }).click();
+  await page.getByRole("button", { name: "Select Cory Shah" }).click();
+  await page.getByRole("button", { name: "Add players" }).click();
+  await page.getByLabel("Set 1 Team A score").fill("21");
+  await page.getByLabel("Set 1 Team B score").fill("18");
+  await expect(page.getByText("Draft saved.")).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(
+    `/groups/${DEMO_GROUP_ID}/matches/new\\?draftId=[0-9a-f-]+$`,
+  ));
+  const draftPath = `${new URL(page.url()).pathname}${new URL(page.url()).search}`;
+
+  await page.getByLabel("Set 1 Team B score").fill("19");
+  await page.locator("nav:visible").getByRole("link", { name: "Home" }).click();
+  await expect(page).toHaveURL(/\/home$/);
+  await expect(page.getByText("Alice Tan vs Cory Shah")).toBeVisible();
+  await expect(page.getByText("21-19")).toBeVisible();
+
+  await page.locator(`a:visible[href="${draftPath}"]`).first().click();
+  await page.getByLabel("Set 1 Team A score").fill("");
+  await page.getByLabel("Set 1 Team B score").fill("");
+  await page.locator("nav:visible").getByRole("link", { name: "Home" }).click();
+  await expect(page.locator(`a:visible[href="${draftPath}"]`).first()).toBeVisible();
+  await expect(page.getByText("Score pending")).toBeVisible();
+
+  await page.locator(`a:visible[href="${draftPath}"]`).first().click();
+  await expect(page.getByRole("heading", { name: "Match Recording" })).toBeVisible();
+  await page.getByLabel("Remove Alice from Team A").click();
+  await page.getByLabel("Remove Cory from Team B").click();
+  await page.locator("nav:visible").getByRole("link", { name: "Home" }).click();
+  await expect(page.locator(`a:visible[href="${draftPath}"]`)).toHaveCount(0);
+});

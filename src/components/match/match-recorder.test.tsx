@@ -5,6 +5,7 @@ import { Activity } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { matchRecorderPlayers } from "./match-recorder.test-fixtures";
 import { MobileShell } from "../app/mobile-shell";
+import { NavigationSyncProvider } from "../app/navigation-sync";
 import { type AppPlayer } from "@/lib/app-data";
 import { MatchRecorder } from "./match-recorder";
 
@@ -72,7 +73,7 @@ describe("MatchRecorder", () => {
     expect(screen.getByLabelText("Current group Wednesday Club Ladder")).toBeTruthy();
   });
 
-  test("switches groups from Player Select through the clean target-group route", () => {
+  test("switches groups from Player Select through the clean target-group route", async () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
 
     render(
@@ -94,9 +95,11 @@ describe("MatchRecorder", () => {
     expect(select.value).toBe("wednesday");
     expect(screen.getByRole("option", { name: "Downtown Rec" })).toBeTruthy();
 
-    fireEvent.change(select, { target: { value: "downtown" } });
+    await act(async () => {
+      fireEvent.change(select, { target: { value: "downtown" } });
+    });
 
-    expect(confirm).toHaveBeenCalledWith("Switch groups? Your current match setup will be discarded.");
+    expect(confirm).toHaveBeenCalledWith("Switch groups? Your current draft will be saved before switching.");
     expect(navigationMocks.push).toHaveBeenCalledWith("/groups/downtown/matches/new");
   });
 
@@ -962,7 +965,7 @@ describe("MatchRecorder", () => {
     }));
   });
 
-  test("pauses autosave until every score is entered", async () => {
+  test("autosaves a one-sided score instead of retaining the previous complete value", async () => {
     vi.useFakeTimers();
     const saveActiveMatchDraft = vi.fn(async () => ({
       ok: true as const,
@@ -987,7 +990,14 @@ describe("MatchRecorder", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(450);
     });
-    expect(saveActiveMatchDraft).not.toHaveBeenCalled();
+    expect(saveActiveMatchDraft).toHaveBeenCalledWith({
+      groupId: "11111111-1111-4111-8111-111111111111",
+      draftId: undefined,
+      format: "singles",
+      teamAUserIds: ["alice"],
+      teamBUserIds: ["bea"],
+      games: [{ teamAScore: 21, teamBScore: null, winnerTeam: "A" }],
+    });
 
     fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "20" } });
     await act(async () => {
@@ -995,12 +1005,143 @@ describe("MatchRecorder", () => {
     });
     expect(saveActiveMatchDraft).toHaveBeenCalledWith({
       groupId: "11111111-1111-4111-8111-111111111111",
-      draftId: undefined,
+      draftId: "draft-1",
       format: "singles",
       teamAUserIds: ["alice"],
       teamBUserIds: ["bea"],
       games: [{ teamAScore: 21, teamBScore: 20, winnerTeam: "A" }],
     });
+  });
+
+  test("deletes a draft after all players and scores are cleared", async () => {
+    vi.useFakeTimers();
+    window.history.replaceState(
+      null,
+      "",
+      "/groups/11111111-1111-4111-8111-111111111111/matches/new?draftId=33333333-3333-4333-8333-333333333333",
+    );
+    const replaceState = vi.spyOn(window.history, "replaceState");
+    const saveActiveMatchDraft = vi.fn(async () => ({
+      ok: true as const,
+      data: { draftId: null, outcome: "deleted" as const },
+    }));
+
+    render(
+      <MatchRecorder
+        draftId="33333333-3333-4333-8333-333333333333"
+        groupId="11111111-1111-4111-8111-111111111111"
+        players={matchRecorderPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 18 }],
+        }}
+        saveActiveMatchDraft={saveActiveMatchDraft}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("Remove Alice from Team A"));
+    fireEvent.click(screen.getByLabelText("Remove Bea from Team B"));
+    fireEvent.change(screen.getByLabelText("Set 1 Team A score"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(450);
+    });
+
+    expect(saveActiveMatchDraft).toHaveBeenLastCalledWith({
+      draftId: "33333333-3333-4333-8333-333333333333",
+      groupId: "11111111-1111-4111-8111-111111111111",
+      format: "singles",
+      teamAUserIds: [],
+      teamBUserIds: [],
+      games: [{ teamAScore: null, teamBScore: null, winnerTeam: "A" }],
+    });
+    expect(replaceState).toHaveBeenCalledWith(
+      null,
+      "",
+      "/groups/11111111-1111-4111-8111-111111111111/matches/new",
+    );
+  });
+
+  test("flushes the newest draft snapshot before in-app navigation", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const saveActiveMatchDraft = vi.fn(async () => ({
+      ok: true as const,
+      data: { draftId: "draft-1", outcome: "saved" as const },
+    }));
+
+    render(
+      <NavigationSyncProvider>
+        <MatchRecorder
+          groupId="11111111-1111-4111-8111-111111111111"
+          groupName="Wednesday Club"
+          groupOptions={[
+            { id: "11111111-1111-4111-8111-111111111111", name: "Wednesday Club" },
+            { id: "22222222-2222-4222-8222-222222222222", name: "Downtown Rec" },
+          ]}
+          players={matchRecorderPlayers}
+          initialMatch={{
+            format: "singles",
+            teamAUserIds: ["alice"],
+            teamBUserIds: ["bea"],
+            games: [{ teamAScore: 21, teamBScore: 18 }],
+          }}
+          saveActiveMatchDraft={saveActiveMatchDraft}
+        />
+      </NavigationSyncProvider>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "19" } });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Current group Wednesday Club"), {
+        target: { value: "22222222-2222-4222-8222-222222222222" },
+      });
+      await Promise.resolve();
+    });
+
+    expect(saveActiveMatchDraft).toHaveBeenCalledTimes(1);
+    expect(saveActiveMatchDraft).toHaveBeenCalledWith(expect.objectContaining({
+      games: [{ teamAScore: 21, teamBScore: 19, winnerTeam: "A" }],
+    }));
+    expect(navigationMocks.push).toHaveBeenCalledWith(
+      "/groups/22222222-2222-4222-8222-222222222222/matches/new",
+    );
+  });
+
+  test("attempts the latest draft sync on page hide without installing an unload warning", async () => {
+    vi.useFakeTimers();
+    const saveActiveMatchDraft = vi.fn(async () => ({
+      ok: true as const,
+      data: { draftId: "draft-1", outcome: "saved" as const },
+    }));
+
+    render(
+      <MatchRecorder
+        draftId="draft-1"
+        groupId="11111111-1111-4111-8111-111111111111"
+        players={matchRecorderPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 18 }],
+        }}
+        saveActiveMatchDraft={saveActiveMatchDraft}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "19" } });
+    await act(async () => {
+      window.dispatchEvent(new Event("pagehide"));
+      await Promise.resolve();
+    });
+
+    expect(saveActiveMatchDraft).toHaveBeenCalledWith(expect.objectContaining({
+      games: [{ teamAScore: 21, teamBScore: 19, winnerTeam: "A" }],
+    }));
+    expect(window.onbeforeunload).toBeNull();
   });
 
   test("keeps Submit disabled until a singles roster and every visible set are valid", () => {
@@ -1244,6 +1385,11 @@ describe("MatchRecorder", () => {
       fireEvent.click(screen.getByRole("button", { name: "Submit" }));
     });
     const firstCommandId = submitMatchAction.mock.calls[0][0].commandId;
+    expect(replaceState).toHaveBeenCalledWith(
+      null,
+      "",
+      "/groups/11111111-1111-4111-8111-111111111111/matches/new",
+    );
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3_000);
@@ -1459,6 +1605,11 @@ describe("MatchRecorder", () => {
   });
 
   test("preserves one client command ID across a submission retry", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/groups/test-group/matches/new?draftId=draft-1",
+    );
     const submitMatchAction = vi.fn()
       .mockResolvedValueOnce({ ok: false as const, message: "Temporary network failure" })
       .mockResolvedValueOnce({
@@ -1468,6 +1619,8 @@ describe("MatchRecorder", () => {
 
     render(
       <MatchRecorder
+        draftId="draft-1"
+        groupId="test-group"
         players={matchRecorderPlayers}
         initialMatch={{ format: "singles", teamAUserIds: ["alice"], teamBUserIds: ["bea"], games: [{ teamAScore: 21, teamBScore: 18 }] }}
         submitMatchAction={submitMatchAction}
@@ -1478,11 +1631,13 @@ describe("MatchRecorder", () => {
 
     await screen.findByText("Temporary network failure");
     const firstCommandId = submitMatchAction.mock.calls[0][0].commandId;
+    expect(window.location.search).toBe("?draftId=draft-1");
 
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
 
     await waitFor(() => expect(submitMatchAction).toHaveBeenCalledTimes(2));
     expect(submitMatchAction.mock.calls[1][0].commandId).toBe(firstCommandId);
+    expect(window.location.search).toBe("");
     expect(screen.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.")).toBeTruthy();
   });
 

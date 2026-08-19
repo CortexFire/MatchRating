@@ -1,0 +1,60 @@
+.wideShell {
+  max-width: 30.5rem;
+}
+
+.header {
+  position: relative;
+  display: flex;
+  min-height: 3.5rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.backLink {
+  position: absolute;
+  left: 0;
+  display: inline-flex;
+  width: 2.75rem;
+  height: 2.75rem;
+  align-items: center;
+  justify-content: flex-start;
+  color: var(--ink);
+  transition: color 150ms ease;
+}
+
+.backLink:hover {
+  color: var(--action);
+}
+
+.backLink:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}
+
+.backIcon {
+  width: 2rem;
+  height: 2rem;
+  stroke-width: 2.5;
+}
+
+.title {
+  color: var(--ink);
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 2rem;
+  text-align: center;
+}
+
+.infoCard,
+.emptyState {
+  border: 1px solid var(--stroke);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  padding: 1rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.infoCard {
+  line-height: 1.25rem;
+}

@@ -1,0 +1,101 @@
+.viewport {
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--app-bg);
+  color: var(--ink);
+}
+
+.shell {
+  display: flex;
+  width: 100%;
+  max-width: 26.875rem;
+  height: 100dvh;
+  margin-inline: auto;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--app-bg);
+}
+
+.scrollArea {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.content {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 2rem 1rem 1.5rem;
+}
+
+.navigation {
+  display: grid;
+  height: 4.875rem;
+  flex-shrink: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  border-top: 1px solid var(--stroke);
+  background: color-mix(in srgb, var(--surface) 95%, transparent);
+  padding-inline: 1rem;
+  backdrop-filter: blur(8px);
+}
+
+.navigationLink {
+  display: inline-flex;
+  width: 3rem;
+  height: 3rem;
+  margin-inline: auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  color: var(--muted);
+  transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease;
+}
+
+.navigationLink:hover,
+.navigationLinkActive {
+  color: var(--action);
+}
+
+.navigationLink:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}
+
+.primaryNavigationLink {
+  width: 3.5rem;
+  height: 3.5rem;
+  border: 4px solid var(--muted);
+  border-radius: 9999px;
+  background: var(--surface);
+}
+
+.primaryNavigationLink:hover {
+  border-color: var(--action);
+}
+
+.primaryNavigationLinkActive {
+  border-color: var(--action);
+  background: var(--selection);
+  color: var(--action);
+}
+
+.navigationIcon {
+  stroke-width: 2.7;
+}
+
+.standardNavigationIcon {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+.primaryNavigationIcon {
+  width: 2rem;
+  height: 2rem;
+}
+
+.navigationIconActive {
+  fill: var(--selection);
+}

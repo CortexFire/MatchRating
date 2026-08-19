@@ -1,6 +1,7 @@
 import { createSupabaseServerClient, createSupabaseServiceClient, requireUserId } from "@/lib/supabase/server";
 import { cache } from "react";
-import { type MatchFormat, type MatchGameInput } from "@/lib/matches/validation";
+import { type MatchFormat } from "@/lib/matches/validation";
+import { type ActiveMatchDraftGameInput } from "@/lib/matches/drafts";
 import {
   buildMatchViews,
   type MatchReadRows,
@@ -45,7 +46,7 @@ export type AppActiveMatchDraftDetail = AppActiveMatchDraft & {
     format: MatchFormat;
     teamAUserIds: string[];
     teamBUserIds: string[];
-    games: MatchGameInput[];
+    games: ActiveMatchDraftGameInput[];
   };
 };
 

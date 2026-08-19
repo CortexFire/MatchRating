@@ -30,6 +30,7 @@ function draftService({
   draft,
   activeMemberIds,
   updatedDraftId = draft.id,
+  deletedDraftId = draft.id,
 }: {
   draft: {
     id: string;
@@ -39,9 +40,11 @@ function draftService({
     team_b_user_ids: string[];
     expires_at: string;
     submitted_match_id: string | null;
+    updated_at?: string;
   };
   activeMemberIds: string[];
   updatedDraftId?: string | null;
+  deletedDraftId?: string | null;
 }) {
   const update = vi.fn();
   const deleteDraft = vi.fn();
@@ -68,6 +71,7 @@ function draftService({
     }
 
     let isUpdate = false;
+    let isDelete = false;
     const query = {
       select: vi.fn(() => query),
       eq: vi.fn((column: string, value: unknown) => {
@@ -86,15 +90,24 @@ function draftService({
         return query;
       }),
       delete: vi.fn(() => {
+        isDelete = true;
         deleteDraft();
         return query;
       }),
       maybeSingle: vi.fn(async () => ({
-        data: isUpdate ? (updatedDraftId ? { id: updatedDraftId } : null) : draft,
+        data: isUpdate
+          ? (updatedDraftId ? { id: updatedDraftId } : null)
+          : isDelete
+            ? (deletedDraftId ? { id: deletedDraftId } : null)
+            : draft,
         error: null,
       })),
       single: vi.fn(async () => ({
-        data: isUpdate ? (updatedDraftId ? { id: updatedDraftId } : null) : draft,
+        data: isUpdate
+          ? (updatedDraftId ? { id: updatedDraftId } : null)
+          : isDelete
+            ? (deletedDraftId ? { id: deletedDraftId } : null)
+            : draft,
         error: null,
       })),
       then: (resolve: (value: { data: null; error: null }) => unknown) => resolve({ data: null, error: null }),
@@ -265,6 +278,190 @@ describe("transactional match actions", () => {
       data: { draftId: "33333333-3333-4333-8333-333333333333" },
     });
     expect(update).toHaveBeenCalledWith(expect.not.objectContaining({ created_by_user_id: expect.anything() }));
+  });
+
+  test("does not create a draft when a fresh recorder has no players or scores", async () => {
+    const actor = "11111111-1111-4111-8111-111111111111";
+    const groupId = "66666666-6666-4666-8666-666666666666";
+    const { service } = draftService({
+      draft: {
+        id: "33333333-3333-4333-8333-333333333333",
+        group_id: groupId,
+        created_by_user_id: actor,
+        team_a_user_ids: [],
+        team_b_user_ids: [],
+        expires_at: "2099-01-01T00:00:00.000Z",
+        submitted_match_id: null,
+      },
+      activeMemberIds: [actor],
+    });
+    supabaseMocks.createSupabaseServiceClient.mockReturnValue(service);
+
+    const result = await actions.syncActiveMatchDraft({
+      groupId,
+      format: "singles",
+      teamAUserIds: [],
+      teamBUserIds: [],
+      games: [{ teamAScore: null, teamBScore: null, winnerTeam: "A" }],
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      data: { draftId: null, outcome: "unchanged" },
+    });
+  });
+
+  test("updates a partial draft with nullable scores", async () => {
+    const actor = "11111111-1111-4111-8111-111111111111";
+    const groupId = "66666666-6666-4666-8666-666666666666";
+    const draftId = "33333333-3333-4333-8333-333333333333";
+    const { service, update } = draftService({
+      draft: {
+        id: draftId,
+        group_id: groupId,
+        created_by_user_id: actor,
+        team_a_user_ids: [actor],
+        team_b_user_ids: [],
+        expires_at: "2099-01-01T00:00:00.000Z",
+        submitted_match_id: null,
+      },
+      activeMemberIds: [actor],
+    });
+    supabaseMocks.createSupabaseServiceClient.mockReturnValue(service);
+
+    const result = await actions.syncActiveMatchDraft({
+      draftId,
+      groupId,
+      format: "doubles",
+      teamAUserIds: [actor],
+      teamBUserIds: [],
+      games: [{ teamAScore: 21, teamBScore: null, winnerTeam: "A" }],
+    });
+
+    expect(result).toEqual({ ok: true, data: { draftId, outcome: "saved" } });
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      team_a_user_ids: [actor],
+      team_b_user_ids: [],
+      games: [{ teamAScore: 21, teamBScore: null, winnerTeam: "A" }],
+    }));
+    expect(nextCacheMocks.revalidatePath).toHaveBeenCalledWith("/home");
+    expect(nextCacheMocks.revalidatePath).toHaveBeenCalledWith(`/groups/${groupId}`);
+  });
+
+  test.each([
+    {
+      name: "roster-only",
+      teamAUserIds: ["11111111-1111-4111-8111-111111111111"],
+      games: [{ teamAScore: null, teamBScore: null, winnerTeam: "A" as const }],
+    },
+    {
+      name: "score-only",
+      teamAUserIds: [],
+      games: [{ teamAScore: 21, teamBScore: null, winnerTeam: "A" as const }],
+    },
+  ])("preserves a $name draft", async ({ teamAUserIds, games }) => {
+    const actor = "11111111-1111-4111-8111-111111111111";
+    const groupId = "66666666-6666-4666-8666-666666666666";
+    const draftId = "33333333-3333-4333-8333-333333333333";
+    const { service, update } = draftService({
+      draft: {
+        id: draftId,
+        group_id: groupId,
+        created_by_user_id: actor,
+        team_a_user_ids: [actor],
+        team_b_user_ids: [],
+        expires_at: "2099-01-01T00:00:00.000Z",
+        submitted_match_id: null,
+      },
+      activeMemberIds: [actor],
+    });
+    supabaseMocks.createSupabaseServiceClient.mockReturnValue(service);
+
+    const result = await actions.syncActiveMatchDraft({
+      draftId,
+      groupId,
+      format: "singles",
+      teamAUserIds,
+      teamBUserIds: [],
+      games,
+    });
+
+    expect(result).toEqual({ ok: true, data: { draftId, outcome: "saved" } });
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      team_a_user_ids: teamAUserIds,
+      games,
+    }));
+  });
+
+  test("deletes a completely blank existing draft at its observed update version", async () => {
+    const actor = "11111111-1111-4111-8111-111111111111";
+    const groupId = "66666666-6666-4666-8666-666666666666";
+    const draftId = "33333333-3333-4333-8333-333333333333";
+    const updatedAt = "2026-08-19T12:00:00.000Z";
+    const { service, deleteDraft, draftEq } = draftService({
+      draft: {
+        id: draftId,
+        group_id: groupId,
+        created_by_user_id: actor,
+        team_a_user_ids: [actor],
+        team_b_user_ids: [],
+        expires_at: "2099-01-01T00:00:00.000Z",
+        submitted_match_id: null,
+        updated_at: updatedAt,
+      },
+      activeMemberIds: [actor],
+    });
+    supabaseMocks.createSupabaseServiceClient.mockReturnValue(service);
+
+    const result = await actions.syncActiveMatchDraft({
+      draftId,
+      groupId,
+      format: "singles",
+      teamAUserIds: [],
+      teamBUserIds: [],
+      games: [{ teamAScore: null, teamBScore: null, winnerTeam: "B" }],
+    });
+
+    expect(result).toEqual({ ok: true, data: { draftId: null, outcome: "deleted" } });
+    expect(deleteDraft).toHaveBeenCalledOnce();
+    expect(draftEq).toHaveBeenCalledWith("updated_at", updatedAt);
+    expect(nextCacheMocks.revalidatePath).toHaveBeenCalledWith("/home");
+    expect(nextCacheMocks.revalidatePath).toHaveBeenCalledWith(`/groups/${groupId}`);
+  });
+
+  test("rejects blank deletion when a newer draft version wins the race", async () => {
+    const actor = "11111111-1111-4111-8111-111111111111";
+    const groupId = "66666666-6666-4666-8666-666666666666";
+    const draftId = "33333333-3333-4333-8333-333333333333";
+    const { service } = draftService({
+      draft: {
+        id: draftId,
+        group_id: groupId,
+        created_by_user_id: actor,
+        team_a_user_ids: [actor],
+        team_b_user_ids: [],
+        expires_at: "2099-01-01T00:00:00.000Z",
+        submitted_match_id: null,
+        updated_at: "2026-08-19T12:00:00.000Z",
+      },
+      activeMemberIds: [actor],
+      deletedDraftId: null,
+    });
+    supabaseMocks.createSupabaseServiceClient.mockReturnValue(service);
+
+    const result = await actions.syncActiveMatchDraft({
+      draftId,
+      groupId,
+      format: "singles",
+      teamAUserIds: [],
+      teamBUserIds: [],
+      games: [{ teamAScore: null, teamBScore: null, winnerTeam: "A" }],
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      message: "This active match changed before it could be deleted.",
+    });
   });
 
   test("preserves the selected winner in an active draft", async () => {

@@ -1,12 +1,18 @@
 import { z } from "zod";
-import { type MatchFormat, type MatchGameInput } from "./validation";
+import { type MatchFormat, type Team } from "./validation";
+
+export type ActiveMatchDraftGameInput = {
+  teamAScore: number | null;
+  teamBScore: number | null;
+  winnerTeam: Team;
+};
 
 export type ActiveMatchDraftInput = {
   groupId: string;
   format: MatchFormat;
   teamAUserIds: string[];
   teamBUserIds: string[];
-  games: MatchGameInput[];
+  games: ActiveMatchDraftGameInput[];
 };
 
 const draftSchema = z.object({
@@ -17,8 +23,8 @@ const draftSchema = z.object({
   games: z
     .array(
       z.object({
-        teamAScore: z.coerce.number().int().min(0).max(99),
-        teamBScore: z.coerce.number().int().min(0).max(99),
+        teamAScore: z.number().int().min(0).max(99).nullable(),
+        teamBScore: z.number().int().min(0).max(99).nullable(),
         winnerTeam: z.enum(["A", "B"]),
       }),
     )
@@ -33,8 +39,8 @@ export function validateActiveMatchDraft(
   const parsed = draftSchema.parse(input);
   const teamSize = parsed.format === "singles" ? 1 : 2;
 
-  if (parsed.teamAUserIds.length !== teamSize || parsed.teamBUserIds.length !== teamSize) {
-    throw new Error(`${parsed.format} drafts require ${teamSize} player${teamSize === 1 ? "" : "s"} per team.`);
+  if (parsed.teamAUserIds.length > teamSize || parsed.teamBUserIds.length > teamSize) {
+    throw new Error(`${parsed.format} drafts allow at most ${teamSize} player${teamSize === 1 ? "" : "s"} per team.`);
   }
 
   const allPlayers = [...parsed.teamAUserIds, ...parsed.teamBUserIds];
@@ -51,6 +57,14 @@ export function validateActiveMatchDraft(
   }
 
   return parsed;
+}
+
+export function isEmptyActiveMatchDraft(draft: ActiveMatchDraftInput) {
+  const hasPlayers = draft.teamAUserIds.length > 0 || draft.teamBUserIds.length > 0;
+  const hasScores = draft.games.some(
+    (game) => game.teamAScore !== null || game.teamBScore !== null,
+  );
+  return !hasPlayers && !hasScores;
 }
 
 export function draftExpiresAt(now = new Date()) {

@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import clsx from "clsx";
 import { Medal, Plus, Trash2, X } from "lucide-react";
 import { type ActionResult, type MatchCommandResult } from "@/app/actions";
+import { useNavigationSyncRegistration } from "@/components/app/navigation-sync";
 import { Button } from "@/components/ui/button";
 import {
   PlayerSelectView,
@@ -18,8 +20,13 @@ import {
   type MatchSubmissionInput,
   type Team,
 } from "@/lib/matches/validation";
+import {
+  type ActiveMatchDraftGameInput,
+  type ActiveMatchDraftInput,
+  isEmptyActiveMatchDraft,
+} from "@/lib/matches/drafts";
 import { type AppPlayer } from "@/lib/app-data";
-import { cn } from "@/lib/utils";
+import styles from "./match-recorder.module.css";
 
 type Score = MatchScoreInput;
 type EditableScore = number | "";
@@ -30,7 +37,12 @@ type RecordedGame = {
 };
 type TeamSelection = PlayerSelection;
 type CreateGuestPlayers = (input: { groupId: string; names: string[] }) => Promise<ActionResult<{ players: AppPlayer[] }>>;
-type SaveActiveMatchDraft = (input: MatchSubmissionInput & { draftId?: string }) => Promise<ActionResult<{ draftId: string }>>;
+type SaveActiveMatchDraft = (
+  input: ActiveMatchDraftInput & { draftId?: string },
+) => Promise<ActionResult<{
+  draftId: string | null;
+  outcome?: "saved" | "deleted" | "unchanged";
+}>>;
 type SubmitMatchAction = (input: MatchSubmissionInput & { draftId?: string; commandId: string }) => Promise<ActionResult<MatchCommandResult>>;
 type TeamSlot =
   | { id: string; initials: string; name: string; fullName: string; empty?: false }
@@ -46,7 +58,11 @@ export type InitialMatchRecording = {
   format: MatchFormat;
   teamAUserIds: string[];
   teamBUserIds: string[];
-  games: Array<Score & { winnerTeam?: Team }>;
+  games: Array<{
+    teamAScore: number | null;
+    teamBScore: number | null;
+    winnerTeam?: Team;
+  }>;
 };
 
 export function MatchRecorder({
@@ -82,7 +98,11 @@ export function MatchRecorder({
   );
   const [games, setGames] = useState<RecordedGame[]>(() =>
     initialMatch
-      ? initialMatch.games.map((game) => ({ ...game, winnerTeam: game.winnerTeam ?? winnerFromScore(game) }))
+      ? initialMatch.games.map((game) => ({
+          teamAScore: game.teamAScore ?? "",
+          teamBScore: game.teamBScore ?? "",
+          winnerTeam: game.winnerTeam ?? winnerFromDraftGame(game),
+        }))
       : [newBlankGame()],
   );
   const [playerSelectOpen, setPlayerSelectOpen] = useState(false);
@@ -100,6 +120,14 @@ export function MatchRecorder({
   const saveActiveMatchDraftRef = useRef(saveActiveMatchDraft);
   const autosaveTimeout = useRef<number | null>(null);
   const autosaveQueue = useRef<Promise<void>>(Promise.resolve());
+  const latestDraft = useRef<ActiveMatchDraftInput>({
+    groupId,
+    format,
+    teamAUserIds: compactTeam(teamA),
+    teamBUserIds: compactTeam(teamB),
+    games: toDraftGames(games),
+  });
+  const lastQueuedDraft = useRef<string | null>(null);
   const submissionInProgress = useRef(false);
   const completionTimeout = useRef<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -120,6 +148,13 @@ export function MatchRecorder({
     gamesReadyForSubmission(games) &&
     !isSubmitting;
   const recorderEditable = canEdit && !isSubmitting;
+  const currentDraft = useMemo<ActiveMatchDraftInput>(() => ({
+    groupId,
+    format,
+    teamAUserIds: compactTeam(teamA),
+    teamBUserIds: compactTeam(teamB),
+    games: toDraftGames(games),
+  }), [format, games, groupId, teamA, teamB]);
 
   useLayoutEffect(() => () => {
     setPlayerSelectOpen(false);
@@ -136,6 +171,10 @@ export function MatchRecorder({
     activeDraftId.current = draftId;
   }, [draftId]);
 
+  useEffect(() => {
+    latestDraft.current = currentDraft;
+  }, [currentDraft]);
+
   useEffect(() => () => {
     if (completionTimeout.current !== null) {
       window.clearTimeout(completionTimeout.current);
@@ -143,25 +182,73 @@ export function MatchRecorder({
     }
   }, []);
 
+  const enqueueDraftSync = useCallback(async (payload: ActiveMatchDraftInput) => {
+    const save = saveActiveMatchDraftRef.current;
+    if (!canEdit || !save || submissionInProgress.current) return;
+    if (!activeDraftId.current && isEmptyActiveMatchDraft(payload)) return;
+
+    const snapshotKey = JSON.stringify(payload);
+    if (lastQueuedDraft.current === snapshotKey) {
+      await autosaveQueue.current;
+      return;
+    }
+    lastQueuedDraft.current = snapshotKey;
+
+    autosaveQueue.current = autosaveQueue.current.then(async () => {
+      try {
+        const priorDraftId = activeDraftId.current;
+        const result = await save({ ...payload, draftId: priorDraftId });
+        if (result.ok) {
+          activeDraftId.current = result.data.draftId ?? undefined;
+          if (result.data.draftId !== priorDraftId) {
+            replaceDraftIdInUrl(result.data.draftId);
+          }
+          if (!submissionInProgress.current) {
+            setMessage(result.data.outcome === "deleted" ? "Draft deleted." : "Draft saved.");
+          }
+        } else {
+          if (lastQueuedDraft.current === snapshotKey) lastQueuedDraft.current = null;
+          if (!submissionInProgress.current) setMessage(result.message);
+        }
+      } catch (error) {
+        if (lastQueuedDraft.current === snapshotKey) lastQueuedDraft.current = null;
+        if (!submissionInProgress.current) {
+          setMessage(error instanceof Error ? error.message : "Draft could not be saved.");
+        }
+      }
+    });
+    await autosaveQueue.current;
+  }, [canEdit]);
+
+  useNavigationSyncRegistration(async () => {
+    if (autosaveTimeout.current !== null) {
+      window.clearTimeout(autosaveTimeout.current);
+      autosaveTimeout.current = null;
+    }
+    await enqueueDraftSync(latestDraft.current);
+    await autosaveQueue.current;
+  });
+
+  useEffect(() => {
+    function syncOnPageHide() {
+      if (autosaveTimeout.current !== null) {
+        window.clearTimeout(autosaveTimeout.current);
+        autosaveTimeout.current = null;
+      }
+      void enqueueDraftSync(latestDraft.current);
+    }
+
+    window.addEventListener("pagehide", syncOnPageHide);
+    return () => window.removeEventListener("pagehide", syncOnPageHide);
+  }, [enqueueDraftSync]);
+
   useEffect(() => {
     if (!canEdit || !saveActiveMatchDraftRef.current || submissionInProgress.current) {
       return;
     }
 
-    const teamAUserIds = compactTeam(teamA);
-    const teamBUserIds = compactTeam(teamB);
-    const completeGames = toCompleteGames(games);
-    if (!teamsComplete(format, teamAUserIds, teamBUserIds) || !completeGames) {
-      return;
-    }
-
-    const payload = {
-      groupId,
-      format,
-      teamAUserIds,
-      teamBUserIds,
-      games: completeGames,
-    };
+    const payload = currentDraft;
+    if (!activeDraftId.current && isEmptyActiveMatchDraft(payload)) return;
     const timeout = window.setTimeout(() => {
       if (autosaveTimeout.current === timeout) {
         autosaveTimeout.current = null;
@@ -170,29 +257,7 @@ export function MatchRecorder({
         return;
       }
 
-      autosaveQueue.current = autosaveQueue.current.then(async () => {
-        try {
-          const result = await saveActiveMatchDraftRef.current?.({
-            ...payload,
-            draftId: activeDraftId.current,
-          });
-          if (!result) {
-            return;
-          }
-          if (result.ok) {
-            activeDraftId.current = result.data.draftId;
-            if (!submissionInProgress.current) {
-              setMessage("Draft saved.");
-            }
-          } else if (!submissionInProgress.current) {
-            setMessage(result.message);
-          }
-        } catch (error) {
-          if (!submissionInProgress.current) {
-            setMessage(error instanceof Error ? error.message : "Draft could not be saved.");
-          }
-        }
-      });
+      void enqueueDraftSync(payload);
     }, 400);
     autosaveTimeout.current = timeout;
 
@@ -202,7 +267,7 @@ export function MatchRecorder({
         autosaveTimeout.current = null;
       }
     };
-  }, [canEdit, format, games, groupId, isSubmitting, teamA, teamB]);
+  }, [canEdit, currentDraft, enqueueDraftSync, isSubmitting]);
 
   function updateFormat(value: MatchFormat) {
     setFormat(value);
@@ -431,12 +496,17 @@ export function MatchRecorder({
       }
       await autosaveQueue.current;
 
-      const input = { ...inputWithoutDraft, draftId: activeDraftId.current };
+      const submittedDraftId = activeDraftId.current;
+      const input = { ...inputWithoutDraft, draftId: submittedDraftId };
+      if (submittedDraftId) {
+        replaceDraftIdInUrl(null);
+      }
       if (submitMatchAction) {
         const result = await submitMatchAction(input);
         if (result.ok) {
           completeSubmission("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.");
         } else {
+          if (submittedDraftId) replaceDraftIdInUrl(submittedDraftId);
           submissionInProgress.current = false;
           setIsSubmitting(false);
           setMessage(result.message);
@@ -446,6 +516,7 @@ export function MatchRecorder({
 
       completeSubmission(`Submitted. Team ${validated.matchWinnerTeam} wins. Ratings updated immediately; opponents may review it, and participants have 30 days to correct it.`);
     } catch (error) {
+      if (activeDraftId.current) replaceDraftIdInUrl(activeDraftId.current);
       submissionInProgress.current = false;
       setIsSubmitting(false);
       setMessage(error instanceof Error ? error.message : "Invalid match.");
@@ -476,15 +547,15 @@ export function MatchRecorder({
   }
 
   return (
-    <section className="flex min-h-full flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-[22px] font-bold leading-7 text-ink">Match Recording</h1>
+    <section className={styles.screen}>
+      <div className={styles.header}>
+        <h1 className={styles.title}>Match Recording</h1>
         <GroupSwitcher groups={groupOptions} currentGroupId={groupId} disabled={!recorderEditable} />
       </div>
 
       <FormatToggle value={format} onChange={updateFormat} disabled={!recorderEditable} />
 
-      <div className="grid grid-cols-2 gap-6 px-3">
+      <div className={styles.teams}>
         <TeamSummaryCard
           label="Team A"
           slots={teamASlots}
@@ -501,7 +572,7 @@ export function MatchRecorder({
         />
       </div>
 
-      <div className="flex flex-col gap-3">
+      <div className={styles.setList}>
         {games.map((game, index) => (
           <SetScoreRow
             key={index}
@@ -517,22 +588,22 @@ export function MatchRecorder({
           <button
             type="button"
             onClick={addSet}
-            className="flex min-h-11 w-full items-center justify-center gap-1 rounded-lg border border-stroke bg-surface text-sm font-bold text-ink transition hover:bg-app-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+            className={styles.addSetButton}
           >
-            <Plus className="size-4" />
+            <Plus className={styles.smallIcon} />
             Add set
           </button>
         ) : null}
       </div>
 
-      <div className="mt-auto flex flex-col gap-3 pt-2">
+      <div className={styles.footer}>
         {message ? (
-          <p className="rounded-lg border border-victory-stroke bg-victory p-3 text-sm font-semibold text-ink">
+          <p className={styles.message}>
             {message}
           </p>
         ) : null}
         {canEdit ? (
-          <Button type="button" onClick={submitMatch} disabled={!canSubmit} className="w-full">
+          <Button type="button" onClick={submitMatch} disabled={!canSubmit} className={styles.submitButton}>
             Submit
           </Button>
         ) : null}
@@ -573,6 +644,14 @@ function winnerFromScore(game: Score): Team {
   return game.teamAScore >= game.teamBScore ? "A" : "B";
 }
 
+function winnerFromDraftGame(game: {
+  teamAScore: number | null;
+  teamBScore: number | null;
+}): Team {
+  if (game.teamAScore === null || game.teamBScore === null) return "A";
+  return game.teamAScore >= game.teamBScore ? "A" : "B";
+}
+
 function newBlankGame(): RecordedGame {
   return { teamAScore: "", teamBScore: "", winnerTeam: "A" };
 }
@@ -593,6 +672,24 @@ function toCompleteGames(games: RecordedGame[]): MatchGameInput[] | null {
   }
 
   return completeGames;
+}
+
+function toDraftGames(games: RecordedGame[]): ActiveMatchDraftGameInput[] {
+  return games.map((game) => ({
+    teamAScore: game.teamAScore === "" ? null : game.teamAScore,
+    teamBScore: game.teamBScore === "" ? null : game.teamBScore,
+    winnerTeam: game.winnerTeam,
+  }));
+}
+
+function replaceDraftIdInUrl(draftId: string | null) {
+  const url = new URL(window.location.href);
+  if (draftId) {
+    url.searchParams.set("draftId", draftId);
+  } else {
+    url.searchParams.delete("draftId");
+  }
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
 function gamesReadyForSubmission(games: RecordedGame[]) {
@@ -631,7 +728,7 @@ function FormatToggle({
   disabled?: boolean;
 }) {
   return (
-    <div className="grid min-h-11 grid-cols-2 rounded-lg border border-stroke bg-surface p-1">
+    <div className={styles.formatToggle}>
       {(["doubles", "singles"] as const).map((option) => (
         <button
           key={option}
@@ -639,10 +736,7 @@ function FormatToggle({
           onClick={() => onChange(option)}
           disabled={disabled}
           aria-pressed={value === option}
-          className={cn(
-            "rounded-md text-sm font-semibold capitalize text-muted transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action disabled:cursor-default",
-            value === option && "bg-selection text-ink",
-          )}
+          className={clsx(styles.formatOption, value === option && styles.formatOptionActive)}
         >
           {option}
         </button>
@@ -665,9 +759,9 @@ function TeamSummaryCard({
   editable: boolean;
 }) {
   return (
-    <div className="flex flex-col items-center gap-2">
-      <h2 className="text-sm font-bold text-muted">{label}</h2>
-      <div className="relative flex min-h-[74px] min-w-[116px] items-start justify-center gap-2 rounded-lg border border-stroke bg-surface px-2 py-2">
+    <div className={styles.teamSummary}>
+      <h2 className={styles.teamLabel}>{label}</h2>
+      <div className={styles.teamCard}>
         {slots.map((slot, index) =>
           slot.empty ? (
             editable ? (
@@ -675,26 +769,26 @@ function TeamSummaryCard({
                 key={`empty-${index}`}
                 type="button"
                 onClick={() => onOpenPicker(index)}
-                className="flex min-w-11 flex-col items-center gap-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+                className={styles.emptySlotButton}
                 aria-label={`${label} empty player slot ${index + 1}`}
                 aria-haspopup="dialog"
               >
-                <span className="flex size-11 items-center justify-center rounded-full border border-stroke bg-app-bg text-muted transition hover:text-ink">
-                  <Plus className="size-5" />
+                <span className={styles.emptyAvatarInteractive}>
+                  <Plus className={styles.mediumIcon} />
                 </span>
-                <span className="text-[11px] text-transparent">Empty</span>
+                <span className={styles.emptyLabel}>Empty</span>
               </button>
             ) : (
-              <div key={`empty-${index}`} className="flex min-w-11 flex-col items-center gap-1" aria-label={`${label} empty player slot ${index + 1}`}>
-                <span className="flex size-11 items-center justify-center rounded-full border border-stroke bg-app-bg text-muted">
-                  <Plus className="size-5" />
+              <div key={`empty-${index}`} className={styles.emptySlot} aria-label={`${label} empty player slot ${index + 1}`}>
+                <span className={styles.emptyAvatar}>
+                  <Plus className={styles.mediumIcon} />
                 </span>
-                <span className="text-[11px] text-transparent">Empty</span>
+                <span className={styles.emptyLabel}>Empty</span>
               </div>
             )
           ) : (
-            <div key={`${slot.id}-${index}`} className="relative flex min-w-0 flex-col items-center gap-1">
-              <span className="flex size-11 items-center justify-center rounded-full bg-victory text-sm font-bold text-ink">
+            <div key={`${slot.id}-${index}`} className={styles.playerSlot}>
+              <span className={styles.playerAvatar}>
                 {slot.initials}
               </span>
               {editable ? (
@@ -702,12 +796,12 @@ function TeamSummaryCard({
                   type="button"
                   onClick={() => onRemove(index)}
                   aria-label={`Remove ${slot.name} from ${label}`}
-                  className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full border border-stroke bg-surface text-muted shadow-sm transition hover:bg-app-bg hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+                  className={styles.removePlayerButton}
                 >
-                  <X className="size-3" />
+                  <X className={styles.removePlayerIcon} />
                 </button>
               ) : null}
-              <span className="max-w-12 truncate text-[11px] text-muted">{slot.name}</span>
+              <span className={styles.playerName}>{slot.name}</span>
             </div>
           ),
         )}
@@ -734,21 +828,21 @@ function SetScoreRow({
   const winner = game.winnerTeam;
 
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-1">
-        <h3 className="text-sm font-bold text-muted">Set {index + 1}</h3>
+    <div className={styles.setRow}>
+      <div className={styles.setHeader}>
+        <h3 className={styles.setTitle}>Set {index + 1}</h3>
         {onRemove ? (
           <button
             type="button"
             onClick={onRemove}
             aria-label={`Remove Set ${index + 1}`}
-            className="flex size-7 items-center justify-center rounded-md text-muted transition hover:bg-app-bg hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+            className={styles.removeSetButton}
           >
-            <Trash2 className="size-4" aria-hidden="true" />
+            <Trash2 className={styles.smallIcon} aria-hidden="true" />
           </button>
         ) : null}
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className={styles.scoreGrid}>
         <ScoreTile
           setNumber={index + 1}
           team="A"
@@ -792,25 +886,19 @@ function ScoreTile({
   return (
     <div
       aria-label={`Set ${setNumber} Team ${team} ${score === "" ? "not entered" : score} ${selected ? "Win" : "Loss"}`}
-      className={cn(
-        "relative flex h-[86px] items-center justify-center rounded-lg border transition focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-action",
-        selected ? "border-victory-stroke bg-victory" : "border-stroke bg-surface",
-      )}
+      className={clsx(styles.scoreTile, selected ? styles.scoreTileSelected : styles.scoreTileNeutral)}
     >
-      {selected ? <Medal className="absolute left-2 top-2 size-4 text-ink" aria-hidden="true" /> : null}
+      {selected ? <Medal className={styles.medal} aria-hidden="true" /> : null}
       <button
         type="button"
         onClick={onWinnerClick}
         disabled={!editable}
         aria-pressed={selected}
         aria-label={`Mark Set ${setNumber} Team ${team} as winner`}
-        className="absolute inset-0 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action disabled:cursor-default"
+        className={styles.winnerButton}
       />
       <div
-        className={cn(
-          "pointer-events-none relative grid h-[70px] w-[92px] grid-rows-[1fr_auto] items-center rounded-md border bg-surface px-2 pb-2 pt-1",
-          selected ? "border-victory-stroke" : "border-stroke",
-        )}
+        className={clsx(styles.scorePanel, selected ? styles.scorePanelSelected : styles.scorePanelNeutral)}
       >
         <input
           aria-label={`Set ${setNumber} Team ${team} score`}
@@ -823,14 +911,11 @@ function ScoreTile({
           onClick={(event) => event.stopPropagation()}
           onChange={(event) => onScoreChange(event.target.value)}
           disabled={!editable}
-          className="pointer-events-auto relative z-10 h-11 w-full self-center rounded-md border border-transparent bg-transparent p-0 text-center text-[32pt] font-bold leading-none text-ink [appearance:textfield] focus:border-selection-stroke focus:outline-none disabled:cursor-default [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          className={styles.scoreInput}
         />
         <span
           aria-hidden="true"
-          className={cn(
-            "relative z-0 pointer-events-none text-center text-xs font-semibold leading-3 text-muted",
-            selected && "text-ink",
-          )}
+          className={clsx(styles.scoreResult, selected && styles.scoreResultSelected)}
         >
           {selected ? "Win" : "Loss"}
         </span>

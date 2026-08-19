@@ -25,7 +25,12 @@ import {
   validateMatchSubmission,
   type MatchSubmissionInput,
 } from "@/lib/matches/validation";
-import { draftExpiresAt, validateActiveMatchDraft } from "@/lib/matches/drafts";
+import {
+  draftExpiresAt,
+  isEmptyActiveMatchDraft,
+  validateActiveMatchDraft,
+  type ActiveMatchDraftInput,
+} from "@/lib/matches/drafts";
 import { listVisibleGroupMemberships } from "@/lib/group-membership-visibility";
 import { type CommandResult, toCommandError } from "@/lib/commands/result";
 import { dispatchRatingRebuild } from "@/lib/ratings/rebuild-dispatch";
@@ -149,6 +154,16 @@ const activeDraftSchema = z.object({
       winnerTeam: z.enum(["A", "B"]),
     }),
   ),
+});
+
+const activeDraftSyncSchema = activeDraftSchema.extend({
+  games: z.array(
+    z.object({
+      teamAScore: z.number().int().min(0).max(99).nullable(),
+      teamBScore: z.number().int().min(0).max(99).nullable(),
+      winnerTeam: z.enum(["A", "B"]),
+    }),
+  ).min(1).max(7),
 });
 
 const reviseSchema = z
@@ -663,6 +678,11 @@ export async function leaveGroup(groupId: string, metadata: CommandMetadata = {}
 
 
 type ActiveDraftInput = MatchSubmissionInput & { draftId?: string };
+type ActiveDraftSyncInput = ActiveMatchDraftInput & { draftId?: string };
+type ActiveDraftSyncResult = {
+  draftId: string | null;
+  outcome: "saved" | "deleted" | "unchanged";
+};
 type EditableDraftRow = {
   id: string;
   group_id: string;
@@ -671,14 +691,52 @@ type EditableDraftRow = {
   team_b_user_ids: string[];
   expires_at: string;
   submitted_match_id: string | null;
+  updated_at: string;
 };
 
-export async function saveActiveMatchDraft(input: ActiveDraftInput): Promise<ActionResult<{ draftId: string }>> {
+export async function syncActiveMatchDraft(
+  input: ActiveDraftSyncInput,
+): Promise<ActionResult<ActiveDraftSyncResult>> {
   try {
     const userId = await requireUserId();
-    const parsed = activeDraftSchema.parse(input);
+    const parsed = activeDraftSyncSchema.parse(input);
     const service = createSupabaseServiceClient();
     await ensureActiveMember(parsed.groupId, userId, service);
+
+    if (isEmptyActiveMatchDraft(parsed)) {
+      if (!parsed.draftId) {
+        return { ok: true, data: { draftId: null, outcome: "unchanged" } };
+      }
+
+      const existing = await getEditableDraft(parsed.draftId, userId, service);
+      if (existing.group_id !== parsed.groupId) {
+        throw new Error("This active match belongs to another group.");
+      }
+
+      const { data, error } = await service
+        .from("active_match_drafts")
+        .delete()
+        .eq("id", parsed.draftId)
+        .eq("updated_at", existing.updated_at)
+        .is("submitted_match_id", null)
+        .gt("expires_at", new Date().toISOString())
+        .or(
+          `created_by_user_id.eq.${userId},team_a_user_ids.cs.{${userId}},team_b_user_ids.cs.{${userId}}`,
+        )
+        .select("id")
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+      if (!data) {
+        throw new Error("This active match changed before it could be deleted.");
+      }
+
+      revalidateDraftPaths(parsed.groupId);
+      return { ok: true, data: { draftId: null, outcome: "deleted" } };
+    }
+
     const activeMemberIds = await getActiveMemberIds(parsed.groupId);
     const draft = validateActiveMatchDraft(parsed, { activeMemberIds });
     const expires_at = draftExpiresAt();
@@ -719,7 +777,7 @@ export async function saveActiveMatchDraft(input: ActiveDraftInput): Promise<Act
       }
 
       revalidateDraftPaths(parsed.groupId);
-      return { ok: true, data: { draftId: data.id } };
+      return { ok: true, data: { draftId: data.id, outcome: "saved" } };
     }
 
     const { data, error } = await service
@@ -732,16 +790,29 @@ export async function saveActiveMatchDraft(input: ActiveDraftInput): Promise<Act
     }
 
     revalidateDraftPaths(parsed.groupId);
-    return { ok: true, data: { draftId: data.id } };
+    return { ok: true, data: { draftId: data.id, outcome: "saved" } };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Could not save active match." };
   }
 }
 
+export async function saveActiveMatchDraft(
+  input: ActiveDraftInput,
+): Promise<ActionResult<{ draftId: string }>> {
+  const result = await syncActiveMatchDraft(input);
+  if (!result.ok) {
+    return result;
+  }
+  if (!result.data.draftId) {
+    return { ok: false, message: "Could not save an empty active match." };
+  }
+  return { ok: true, data: { draftId: result.data.draftId } };
+}
+
 async function getEditableDraft(draftId: string, userId: string, service: SupabaseService): Promise<EditableDraftRow> {
   const { data, error } = await service
     .from("active_match_drafts")
-    .select("id, group_id, created_by_user_id, team_a_user_ids, team_b_user_ids, expires_at, submitted_match_id")
+    .select("id, group_id, created_by_user_id, team_a_user_ids, team_b_user_ids, expires_at, submitted_match_id, updated_at")
     .eq("id", draftId)
     .maybeSingle();
 
