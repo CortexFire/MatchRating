@@ -1638,7 +1638,7 @@ describe("MatchRecorder", () => {
     await waitFor(() => expect(submitMatchAction).toHaveBeenCalledTimes(2));
     expect(submitMatchAction.mock.calls[1][0].commandId).toBe(firstCommandId);
     expect(window.location.search).toBe("");
-    expect(screen.getByText("Match saved. Ratings updated immediately. Opponents may review it, and participants have 30 days to correct it.")).toBeTruthy();
+    expect(screen.getByText("Match saved. Ratings updated immediately. Participants and group admins have 30 days to correct it.")).toBeTruthy();
   });
 
   test("renders selected-player drafts as read-only", () => {
