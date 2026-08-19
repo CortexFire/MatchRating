@@ -1,18 +1,24 @@
 import { FatalError } from "workflow";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import { rebuildGroupRatingsFromMatches, type HistoricalMatch } from "@/lib/ratings/glicko2";
+import {
+  rebuildGroupRatingsFromMatches,
+  type HistoricalMatch,
+  type RatingState,
+} from "@/lib/ratings/glicko2";
 import { toRatingProjection } from "@/lib/ratings/projection";
 
 type RebuildInput = {
   groupId: string;
   jobId: string;
   targetVersion: number;
+  prefixEventCount: number;
+  initialRatings: Array<RatingState & { userId: string }>;
   history: HistoricalMatch[];
 };
 
 export async function loadRebuildInput(jobId: string, dispatchToken: string): Promise<RebuildInput | null> {
   "use step";
-  const { data, error } = await createSupabaseServiceClient().rpc("begin_rating_rebuild", {
+  const { data, error } = await createSupabaseServiceClient().rpc("begin_incremental_rating_rebuild", {
     p_job_id: jobId,
     p_dispatch_token: dispatchToken,
   });
@@ -23,7 +29,31 @@ export async function loadRebuildInput(jobId: string, dispatchToken: string): Pr
 export async function calculateProjection(input: RebuildInput) {
   "use step";
   try {
-    const rebuilt = rebuildGroupRatingsFromMatches(input.history);
+    if (!Number.isSafeInteger(input.prefixEventCount) || input.prefixEventCount < 0) {
+      throw new Error("Invalid rating prefix event count");
+    }
+
+    const initialRatings = new Map<string, RatingState>();
+    for (const { userId, rating, rd, volatility, gamesPlayed } of input.initialRatings) {
+      if (
+        !userId
+        || initialRatings.has(userId)
+        || !Number.isFinite(rating)
+        || !Number.isFinite(rd)
+        || !Number.isFinite(volatility)
+        || !Number.isSafeInteger(gamesPlayed)
+        || gamesPlayed < 0
+      ) {
+        throw new Error("Invalid initial rating state");
+      }
+      initialRatings.set(userId, { rating, rd, volatility, gamesPlayed });
+    }
+
+    const rebuilt = rebuildGroupRatingsFromMatches(
+      input.history,
+      initialRatings,
+      input.prefixEventCount,
+    );
     return toRatingProjection(rebuilt.ratings, rebuilt.events);
   } catch (error) {
     throw new FatalError(errorMessage(error));
@@ -32,14 +62,143 @@ export async function calculateProjection(input: RebuildInput) {
 
 export async function applyProjection(input: RebuildInput, projection: Awaited<ReturnType<typeof calculateProjection>>) {
   "use step";
-  const { data, error } = await createSupabaseServiceClient().rpc("apply_rating_rebuild", {
+  try {
+    assertCanonicalProjection(input, projection);
+  } catch (error) {
+    throw new FatalError(errorMessage(error));
+  }
+
+  const { data, error } = await createSupabaseServiceClient().rpc("apply_incremental_rating_rebuild", {
     p_job_id: input.jobId,
     p_expected_version: input.targetVersion,
+    p_prefix_event_count: input.prefixEventCount,
     p_ratings: projection.ratings,
     p_events: projection.events,
   });
   if (error) throw error;
   return data as { status: "completed" | "stale"; targetVersion?: number };
+}
+
+function assertCanonicalProjection(
+  input: RebuildInput,
+  projection: Awaited<ReturnType<typeof calculateProjection>>,
+) {
+  const expectedRatingUserIds = new Set(input.initialRatings.map((rating) => rating.userId));
+  const expectedFacts = new Map<string, {
+    matchId: string;
+    revisionId: string;
+    gameNumber: number;
+    occurredAt: string;
+    format: HistoricalMatch["format"];
+    team: "A" | "B";
+    actualScore: 0 | 1;
+    pointsFor: number;
+    pointsAgainst: number;
+  }>();
+
+  for (const match of input.history) {
+    for (const userId of [...match.teamAUserIds, ...match.teamBUserIds]) {
+      expectedRatingUserIds.add(userId);
+    }
+    for (const game of match.games) {
+      for (const [team, userIds] of [["A", match.teamAUserIds], ["B", match.teamBUserIds]] as const) {
+        for (const userId of userIds) {
+          const key = `${game.gameId}:${userId}`;
+          if (expectedFacts.has(key)) throw new Error("Duplicate canonical game and player identity");
+          expectedFacts.set(key, {
+            matchId: match.id,
+            revisionId: match.revisionId,
+            gameNumber: game.gameNumber,
+            occurredAt: match.submittedAt,
+            format: match.format,
+            team,
+            actualScore: game.winnerTeam === team ? 1 : 0,
+            pointsFor: team === "A" ? game.teamAScore : game.teamBScore,
+            pointsAgainst: team === "A" ? game.teamBScore : game.teamAScore,
+          });
+        }
+      }
+    }
+  }
+
+  const seenFacts = new Set<string>();
+  projection.events.forEach((event, index) => {
+    if (
+      !isUuid(event.matchId)
+      || !isUuid(event.revisionId)
+      || !isUuid(event.gameId)
+      || !isUuid(event.userId)
+      || !Number.isSafeInteger(event.gameNumber)
+      || event.gameNumber < 1
+      || !Number.isFinite(Date.parse(event.occurredAt))
+      || !Number.isFinite(event.expectedScore)
+      || event.expectedScore < 0
+      || event.expectedScore > 1
+      || (event.actualScore !== 0 && event.actualScore !== 1)
+      || !Number.isSafeInteger(event.pointsFor)
+      || event.pointsFor < 0
+      || !Number.isSafeInteger(event.pointsAgainst)
+      || event.pointsAgainst < 0
+      || event.sequence !== input.prefixEventCount + index + 1
+      || !isValidRatingState(event.before)
+      || !isValidRatingState(event.after)
+      || event.after.gamesPlayed !== event.before.gamesPlayed + 1
+    ) {
+      throw new Error("Invalid canonical rating event");
+    }
+
+    const key = `${event.gameId}:${event.userId}`;
+    if (seenFacts.has(key)) throw new Error("Duplicate canonical game and player identity");
+    seenFacts.add(key);
+    const expected = expectedFacts.get(key);
+    if (
+      !expected
+      || event.matchId !== expected.matchId
+      || event.revisionId !== expected.revisionId
+      || event.gameNumber !== expected.gameNumber
+      || event.occurredAt !== expected.occurredAt
+      || event.format !== expected.format
+      || event.team !== expected.team
+      || event.actualScore !== expected.actualScore
+      || event.pointsFor !== expected.pointsFor
+      || event.pointsAgainst !== expected.pointsAgainst
+    ) {
+      throw new Error("Canonical rating event does not match its historical game");
+    }
+  });
+
+  if (seenFacts.size !== expectedFacts.size) {
+    throw new Error("Canonical rating event set is incomplete");
+  }
+
+  const ratingUserIds = new Set<string>();
+  for (const { userId, ...rating } of projection.ratings) {
+    if (!isUuid(userId) || ratingUserIds.has(userId) || !isValidRatingState(rating)) {
+      throw new Error("Invalid canonical rating projection");
+    }
+    ratingUserIds.add(userId);
+  }
+
+  if (
+    ratingUserIds.size !== expectedRatingUserIds.size
+    || [...expectedRatingUserIds].some((userId) => !ratingUserIds.has(userId))
+  ) {
+    throw new Error("Canonical rating projection is incomplete");
+  }
+}
+
+function isValidRatingState(state: RatingState) {
+  return Number.isFinite(state.rating)
+    && Number.isFinite(state.rd)
+    && state.rd > 0
+    && Number.isFinite(state.volatility)
+    && state.volatility > 0
+    && Number.isSafeInteger(state.gamesPlayed)
+    && state.gamesPlayed >= 0;
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 export async function markFailed(jobId: string, message: string) {
