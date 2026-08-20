@@ -1,3 +1,7 @@
+.provisionalMarker {
+  color: var(--muted);
+}
+
 .srOnly {
   position: absolute;
   width: 1px;

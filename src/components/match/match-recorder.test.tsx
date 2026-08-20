@@ -288,7 +288,6 @@ describe("MatchRecorder", () => {
     expect(player.textContent).toContain("Cory Shah");
     expect(player.textContent).toContain("1588");
     expect(screen.getAllByText("1588, established rating").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("1466?").length).toBeGreaterThan(0);
     expect(screen.getAllByText("1466, provisional rating").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Filter Selected" }));

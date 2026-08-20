@@ -29,7 +29,6 @@ describe("ClaimProfileForm", () => {
       />,
     );
 
-    expect(screen.getByText("1631?")).toBeTruthy();
     expect(screen.getByText("1631, provisional rating")).toBeTruthy();
     expect(screen.getByText("1478")).toBeTruthy();
     expect(screen.getByText("1478, established rating")).toBeTruthy();
