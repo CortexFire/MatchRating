@@ -16,8 +16,7 @@ export type MatchupInsightKey =
   | "closest-rival"
   | "nemesis"
   | "most-frequent-partner"
-  | "most-frequent-opponent"
-  | "toughest-competitive-matchup";
+  | "most-frequent-opponent";
 
 export type AnalyticsPerson = { id: string; name: string };
 export type AnalyticsGroup = { id: string; name: string };
@@ -90,8 +89,7 @@ export type MatchupInsight = {
   key: MatchupInsightKey;
   label: string;
   player: AnalyticsPerson;
-  primaryStat: string;
-  secondaryStat?: string;
+  description: string;
 };
 
 export type AnalyticsPeriodSnapshot = {
@@ -190,7 +188,7 @@ function buildFlags({
 }) {
   const flags: AnalyticsFlag[] = [];
   const streak = currentWinStreak(payload.matches);
-  if (streak >= 4) flags.push(flag("hot-streak", "Hot Streak", `Won your last ${streak} matches.`));
+  if (streak >= 4) flags.push(flag("hot-streak", "Hot Streak", `Won the last ${streak} matches.`));
 
   const activePeers = payload.activePlayerIds.filter((id) => id !== payload.subject.id);
   const encountered = new Set(matches.flatMap((item) => [...item.partners, ...item.opponents]).map((person) => person.id));
@@ -200,32 +198,33 @@ function buildFlags({
   }
 
   const upsetWins = matches.filter((item) => item.matchWon && item.gameCount > 0 && item.expectedGameWins / item.gameCount <= 0.35).length;
-  if (upsetWins >= 3) flags.push(flag("giant-slayer", "Giant Slayer", `Won ${upsetWins} matches with a 35% or lower expected score.`));
+  if (upsetWins >= 3) flags.push(flag("giant-slayer", "Giant Slayer", `Won ${upsetWins} matches despite being the clear underdog.`));
 
   const expectedRate = gameCount ? expectedGameWins / gameCount : 0;
   if (matches.length >= 5 && expectedRate < 0.4) {
-    flags.push(flag("tough-schedule", "Tough Schedule", `Your expected score was ${percent(expectedRate)} across ${matches.length} matches.`));
+    flags.push(flag("tough-schedule", "Tough Schedule", `Faced tougher-than-average competition across the last ${matches.length} matches.`));
   }
 
   const subjectCohort = cohort.get(payload.subject.id) ?? { matchCount: matches.length, ratingDelta: sum(matches.map((item) => item.ratingDelta)), doublesMatchCount: matches.filter((item) => item.format === "doubles").length };
   const activeCohort = payload.activePlayerIds.map((id) => cohort.get(id)).filter(isDefined);
   if (activeCohort.length && subjectCohort.matchCount >= percentile(activeCohort.map((item) => item.matchCount), 0.8)) {
-    flags.push(flag("very-active", "Very Active", `Played ${subjectCohort.matchCount} matches, placing you among the group's most active players.`));
+    flags.push(flag("very-active", "Very Active", `Played ${subjectCohort.matchCount} matches, ranking among the group’s most active players.`));
   }
 
   const climbers = activeCohort.filter((item) => item.matchCount >= 5);
-  if (subjectCohort.matchCount >= 5 && climbers.length && subjectCohort.ratingDelta >= percentile(climbers.map((item) => item.ratingDelta), 0.8)) {
-    flags.push(flag("fast-climber", "Fast Climber", `Gained ${formatSigned(round(subjectCohort.ratingDelta))} rating points in this period.`));
+  const roundedRatingGain = Math.round(subjectCohort.ratingDelta);
+  if (subjectCohort.matchCount >= 5 && roundedRatingGain >= 1 && climbers.length && subjectCohort.ratingDelta >= percentile(climbers.map((item) => item.ratingDelta), 0.8)) {
+    flags.push(flag("fast-climber", "Fast Climber", `Gained ${roundedRatingGain} rating points in this period.`));
   }
 
   const actualRate = gameCount ? gameWins / gameCount : 0;
   if (matches.length >= 5 && actualRate - expectedRate >= 0.1) {
-    flags.push(flag("overperformer", "Overperformer", `Won ${percent(actualRate)} of games versus an expected ${percent(expectedRate)}.`));
+    flags.push(flag("overperformer", "Overperformer", `Won ${percent(actualRate)} of games when matchups predicted a ${percent(expectedRate)} win rate.`));
   }
 
   const residuals = matches.map((item) => item.gameCount ? (item.gameWins - item.expectedGameWins) / item.gameCount : 0);
   if (matches.length >= 8 && standardDeviation(residuals) <= 0.2 && Math.abs(average(residuals)) < 0.1) {
-    flags.push(flag("consistent", "Consistent", "Recent results have closely matched expected performance."));
+    flags.push(flag("consistent", "Consistent", `Results closely matched expected performance across ${matches.length} matches.`));
   }
 
   if (payload.current.rank === 1) flags.push(flag("group-leader", "Group Leader", `Currently ranked #1 in ${payload.group.name}.`));
@@ -261,29 +260,61 @@ function buildMatchups(matches: AnalyticsMatchFact[]) {
   const insights: MatchupInsight[] = [];
 
   const bestPartner = sortRelationships(partners, (item) => -performance(item))[0];
-  if (bestPartner) insights.push(insight("best-partner", "Best Partner", bestPartner, "together"));
+  if (bestPartner) {
+    insights.push(insight(
+      "best-partner",
+      "Best Partner",
+      bestPartner,
+      bestPartnerDescription(bestPartner),
+    ));
+  }
 
   const closestRival = [...opponents].sort((left, right) =>
     Math.abs(winRate(left) - 0.5) - Math.abs(winRate(right) - 0.5)
     || right.matches - left.matches
     || Math.abs(expectedRate(left) - 0.5) - Math.abs(expectedRate(right) - 0.5)
     || stableRelationshipOrder(left, right))[0];
-  if (closestRival) insights.push(insight("closest-rival", "Closest Rival", closestRival));
+  if (closestRival) {
+    insights.push(insight(
+      "closest-rival",
+      "Closest Rival",
+      closestRival,
+      `${record(closestRival)} head-to-head · ${percent(winRate(closestRival))} win rate`,
+    ));
+  }
 
-  const nemesis = sortRelationships(opponents, performance)[0];
-  if (nemesis) insights.push(insight("nemesis", "Nemesis", nemesis));
-
-  const frequentPartner = sortRelationships(partners, (item) => -item.matches)[0];
-  if (frequentPartner) insights.push(insight("most-frequent-partner", "Most Frequent Partner", frequentPartner, "together"));
-
-  const frequentOpponent = sortRelationships(opponents, (item) => -item.matches)[0];
-  if (frequentOpponent) insights.push(insight("most-frequent-opponent", "Most Frequent Opponent", frequentOpponent));
-
-  const toughest = sortRelationships(
-    opponents.filter((item) => winRate(item) >= 0.25 && winRate(item) < 0.5 && performance(item) < 0),
+  const nemesis = sortRelationships(
+    opponents.filter((item) => underperformancePercent(item) >= 1),
     performance,
   )[0];
-  if (toughest) insights.push(insight("toughest-competitive-matchup", "Toughest Competitive Matchup", toughest));
+  if (nemesis) {
+    insights.push(insight(
+      "nemesis",
+      "Nemesis",
+      nemesis,
+      `${record(nemesis)} head-to-head · ${underperformancePercent(nemesis)}% worse than expected`,
+    ));
+  }
+
+  const frequentPartner = sortRelationships(partners, (item) => -item.matches)[0];
+  if (frequentPartner) {
+    insights.push(insight(
+      "most-frequent-partner",
+      "Most Frequent Partner",
+      frequentPartner,
+      `Played ${frequentPartner.matches} matches together, winning ${frequentPartner.wins} for a win rate of ${percent(winRate(frequentPartner))}.`,
+    ));
+  }
+
+  const frequentOpponent = sortRelationships(opponents, (item) => -item.matches)[0];
+  if (frequentOpponent) {
+    insights.push(insight(
+      "most-frequent-opponent",
+      "Most Frequent Opponent",
+      frequentOpponent,
+      `Played ${frequentOpponent.gameCount} games against this opponent.`,
+    ));
+  }
   return insights;
 }
 
@@ -306,14 +337,48 @@ function aggregateRelationships(matches: AnalyticsMatchFact[]) {
   return [...aggregated.values()];
 }
 
-function insight(key: MatchupInsightKey, label: string, relationship: Relationship, suffix = "head-to-head"): MatchupInsight {
+function insight(
+  key: MatchupInsightKey,
+  label: string,
+  relationship: Relationship,
+  description: string,
+): MatchupInsight {
   return {
     key,
     label,
     player: relationship.player,
-    primaryStat: `${relationship.wins}–${relationship.matches - relationship.wins} ${suffix}`,
-    secondaryStat: `${formatSigned(Math.round(performance(relationship) * 100))}% vs expected`,
+    description,
   };
+}
+
+function bestPartnerDescription(relationship: Relationship) {
+  const result = `Won ${relationship.wins} of ${relationship.matches} matches together`;
+  const underdog = expectedRate(relationship) < 0.5 ? " when predicted to lose" : "";
+  const ratingDifference = ratingEquivalentPerformance(relationship);
+
+  if (ratingDifference > 0) {
+    return `${result}${underdog}, performing as though rated ${ratingDifference} points higher.`;
+  }
+  if (ratingDifference < 0) {
+    return `${result}${underdog}, performing as though rated ${Math.abs(ratingDifference)} points lower.`;
+  }
+  return `${result}${underdog}, performing in line with expectations.`;
+}
+
+function ratingEquivalentPerformance(relationship: Relationship) {
+  const observedRate = relationship.gameCount
+    ? (relationship.gameWins + 1) / (relationship.gameCount + 2)
+    : 0.5;
+  return Math.round(ratingGap(observedRate) - ratingGap(expectedRate(relationship)));
+}
+
+function ratingGap(rate: number) {
+  const boundedRate = Math.min(0.99, Math.max(0.01, rate));
+  return 400 * Math.log10(boundedRate / (1 - boundedRate));
+}
+
+function record(relationship: Relationship) {
+  return `${relationship.wins}–${relationship.matches - relationship.wins}`;
 }
 
 function flag(key: AnalyticsFlagKey, label: string, explanation: string): AnalyticsFlag {
@@ -373,6 +438,10 @@ function performance(item: Relationship) {
   return item.gameCount ? (item.gameWins - item.expectedGameWins) / item.gameCount : 0;
 }
 
+function underperformancePercent(item: Relationship) {
+  return Math.max(0, Math.round(-performance(item) * 100));
+}
+
 function winRate(item: Relationship) {
   return item.matches ? item.wins / item.matches : 0;
 }
@@ -405,10 +474,6 @@ function round(value: number) {
 
 function percent(value: number) {
   return `${Math.round(value * 100)}%`;
-}
-
-function formatSigned(value: number) {
-  return value > 0 ? `+${value}` : String(value);
 }
 
 function isDefined<T>(value: T | undefined): value is T {

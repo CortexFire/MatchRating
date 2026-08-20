@@ -25,8 +25,13 @@ const readyModel: PlayerAnalyticsViewModel = {
         { matchId: "m1", occurredAt: "2026-07-20T12:00:00.000Z", rating: 1566, ratingDelta: 8 },
         { matchId: "m2", occurredAt: "2026-08-01T12:00:00.000Z", rating: 1578, ratingDelta: 12 },
       ],
-      flags: [{ key: "hot-streak", label: "Hot Streak", explanation: "Won your last 5 matches." }],
-      matchups: [{ key: "best-partner", label: "Best Partner", player: { id: "bea", name: "Bea Rivera" }, primaryStat: "8–2 together", secondaryStat: "+11% vs expected" }],
+      flags: [{ key: "hot-streak", label: "Hot Streak", explanation: "Won the last 5 matches." }],
+      matchups: [{
+        key: "best-partner",
+        label: "Best Partner",
+        player: { id: "bea", name: "Bea Rivera" },
+        description: "Won 8 of 10 matches together, performing as though rated 126 points higher.",
+      }],
     },
     "30d": {
       summary: { rank: 1, rankedPlayerCount: 18, currentRating: 1578, ratingChange: -3, wins: 1, losses: 1, winRate: 50 },
@@ -57,13 +62,15 @@ describe("PlayerAnalyticsView", () => {
     expect(screen.queryByRole("heading", { name: "Current Form" })).toBeNull();
     expect(screen.getByRole("region", { name: "Player flags" })).toBeTruthy();
     expect(screen.getByRole("heading", { level: 2, name: "Group Dynamics" })).toBeTruthy();
+    expect(screen.getByText("Won 8 of 10 matches together, performing as though rated 126 points higher.")).toBeTruthy();
+    expect(screen.queryByText("Toughest Competitive Matchup")).toBeNull();
 
     expect(screen.getByRole("article", { name: "Group Rank" }).textContent).toBe("#1of 18Group Rank");
     expect(screen.getByRole("article", { name: "Win Rate" }).textContent).toBe("64%18–10Win Rate");
     expect(screen.getByRole("article", { name: "Current Rating" }).textContent).toBe("1578+42Current Rating");
 
     fireEvent.click(screen.getByRole("button", { name: "Hot Streak" }));
-    expect(screen.getByText("Won your last 5 matches.")).toBeTruthy();
+    expect(screen.getByText("Won the last 5 matches.")).toBeTruthy();
   });
 
   test("switches period snapshots locally and exposes empty states", () => {

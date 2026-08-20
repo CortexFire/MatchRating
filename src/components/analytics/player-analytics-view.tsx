@@ -156,7 +156,7 @@ function AnalyticsContent({
               <article key={item.key} className={styles.matchupCard}>
                 <h3>{item.label}</h3>
                 <p className={styles.matchupPlayer}>{item.player.name}</p>
-                <p className={styles.matchupStats}>{item.primaryStat}{item.secondaryStat ? ` · ${item.secondaryStat}` : ""}</p>
+                <p className={styles.matchupStats}>{item.description}</p>
               </article>
             ))}
           </div>
