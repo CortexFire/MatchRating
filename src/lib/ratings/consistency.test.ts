@@ -16,8 +16,8 @@ describe("consistency scalar helpers", () => {
       driftLogSd: 0.02,
     });
     expect(createDefaultConsistencyState()).toEqual({
-      logKappaMean: Math.log(200),
-      logKappaVariance: 0.12249999999999998,
+      logKappaMean: 5.298317366548,
+      logKappaVariance: 0.1225,
       matchesPlayed: 0,
     });
   });
@@ -28,8 +28,8 @@ describe("consistency scalar helpers", () => {
       priorLogSd: 0.2,
       driftLogSd: 0.01,
     })).toEqual({
-      logKappaMean: Math.log(150),
-      logKappaVariance: 0.04000000000000001,
+      logKappaMean: 5.010635294096,
+      logKappaVariance: 0.04,
       matchesPlayed: 0,
     });
   });
@@ -119,6 +119,68 @@ function participant(
 }
 
 describe("match-level consistency replay", () => {
+  function extremeResult(
+    format: "singles" | "doubles",
+    winnerTeam: "A" | "B",
+    favoriteRating = 2500,
+  ) {
+    const teamSize = format === "singles" ? 1 : 2;
+    const state = createDefaultConsistencyState();
+    return {
+      state,
+      result: updateMatchConsistency({
+        matchId: `match-extreme-${format}-${winnerTeam}`,
+        revisionId: `revision-extreme-${format}-${winnerTeam}`,
+        occurredAt: "2026-03-01T12:00:00.000Z",
+        format,
+        winnerTeam,
+        teamA: Array.from({ length: teamSize }, (_, index) => ({
+          userId: `favorite-${index}`,
+          rating: favoriteRating,
+          consistency: { ...state },
+        })),
+        teamB: Array.from({ length: teamSize }, (_, index) => ({
+          userId: `underdog-${index}`,
+          rating: 500,
+          consistency: { ...state },
+        })),
+      }),
+    };
+  }
+
+  it.each([
+    ["singles", 2500],
+    ["doubles", 1920],
+  ] as const)(
+    "keeps %s extreme-favorite likelihood derivatives active after an expected win",
+    (format, favoriteRating) => {
+      const { state, result } = extremeResult(format, "A", favoriteRating);
+
+      expect(Number.isFinite(result.teamAWinProbability)).toBe(true);
+      for (const updated of result.states.values()) {
+        expect(Number.isFinite(updated.logKappaMean)).toBe(true);
+        expect(Number.isFinite(updated.logKappaVariance)).toBe(true);
+        expect(updated.logKappaVariance).toBeGreaterThan(0);
+        expect(updated.logKappaMean).toBeLessThan(state.logKappaMean);
+      }
+    },
+  );
+
+  it.each(["singles", "doubles"] as const)(
+    "keeps %s extreme-upset likelihood derivatives active",
+    (format) => {
+      const { state, result } = extremeResult(format, "B");
+
+      expect(Number.isFinite(result.teamAWinProbability)).toBe(true);
+      for (const updated of result.states.values()) {
+        expect(Number.isFinite(updated.logKappaMean)).toBe(true);
+        expect(Number.isFinite(updated.logKappaVariance)).toBe(true);
+        expect(updated.logKappaVariance).toBeGreaterThan(0);
+        expect(updated.logKappaMean).toBeGreaterThan(state.logKappaMean);
+      }
+    },
+  );
+
   it("rejects invalid teams, duplicate users, and non-finite ratings", () => {
     const base = {
       matchId: "match-1",
@@ -163,12 +225,12 @@ describe("match-level consistency replay", () => {
 
     expect(result.teamAWinProbability).toBe(0.5);
     expect(result.states.get("alice")).toMatchObject({
-      logKappaMean: alice.consistency.logKappaMean,
+      logKappaMean: 5.010635294096,
       matchesPlayed: 8,
     });
     expect(result.states.get("alice")?.logKappaVariance).toBeCloseTo(0.05, 12);
     expect(result.states.get("bea")).toMatchObject({
-      logKappaMean: bea.consistency.logKappaMean,
+      logKappaMean: 5.521460917862,
       matchesPlayed: 12,
     });
     expect(result.states.get("bea")?.logKappaVariance).toBeCloseTo(0.1, 12);
@@ -183,7 +245,10 @@ describe("match-level consistency replay", () => {
         sequence: 21,
         expectedScore: 0.5,
         actualScore: 1,
-        before: alice.consistency,
+        before: {
+          ...alice.consistency,
+          logKappaMean: 5.010635294096,
+        },
         after: result.states.get("alice"),
       },
       {
@@ -196,7 +261,10 @@ describe("match-level consistency replay", () => {
         sequence: 22,
         expectedScore: 0.5,
         actualScore: 0,
-        before: bea.consistency,
+        before: {
+          ...bea.consistency,
+          logKappaMean: 5.521460917862,
+        },
         after: result.states.get("bea"),
       },
     ]);

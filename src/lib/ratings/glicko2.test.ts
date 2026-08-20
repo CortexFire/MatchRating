@@ -325,7 +325,7 @@ describe("Glicko-2 rating engine", () => {
       config,
     );
 
-    expect(rebuilt.consistencyEvents[0].before.logKappaMean).toBe(Math.log(120));
+    expect(rebuilt.consistencyEvents[0].before.logKappaMean).toBe(4.787491742782);
     expect(rebuilt.consistencyEvents[0].before.logKappaVariance).toBeCloseTo(0.04, 12);
     expect(rebuilt.consistencyEvents[0].before.matchesPlayed).toBe(0);
     expect(rebuilt.consistencyEvents[0].expectedScore).toBeGreaterThan(0.8);
@@ -375,9 +375,71 @@ describe("Glicko-2 rating engine", () => {
     expect([...prefix.ratings]).toEqual(ratingSeedBefore);
     expect([...prefix.consistencyStates]).toEqual(consistencySeedBefore);
     expect(suffix.consistencyEvents.find((event) => event.userId === "cory")?.before).toEqual({
-      logKappaMean: Math.log(200),
-      logKappaVariance: 0.12249999999999998,
+      logKappaMean: 5.298317366548,
+      logKappaVariance: 0.1225,
       matchesPlayed: 0,
     });
+  });
+
+  it("replays a long serialized suffix exactly under a non-default consistency config", () => {
+    const players = ["alice", "bea", "cory", "dev"];
+    const history = Array.from({ length: 80 }, (_, index) => {
+      const teamAUserId = players[index % players.length];
+      const teamBUserId = players[(index + 1) % players.length];
+      const winnerTeam = index % 3 === 0 ? "B" as const : "A" as const;
+      return {
+        id: `long-match-${String(index).padStart(2, "0")}`,
+        revisionId: `long-revision-${String(index).padStart(2, "0")}`,
+        submittedAt: new Date(Date.UTC(2026, 0, index + 1)).toISOString(),
+        format: "singles" as const,
+        teamAUserIds: [teamAUserId],
+        teamBUserIds: [teamBUserId],
+        games: [{
+          gameId: `long-game-${String(index).padStart(2, "0")}`,
+          gameNumber: 1,
+          teamAScore: winnerTeam === "A" ? 21 : 18,
+          teamBScore: winnerTeam === "B" ? 21 : 18,
+          winnerTeam,
+        }],
+      };
+    });
+    const config = { populationKappa: 175, priorLogSd: 0.2, driftLogSd: 0.01 };
+    const prefixMatchCount = 47;
+    const full = rebuildGroupRatingsFromMatches(
+      history,
+      new Map(),
+      0,
+      new Map(),
+      0,
+      config,
+    );
+    const prefix = rebuildGroupRatingsFromMatches(
+      history.slice(0, prefixMatchCount),
+      new Map(),
+      0,
+      new Map(),
+      0,
+      config,
+    );
+    const serializedConsistencyStates = new Map(
+      [...prefix.consistencyStates].map(([userId, state]) => [userId, {
+        ...state,
+        logKappaMean: Number(state.logKappaMean.toFixed(12)),
+        logKappaVariance: Number(state.logKappaVariance.toFixed(12)),
+      }]),
+    );
+    const suffix = rebuildGroupRatingsFromMatches(
+      history.slice(prefixMatchCount),
+      prefix.ratings,
+      prefix.events.length,
+      serializedConsistencyStates,
+      prefix.consistencyEvents.length,
+      config,
+    );
+
+    expect([...suffix.consistencyStates]).toEqual([...full.consistencyStates]);
+    expect([...prefix.consistencyEvents, ...suffix.consistencyEvents]).toEqual(
+      full.consistencyEvents,
+    );
   });
 });

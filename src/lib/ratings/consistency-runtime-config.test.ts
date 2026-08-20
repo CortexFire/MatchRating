@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import { DEFAULT_CONSISTENCY_CONFIG } from "./consistency";
 import {
+  DEFAULT_CONSISTENCY_CONFIG_FINGERPRINT,
+  consistencyConfigFingerprint,
   resolveConsistencyRuntimeConfig,
   type ConsistencyCalibrationArtifact,
 } from "./consistency-runtime-config";
@@ -30,6 +32,37 @@ function qualifiedArtifact(
 }
 
 describe("consistency runtime calibration", () => {
+  test("builds a stable versioned fallback fingerprint from hyperparameters only", () => {
+    expect(DEFAULT_CONSISTENCY_CONFIG_FINGERPRINT).toBe(
+      "consistency-v1:200:0.35:0.02",
+    );
+    expect(consistencyConfigFingerprint(DEFAULT_CONSISTENCY_CONFIG)).toBe(
+      "consistency-v1:200:0.35:0.02",
+    );
+    expect(consistencyConfigFingerprint(resolveConsistencyRuntimeConfig(
+      qualifiedArtifact({
+        populationKappa: 200,
+        priorLogSd: 0.35,
+        driftLogSd: 0.02,
+        groupCount: 900,
+        trainingMatches: 5000,
+        heldOutMatches: 1000,
+        dataThrough: "2026-08-21T12:00:00.000Z",
+      }),
+    ))).toBe("consistency-v1:200:0.35:0.02");
+  });
+
+  test.each([
+    ["population kappa", { populationKappa: 175 }],
+    ["prior log SD", { priorLogSd: 0.2 }],
+    ["drift log SD", { driftLogSd: 0.01 }],
+  ])("changes the fingerprint when %s changes", (_, change) => {
+    expect(consistencyConfigFingerprint({
+      ...DEFAULT_CONSISTENCY_CONFIG,
+      ...change,
+    })).not.toBe(DEFAULT_CONSISTENCY_CONFIG_FINGERPRINT);
+  });
+
   test("returns qualified artifact hyperparameters after validating the full gate", () => {
     expect(resolveConsistencyRuntimeConfig(qualifiedArtifact())).toEqual({
       populationKappa: 175,

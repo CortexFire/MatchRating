@@ -26,6 +26,7 @@ export type ConsistencyCalibrationArtifact = {
 const POPULATION_KAPPAS = new Set([120, 150, 175, 200, 225, 250, 300]);
 const PRIOR_LOG_SDS = new Set([0.2, 0.35, 0.5]);
 const DRIFT_LOG_SDS = new Set([0, 0.01, 0.02, 0.04]);
+const CONSISTENCY_CONFIG_FINGERPRINT_VERSION = "consistency-v1";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -47,6 +48,26 @@ function isTimestampOrNull(value: unknown): value is string | null {
   return value === null
     || (typeof value === "string" && value.length > 0 && Number.isFinite(Date.parse(value)));
 }
+
+export function consistencyConfigFingerprint(config: ConsistencyConfig): string {
+  if (
+    !POPULATION_KAPPAS.has(config.populationKappa)
+    || !PRIOR_LOG_SDS.has(config.priorLogSd)
+    || !DRIFT_LOG_SDS.has(config.driftLogSd)
+  ) {
+    throw new Error("Invalid runtime consistency configuration");
+  }
+  return [
+    CONSISTENCY_CONFIG_FINGERPRINT_VERSION,
+    config.populationKappa,
+    config.priorLogSd,
+    config.driftLogSd,
+  ].join(":");
+}
+
+export const DEFAULT_CONSISTENCY_CONFIG_FINGERPRINT = consistencyConfigFingerprint(
+  DEFAULT_CONSISTENCY_CONFIG,
+);
 
 export function resolveConsistencyRuntimeConfig(artifact: unknown): ConsistencyConfig {
   if (!isRecord(artifact) || artifact.qualified !== true) {

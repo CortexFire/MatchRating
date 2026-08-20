@@ -6,7 +6,10 @@ import {
   type RatingState,
 } from "@/lib/ratings/glicko2";
 import type { ConsistencyState } from "@/lib/ratings/consistency";
-import { getRuntimeConsistencyConfig } from "@/lib/ratings/consistency-runtime-config";
+import {
+  consistencyConfigFingerprint,
+  getRuntimeConsistencyConfig,
+} from "@/lib/ratings/consistency-runtime-config";
 import { toRatingProjection } from "@/lib/ratings/projection";
 import { validateMatchSubmission } from "@/lib/matches/validation";
 
@@ -21,6 +24,7 @@ export type RebuildInput = {
   groupId: string;
   jobId: string;
   targetVersion: number;
+  consistencyConfigFingerprint: string;
   prefixEventCount: number;
   prefixConsistencyEventCount: number;
   initialRatings: SerializedRatingState[];
@@ -29,9 +33,11 @@ export type RebuildInput = {
 
 export async function loadRebuildInput(jobId: string, dispatchToken: string): Promise<RebuildInput | null> {
   "use step";
+  const fingerprint = consistencyConfigFingerprint(getRuntimeConsistencyConfig());
   const { data, error } = await createSupabaseServiceClient().rpc("begin_incremental_rating_rebuild_v2", {
     p_job_id: jobId,
     p_dispatch_token: dispatchToken,
+    p_consistency_config_fingerprint: fingerprint,
   });
   if (error) throw error;
   return data as RebuildInput | null;
@@ -40,6 +46,13 @@ export async function loadRebuildInput(jobId: string, dispatchToken: string): Pr
 export async function calculateProjection(input: RebuildInput) {
   "use step";
   try {
+    const consistencyConfig = getRuntimeConsistencyConfig();
+    if (
+      !isValidConsistencyConfigFingerprint(input.consistencyConfigFingerprint)
+      || input.consistencyConfigFingerprint !== consistencyConfigFingerprint(consistencyConfig)
+    ) {
+      throw new Error("Invalid consistency config fingerprint");
+    }
     if (!Number.isSafeInteger(input.prefixEventCount) || input.prefixEventCount < 0) {
       throw new Error("Invalid rating prefix event count");
     }
@@ -91,7 +104,7 @@ export async function calculateProjection(input: RebuildInput) {
       input.prefixEventCount,
       initialConsistencyStates,
       input.prefixConsistencyEventCount,
-      getRuntimeConsistencyConfig(),
+      consistencyConfig,
     );
     return toRatingProjection(
       rebuilt.ratings,
@@ -107,6 +120,9 @@ export async function calculateProjection(input: RebuildInput) {
 export async function applyProjection(input: RebuildInput, projection: Awaited<ReturnType<typeof calculateProjection>>) {
   "use step";
   try {
+    if (!isValidConsistencyConfigFingerprint(input.consistencyConfigFingerprint)) {
+      throw new Error("Invalid consistency config fingerprint");
+    }
     assertCanonicalProjection(input, projection);
   } catch (error) {
     throw new FatalError(errorMessage(error));
@@ -120,6 +136,7 @@ export async function applyProjection(input: RebuildInput, projection: Awaited<R
     p_ratings: projection.ratings,
     p_events: projection.events,
     p_consistency_events: projection.consistencyEvents,
+    p_consistency_config_fingerprint: input.consistencyConfigFingerprint,
   });
   if (error) throw error;
   return data as { status: "completed" | "stale"; targetVersion?: number };
@@ -375,6 +392,13 @@ function isValidConsistencyState(state: ConsistencyState) {
     && state.logKappaVariance > 0
     && Number.isSafeInteger(state.matchesPlayed)
     && state.matchesPlayed >= 0;
+}
+
+function isValidConsistencyConfigFingerprint(value: unknown): value is string {
+  return typeof value === "string"
+    && value.length > 0
+    && value.length <= 200
+    && value.trim() === value;
 }
 
 function isUuid(value: string) {

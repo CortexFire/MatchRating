@@ -2,6 +2,8 @@ alter table public.group_rating_states
   add column consistency_log_mean numeric(18, 12) not null default 5.298317366548,
   add column consistency_log_variance numeric(18, 12) not null default 0.122500000000,
   add column consistency_matches_played integer not null default 0,
+  add column consistency_config_fingerprint text not null
+    default 'consistency-v1:200:0.35:0.02',
   add constraint group_rating_states_consistency_log_mean_check
     check (consistency_log_mean::text not in ('NaN', 'Infinity', '-Infinity')),
   add constraint group_rating_states_consistency_log_variance_check
@@ -10,7 +12,12 @@ alter table public.group_rating_states
       and consistency_log_variance > 0
     ),
   add constraint group_rating_states_consistency_matches_played_check
-    check (consistency_matches_played >= 0);
+    check (consistency_matches_played >= 0),
+  add constraint group_rating_states_consistency_config_fingerprint_check
+    check (
+      consistency_config_fingerprint = btrim(consistency_config_fingerprint)
+      and char_length(consistency_config_fingerprint) between 1 and 200
+    );
 
 create table public.consistency_events (
   id uuid primary key default gen_random_uuid(),
@@ -30,6 +37,7 @@ create table public.consistency_events (
   after_log_mean numeric(18, 12) not null,
   after_log_variance numeric(18, 12) not null,
   after_matches_played integer not null,
+  config_fingerprint text not null default 'consistency-v1:200:0.35:0.02',
   created_at timestamptz not null default now(),
   constraint consistency_events_group_match_user_key unique (group_id, match_id, user_id),
   constraint consistency_events_group_sequence_key unique (group_id, sequence),
@@ -53,7 +61,12 @@ create table public.consistency_events (
       and after_log_variance > 0
     ),
   constraint consistency_events_matches_played_step_check
-    check (after_matches_played = before_matches_played + 1)
+    check (after_matches_played = before_matches_played + 1),
+  constraint consistency_events_config_fingerprint_check
+    check (
+      config_fingerprint = btrim(config_fingerprint)
+      and char_length(config_fingerprint) between 1 and 200
+    )
 );
 
 create index consistency_events_group_match_sequence_idx
@@ -94,7 +107,8 @@ create policy "members can read consistency events"
 
 create function public.begin_incremental_rating_rebuild_v2(
   p_job_id uuid,
-  p_dispatch_token uuid
+  p_dispatch_token uuid,
+  p_consistency_config_fingerprint text default 'consistency-v1:200:0.35:0.02'
 )
 returns jsonb
 language plpgsql
@@ -111,6 +125,12 @@ declare
   v_initial_ratings jsonb := '[]'::jsonb;
   v_history jsonb := '[]'::jsonb;
 begin
+  if p_consistency_config_fingerprint is null
+    or p_consistency_config_fingerprint <> btrim(p_consistency_config_fingerprint)
+    or char_length(p_consistency_config_fingerprint) not between 1 and 200 then
+    raise exception using errcode = 'MRVAL', message = 'Invalid consistency config fingerprint';
+  end if;
+
   v_result := public.begin_incremental_rating_rebuild(p_job_id, p_dispatch_token);
   if v_result is null then
     return null;
@@ -201,6 +221,7 @@ begin
             or event.after_log_variance::text in ('NaN', 'Infinity', '-Infinity')
             or event.after_log_variance <= 0
             or event.after_matches_played <> event.before_matches_played + 1
+            or event.config_fingerprint <> p_consistency_config_fingerprint
           )
       ) as value
     ), invalid_expectations as (
@@ -235,9 +256,29 @@ begin
         where (
           event.previous_matches_played is null
           and (
-            round(event.before_log_mean, 12) <> 5.298317366548
-            or round(event.before_log_variance, 12) <> 0.122500000000
-            or event.before_matches_played <> 0
+            event.before_matches_played <> 0
+            or (
+              p_consistency_config_fingerprint = 'consistency-v1:200:0.35:0.02'
+              and (
+                round(event.before_log_mean, 12) <> 5.298317366548
+                or round(event.before_log_variance, 12) <> 0.122500000000
+              )
+            )
+            or (
+              p_consistency_config_fingerprint <> 'consistency-v1:200:0.35:0.02'
+              and (
+                round(event.before_log_mean, 12) is distinct from (
+                  select min(round(root.before_log_mean, 12))
+                  from ordered_events root
+                  where root.previous_matches_played is null
+                )
+                or round(event.before_log_variance, 12) is distinct from (
+                  select min(round(root.before_log_variance, 12))
+                  from ordered_events root
+                  where root.previous_matches_played is null
+                )
+              )
+            )
           )
         ) or (
           event.previous_matches_played is not null
@@ -262,6 +303,19 @@ begin
       compared.expected_count
     into v_consistency_prefix_valid, v_consistency_prefix_count
     from compared, actual, invalid_state, invalid_expectations, invalid_transition;
+  end if;
+
+  if coalesce(v_consistency_prefix_valid, false) and exists (
+    select 1
+    from jsonb_array_elements(v_result->'initialRatings') rating(value)
+    left join public.group_rating_states state
+      on state.group_id = v_job.group_id
+      and state.user_id = (rating.value->>'userId')::uuid
+    where state.user_id is null
+      or state.consistency_config_fingerprint <> p_consistency_config_fingerprint
+  ) then
+    v_consistency_prefix_valid := false;
+    v_consistency_prefix_count := 0;
   end if;
 
   if not coalesce(v_consistency_prefix_valid, false) then
@@ -308,6 +362,7 @@ begin
       'groupId', v_job.group_id,
       'jobId', v_job.id,
       'targetVersion', v_job.target_version,
+      'consistencyConfigFingerprint', p_consistency_config_fingerprint,
       'prefixEventCount', 0,
       'prefixConsistencyEventCount', 0,
       'initialRatings', '[]'::jsonb,
@@ -385,6 +440,7 @@ begin
       'groupId', v_job.group_id,
       'jobId', v_job.id,
       'targetVersion', v_job.target_version,
+      'consistencyConfigFingerprint', p_consistency_config_fingerprint,
       'prefixEventCount', 0,
       'prefixConsistencyEventCount', 0,
       'initialRatings', '[]'::jsonb,
@@ -392,9 +448,10 @@ begin
     );
   end if;
 
-  return jsonb_set(
-    jsonb_set(v_result, '{prefixConsistencyEventCount}', to_jsonb(v_consistency_prefix_count), true),
-    '{initialRatings}', v_initial_ratings, true
+  return v_result || jsonb_build_object(
+    'consistencyConfigFingerprint', p_consistency_config_fingerprint,
+    'prefixConsistencyEventCount', v_consistency_prefix_count,
+    'initialRatings', v_initial_ratings
   );
 end;
 $$;
@@ -406,7 +463,8 @@ create function public.apply_incremental_rating_rebuild_v2(
   p_prefix_consistency_event_count integer,
   p_ratings jsonb,
   p_events jsonb,
-  p_consistency_events jsonb
+  p_consistency_events jsonb,
+  p_consistency_config_fingerprint text default 'consistency-v1:200:0.35:0.02'
 )
 returns jsonb
 language plpgsql
@@ -419,6 +477,12 @@ declare
   v_current bigint;
   v_rating_result jsonb;
 begin
+  if p_consistency_config_fingerprint is null
+    or p_consistency_config_fingerprint <> btrim(p_consistency_config_fingerprint)
+    or char_length(p_consistency_config_fingerprint) not between 1 and 200 then
+    raise exception using errcode = 'MRVAL', message = 'Invalid consistency config fingerprint';
+  end if;
+
   select group_id into v_group_id
   from public.rating_rebuild_jobs
   where id = p_job_id;
@@ -524,6 +588,22 @@ begin
             select distinct match_id from pg_temp.v2_consistency_expected_facts
             where sequence <= p_prefix_consistency_event_count
           )) <> p_prefix_consistency_event_count
+    or (
+      p_prefix_consistency_event_count > 0
+      and exists (
+        select 1
+        from (
+          select distinct user_id
+          from pg_temp.v2_consistency_expected_facts
+          where sequence <= p_prefix_consistency_event_count
+        ) expected_user
+        left join public.group_rating_states state
+          on state.group_id = v_group_id
+          and state.user_id = expected_user.user_id
+        where state.user_id is null
+          or state.consistency_config_fingerprint <> p_consistency_config_fingerprint
+      )
+    )
     or exists (
       select 1
       from pg_temp.v2_consistency_expected_facts expected
@@ -557,6 +637,7 @@ begin
           or event.after_log_variance::text in ('NaN', 'Infinity', '-Infinity')
           or event.after_log_variance <= 0
           or event.after_matches_played <> event.before_matches_played + 1
+          or event.config_fingerprint <> p_consistency_config_fingerprint
         )
     )
     or exists (
@@ -590,9 +671,29 @@ begin
       where (
         event.previous_matches_played is null
         and (
-          round(event.before_log_mean, 12) <> 5.298317366548
-          or round(event.before_log_variance, 12) <> 0.122500000000
-          or event.before_matches_played <> 0
+          event.before_matches_played <> 0
+          or (
+            p_consistency_config_fingerprint = 'consistency-v1:200:0.35:0.02'
+            and (
+              round(event.before_log_mean, 12) <> 5.298317366548
+              or round(event.before_log_variance, 12) <> 0.122500000000
+            )
+          )
+          or (
+            p_consistency_config_fingerprint <> 'consistency-v1:200:0.35:0.02'
+            and (
+              round(event.before_log_mean, 12) is distinct from (
+                select min(round(root.before_log_mean, 12))
+                from ordered_events root
+                where root.previous_matches_played is null
+              )
+              or round(event.before_log_variance, 12) is distinct from (
+                select min(round(root.before_log_variance, 12))
+                from ordered_events root
+                where root.previous_matches_played is null
+              )
+            )
+          )
         )
       ) or (
         event.previous_matches_played is not null
@@ -621,7 +722,8 @@ begin
     before_matches_played integer,
     after_log_mean numeric(18, 12),
     after_log_variance numeric(18, 12),
-    after_matches_played integer
+    after_matches_played integer,
+    config_fingerprint text
   ) on commit drop;
   truncate pg_temp.v2_consistency_events;
 
@@ -642,7 +744,8 @@ begin
       (event.before->>'matchesPlayed')::integer,
       (event.after->>'logKappaMean')::numeric,
       (event.after->>'logKappaVariance')::numeric,
-      (event.after->>'matchesPlayed')::integer
+      (event.after->>'matchesPlayed')::integer,
+      p_consistency_config_fingerprint
     from jsonb_to_recordset(p_consistency_events) as event(
       "matchId" uuid,
       "revisionId" uuid,
@@ -705,6 +808,7 @@ begin
         or event.after_log_variance <= 0
         or event.after_matches_played is null
         or event.after_matches_played is distinct from event.before_matches_played + 1
+        or event.config_fingerprint is distinct from p_consistency_config_fingerprint
     )
     or exists (
       with combined_events as (
@@ -731,9 +835,7 @@ begin
       with combined_events as (
         select
           user_id, sequence,
-          null::numeric as before_log_mean,
-          null::numeric as before_log_variance,
-          null::integer as before_matches_played,
+          before_log_mean, before_log_variance, before_matches_played,
           after_log_mean, after_log_variance, after_matches_played,
           false as is_incoming
         from public.consistency_events
@@ -761,9 +863,29 @@ begin
         (
           event.previous_matches_played is null
           and (
-            round(event.before_log_mean, 12) is distinct from 5.298317366548
-            or round(event.before_log_variance, 12) is distinct from 0.122500000000
-            or event.before_matches_played is distinct from 0
+            event.before_matches_played is distinct from 0
+            or (
+              p_consistency_config_fingerprint = 'consistency-v1:200:0.35:0.02'
+              and (
+                round(event.before_log_mean, 12) is distinct from 5.298317366548
+                or round(event.before_log_variance, 12) is distinct from 0.122500000000
+              )
+            )
+            or (
+              p_consistency_config_fingerprint <> 'consistency-v1:200:0.35:0.02'
+              and (
+                round(event.before_log_mean, 12) is distinct from (
+                  select min(round(root.before_log_mean, 12))
+                  from ordered_events root
+                  where root.previous_matches_played is null
+                )
+                or round(event.before_log_variance, 12) is distinct from (
+                  select min(round(root.before_log_variance, 12))
+                  from ordered_events root
+                  where root.previous_matches_played is null
+                )
+              )
+            )
           )
         ) or (
           event.previous_matches_played is not null
@@ -875,13 +997,15 @@ begin
     group_id, match_id, revision_id, user_id, occurred_at, format, team,
     sequence, expected_score, actual_score,
     before_log_mean, before_log_variance, before_matches_played,
-    after_log_mean, after_log_variance, after_matches_played
+    after_log_mean, after_log_variance, after_matches_played,
+    config_fingerprint
   )
   select
     v_group_id, match_id, revision_id, user_id, occurred_at, format, team,
     sequence, expected_score, actual_score,
     before_log_mean, before_log_variance, before_matches_played,
-    after_log_mean, after_log_variance, after_matches_played
+    after_log_mean, after_log_variance, after_matches_played,
+    config_fingerprint
   from pg_temp.v2_consistency_events
   order by sequence;
 
@@ -889,7 +1013,8 @@ begin
   set
     consistency_log_mean = rating.log_mean,
     consistency_log_variance = rating.log_variance,
-    consistency_matches_played = rating.matches_played
+    consistency_matches_played = rating.matches_played,
+    consistency_config_fingerprint = p_consistency_config_fingerprint
   from pg_temp.v2_consistency_ratings rating
   where state.group_id = v_group_id
     and state.user_id = rating.user_id;
@@ -898,10 +1023,10 @@ begin
 end;
 $$;
 
-revoke all on function public.begin_incremental_rating_rebuild_v2(uuid, uuid)
+revoke all on function public.begin_incremental_rating_rebuild_v2(uuid, uuid, text)
   from public, anon, authenticated, service_role;
-revoke all on function public.apply_incremental_rating_rebuild_v2(uuid, bigint, integer, integer, jsonb, jsonb, jsonb)
+revoke all on function public.apply_incremental_rating_rebuild_v2(uuid, bigint, integer, integer, jsonb, jsonb, jsonb, text)
   from public, anon, authenticated, service_role;
 
-grant execute on function public.begin_incremental_rating_rebuild_v2(uuid, uuid) to service_role;
-grant execute on function public.apply_incremental_rating_rebuild_v2(uuid, bigint, integer, integer, jsonb, jsonb, jsonb) to service_role;
+grant execute on function public.begin_incremental_rating_rebuild_v2(uuid, uuid, text) to service_role;
+grant execute on function public.apply_incremental_rating_rebuild_v2(uuid, bigint, integer, integer, jsonb, jsonb, jsonb, text) to service_role;

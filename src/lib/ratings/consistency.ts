@@ -60,9 +60,19 @@ const MAX_KAPPA = 600;
 const MIN_THETA = Math.log(MIN_KAPPA);
 const MAX_THETA = Math.log(MAX_KAPPA);
 const MIN_POSTERIOR_VARIANCE = 1e-12;
-const MIN_LIKELIHOOD_PROBABILITY = 1e-12;
+const SERIALIZATION_DECIMALS = 12;
+const SERIALIZATION_SCALE = 10 ** SERIALIZATION_DECIMALS;
+const MIN_SERIALIZED_THETA = Number(MIN_THETA.toFixed(SERIALIZATION_DECIMALS));
+const MIN_CANONICAL_THETA = Math.ceil(MIN_THETA * SERIALIZATION_SCALE) / SERIALIZATION_SCALE;
+const MAX_CANONICAL_THETA = Math.floor(MAX_THETA * SERIALIZATION_SCALE) / SERIALIZATION_SCALE;
+const LOG_SQRT_TWO_PI = 0.5 * Math.log(2 * Math.PI);
+const NEGATIVE_TAIL_THRESHOLD = -3;
+const MILLS_RATIO_CONTINUED_FRACTION_TERMS = 64;
 const MAX_SOLVER_ITERATIONS = 25;
-const SOLVER_TOLERANCE = 1e-8;
+const SOLVER_GRADIENT_TOLERANCE = 1e-13;
+const SOLVER_STEP_TOLERANCE = 1e-14;
+const SOLVER_BOUND_TOLERANCE = 1e-12;
+const SOLVER_NUMERICAL_CONVERGENCE_TOLERANCE = 1e-6;
 
 function assertValidConfig(config: ConsistencyConfig) {
   if (
@@ -83,7 +93,7 @@ function assertValidState(state: ConsistencyState) {
   if (
     !Number.isFinite(state.logKappaMean)
     || !Number.isFinite(kappa)
-    || state.logKappaMean < MIN_THETA
+    || state.logKappaMean < MIN_SERIALIZED_THETA
     || state.logKappaMean > MAX_THETA
     || !Number.isFinite(state.logKappaVariance)
     || state.logKappaVariance <= 0
@@ -94,23 +104,44 @@ function assertValidState(state: ConsistencyState) {
   }
 }
 
+function quantizeConsistencyScalar(value: number) {
+  return Number(value.toFixed(SERIALIZATION_DECIMALS));
+}
+
+export function canonicalizeConsistencyState(state: ConsistencyState): ConsistencyState {
+  assertValidState(state);
+  const canonical = {
+    logKappaMean: Math.min(
+      MAX_CANONICAL_THETA,
+      Math.max(MIN_CANONICAL_THETA, quantizeConsistencyScalar(state.logKappaMean)),
+    ),
+    logKappaVariance: Math.max(
+      MIN_POSTERIOR_VARIANCE,
+      quantizeConsistencyScalar(state.logKappaVariance),
+    ),
+    matchesPlayed: state.matchesPlayed,
+  };
+  assertValidState(canonical);
+  return canonical;
+}
+
 export function createDefaultConsistencyState(
   config: ConsistencyConfig = DEFAULT_CONSISTENCY_CONFIG,
 ): ConsistencyState {
   assertValidConfig(config);
-  const state = {
+  const rawState = {
     logKappaMean: Math.log(config.populationKappa),
     logKappaVariance: config.priorLogSd ** 2,
     matchesPlayed: 0,
   };
   if (
-    !Number.isFinite(state.logKappaMean)
-    || !Number.isFinite(state.logKappaVariance)
-    || state.logKappaVariance <= 0
+    !Number.isFinite(rawState.logKappaMean)
+    || !Number.isFinite(rawState.logKappaVariance)
+    || rawState.logKappaVariance <= 0
   ) {
     throw new Error("Invalid consistency configuration");
   }
-  return state;
+  return canonicalizeConsistencyState(rawState);
 }
 
 export function performanceSd(state: ConsistencyState) {
@@ -209,7 +240,50 @@ type PosteriorEvaluation = {
 };
 
 function clampTheta(theta: number) {
-  return Math.min(MAX_THETA, Math.max(MIN_THETA, theta));
+  return Math.min(MAX_CANONICAL_THETA, Math.max(MIN_CANONICAL_THETA, theta));
+}
+
+function negativeTailInverseMillsRatio(z: number) {
+  const magnitude = -z;
+  let denominator = magnitude;
+  for (
+    let order = MILLS_RATIO_CONTINUED_FRACTION_TERMS;
+    order >= 2;
+    order -= 1
+  ) {
+    denominator = magnitude + order / denominator;
+  }
+  const zPlusRatio = 1 / denominator;
+  return {
+    ratio: magnitude + zPlusRatio,
+    zPlusRatio,
+  };
+}
+
+function logNormalCdf(value: number): number {
+  if (value === 0) {
+    return Math.log(0.5);
+  }
+  if (value < 0) {
+    if (value > NEGATIVE_TAIL_THRESHOLD) {
+      return Math.log(normalCdf(value));
+    }
+    const { ratio } = negativeTailInverseMillsRatio(value);
+    return -0.5 * value ** 2 - LOG_SQRT_TWO_PI - Math.log(ratio);
+  }
+
+  const logUpperTail = logNormalCdf(-value);
+  return Math.log1p(-Math.exp(logUpperTail));
+}
+
+function inverseMillsRatio(value: number) {
+  if (value <= NEGATIVE_TAIL_THRESHOLD) {
+    return negativeTailInverseMillsRatio(value);
+  }
+  const ratio = Math.exp(
+    -0.5 * value ** 2 - LOG_SQRT_TWO_PI - logNormalCdf(value),
+  );
+  return { ratio, zPlusRatio: value + ratio };
 }
 
 function evaluatePosterior(
@@ -224,12 +298,7 @@ function evaluatePosterior(
   ));
   const totalVariance = contributions.reduce((sum, value) => sum + value, 0);
   const z = signedRatingDifference / Math.sqrt(totalVariance);
-  const probability = normalCdf(z);
-  const likelihoodProbability = Math.min(
-    1 - MIN_LIKELIHOOD_PROBABILITY,
-    Math.max(MIN_LIKELIHOOD_PROBABILITY, probability),
-  );
-  let value = Math.log(likelihoodProbability);
+  let value = logNormalCdf(z);
   const gradient = theta.map((current, index) => {
     const difference = current - priorMeans[index];
     value -= 0.5 * difference ** 2 / priorVariances[index];
@@ -239,27 +308,21 @@ function evaluatePosterior(
     row === column ? -1 / priorVariances[row] : 0
   )));
 
-  if (
-    probability > MIN_LIKELIHOOD_PROBABILITY
-    && probability < 1 - MIN_LIKELIHOOD_PROBABILITY
-  ) {
-    const density = Math.exp(-0.5 * z ** 2) / Math.sqrt(2 * Math.PI);
-    const inverseMillsRatio = density / probability;
-    const likelihoodSecondDerivative = -inverseMillsRatio * (z + inverseMillsRatio);
-    const shares = contributions.map((contribution) => contribution / totalVariance);
-    const zGradient = shares.map((share) => -z * share);
+  const mills = inverseMillsRatio(z);
+  const likelihoodSecondDerivative = -mills.ratio * mills.zPlusRatio;
+  const shares = contributions.map((contribution) => contribution / totalVariance);
+  const zGradient = shares.map((share) => -z * share);
 
-    for (let row = 0; row < theta.length; row += 1) {
-      gradient[row] += inverseMillsRatio * zGradient[row];
-      for (let column = 0; column < theta.length; column += 1) {
-        const zHessian = z * shares[row] * (
-          3 * shares[column] - (row === column ? 2 : 0)
-        );
-        hessian[row][column] += (
-          likelihoodSecondDerivative * zGradient[row] * zGradient[column]
-          + inverseMillsRatio * zHessian
-        );
-      }
+  for (let row = 0; row < theta.length; row += 1) {
+    gradient[row] += mills.ratio * zGradient[row];
+    for (let column = 0; column < theta.length; column += 1) {
+      const zHessian = z * shares[row] * (
+        3 * shares[column] - (row === column ? 2 : 0)
+      );
+      hessian[row][column] += (
+        likelihoodSecondDerivative * zGradient[row] * zGradient[column]
+        + mills.ratio * zHessian
+      );
     }
   }
 
@@ -329,14 +392,93 @@ function negativeHessian(hessian: readonly (readonly number[])[]) {
 
 function projectedGradient(theta: readonly number[], gradient: readonly number[]) {
   return gradient.map((value, index) => {
-    if (theta[index] <= MIN_THETA + SOLVER_TOLERANCE && value < 0) {
+    if (theta[index] <= MIN_CANONICAL_THETA + SOLVER_BOUND_TOLERANCE && value < 0) {
       return 0;
     }
-    if (theta[index] >= MAX_THETA - SOLVER_TOLERANCE && value > 0) {
+    if (theta[index] >= MAX_CANONICAL_THETA - SOLVER_BOUND_TOLERANCE && value > 0) {
       return 0;
     }
     return value;
   });
+}
+
+function posteriorSymmetryGroups(
+  priorMeans: readonly number[],
+  priorVariances: readonly number[],
+  squaredWeights: readonly number[],
+) {
+  const groups: number[][] = [];
+  for (let index = 0; index < priorMeans.length; index += 1) {
+    const group = groups.find((candidate) => {
+      const representative = candidate[0];
+      return priorMeans[representative] === priorMeans[index]
+        && priorVariances[representative] === priorVariances[index]
+        && squaredWeights[representative] === squaredWeights[index];
+    });
+    if (group) {
+      group.push(index);
+    } else {
+      groups.push([index]);
+    }
+  }
+  return groups;
+}
+
+function symmetrizePosteriorValues(
+  values: readonly number[],
+  symmetryGroups: readonly (readonly number[])[],
+) {
+  const symmetricValues = [...values];
+  for (const group of symmetryGroups) {
+    const average = group.reduce(
+      (sum, symmetricIndex) => sum + values[symmetricIndex],
+      0,
+    ) / group.length;
+    for (const symmetricIndex of group) {
+      symmetricValues[symmetricIndex] = average;
+    }
+  }
+  return symmetricValues;
+}
+
+function improvingPosteriorCandidate(
+  theta: readonly number[],
+  step: readonly number[],
+  evaluation: PosteriorEvaluation,
+  symmetryGroups: readonly (readonly number[])[],
+  priorMeans: readonly number[],
+  priorVariances: readonly number[],
+  squaredWeights: readonly number[],
+  signedRatingDifference: number,
+) {
+  let scale = 1;
+  for (let backtrack = 0; backtrack < 30; backtrack += 1) {
+    const candidate = symmetrizePosteriorValues(
+      theta.map((value, index) => clampTheta(value + scale * step[index])),
+      symmetryGroups,
+    );
+    const displacement = candidate.map((value, index) => value - theta[index]);
+    const candidateDirectionalDerivative = evaluation.gradient.reduce(
+      (sum, value, index) => sum + value * displacement[index],
+      0,
+    );
+    const candidateEvaluation = evaluatePosterior(
+      candidate,
+      priorMeans,
+      priorVariances,
+      squaredWeights,
+      signedRatingDifference,
+    );
+    if (
+      candidateDirectionalDerivative > 0
+      && candidateEvaluation.value > evaluation.value
+      && candidateEvaluation.value >= evaluation.value + 1e-4 * candidateDirectionalDerivative
+    ) {
+      return candidate;
+    }
+    scale /= 2;
+  }
+  return undefined;
 }
 
 function solvePosterior(
@@ -345,6 +487,14 @@ function solvePosterior(
   squaredWeights: readonly number[],
   signedRatingDifference: number,
 ) {
+  const symmetryGroups = posteriorSymmetryGroups(
+    priorMeans,
+    priorVariances,
+    squaredWeights,
+  );
+  const symmetryGroupByIndex = priorMeans.map((_, index) => symmetryGroups.findIndex(
+    (group) => group.includes(index),
+  ));
   let theta = priorMeans.map(clampTheta);
   let converged = false;
 
@@ -357,31 +507,43 @@ function solvePosterior(
       signedRatingDifference,
     );
     const activeGradient = projectedGradient(theta, evaluation.gradient);
-    if (Math.max(...activeGradient.map(Math.abs)) <= SOLVER_TOLERANCE) {
+    const groupedGradient = symmetryGroups.map((group) => group.reduce(
+      (sum, index) => sum + activeGradient[index],
+      0,
+    ));
+    if (Math.max(...groupedGradient.map(Math.abs)) <= SOLVER_GRADIENT_TOLERANCE) {
       converged = true;
       break;
     }
 
-    const system = negativeHessian(evaluation.hessian);
-    const rightHandSide = [...activeGradient];
+    const fullSystem = negativeHessian(evaluation.hessian);
     for (let index = 0; index < theta.length; index += 1) {
       if (activeGradient[index] === 0 && evaluation.gradient[index] !== 0) {
         for (let other = 0; other < theta.length; other += 1) {
-          system[index][other] = index === other ? 1 : 0;
-          system[other][index] = index === other ? 1 : 0;
+          fullSystem[index][other] = index === other ? 1 : 0;
+          fullSystem[other][index] = index === other ? 1 : 0;
         }
-        rightHandSide[index] = 0;
       }
     }
+    const system = symmetryGroups.map((rowGroup) => symmetryGroups.map(
+      (columnGroup) => rowGroup.reduce(
+        (rowSum, rowIndex) => rowSum + columnGroup.reduce(
+          (columnSum, columnIndex) => columnSum + fullSystem[rowIndex][columnIndex],
+          0,
+        ),
+        0,
+      ),
+    ));
 
     let step: number[] | undefined;
     let damping = 0;
-    for (let attempt = 0; attempt < 12 && !step; attempt += 1) {
+    for (let attempt = 0; attempt < 16 && !step; attempt += 1) {
       const dampedSystem = system.map((row, rowIndex) => row.map((value, columnIndex) => (
         rowIndex === columnIndex ? value + damping : value
       )));
       try {
-        step = solveFromCholesky(cholesky(dampedSystem), rightHandSide);
+        const groupedStep = solveFromCholesky(cholesky(dampedSystem), groupedGradient);
+        step = symmetryGroupByIndex.map((groupIndex) => groupedStep[groupIndex]);
       } catch {
         damping = damping === 0 ? 1e-8 : damping * 10;
       }
@@ -389,7 +551,7 @@ function solvePosterior(
     if (!step) {
       throw new Error("Consistency posterior failed to find a safe improving step");
     }
-    if (Math.max(...step.map(Math.abs)) <= SOLVER_TOLERANCE) {
+    if (Math.max(...step.map(Math.abs)) <= SOLVER_STEP_TOLERANCE) {
       converged = true;
       break;
     }
@@ -402,36 +564,46 @@ function solvePosterior(
       throw new Error("Consistency posterior failed to find a safe improving step");
     }
 
-    let accepted = false;
-    let scale = 1;
-    for (let backtrack = 0; backtrack < 30; backtrack += 1) {
-      const candidate = theta.map((value, index) => clampTheta(value + scale * step![index]));
-      const displacement = candidate.map((value, index) => value - theta[index]);
-      const candidateDirectionalDerivative = evaluation.gradient.reduce(
-        (sum, value, index) => sum + value * displacement[index],
-        0,
+    let candidate = improvingPosteriorCandidate(
+      theta,
+      step,
+      evaluation,
+      symmetryGroups,
+      priorMeans,
+      priorVariances,
+      squaredWeights,
+      signedRatingDifference,
+    );
+    if (!candidate) {
+      const maximumGradient = Math.max(...groupedGradient.map(Math.abs));
+      const groupedGradientStep = groupedGradient.map(
+        (value) => 0.25 * value / maximumGradient,
       );
-      const candidateEvaluation = evaluatePosterior(
-        candidate,
+      const gradientStep = symmetryGroupByIndex.map(
+        (groupIndex) => groupedGradientStep[groupIndex],
+      );
+      candidate = improvingPosteriorCandidate(
+        theta,
+        gradientStep,
+        evaluation,
+        symmetryGroups,
         priorMeans,
         priorVariances,
         squaredWeights,
         signedRatingDifference,
       );
+    }
+    if (!candidate) {
       if (
-        candidateDirectionalDerivative > 0
-        && candidateEvaluation.value > evaluation.value
-        && candidateEvaluation.value >= evaluation.value + 1e-4 * candidateDirectionalDerivative
+        Math.max(...groupedGradient.map(Math.abs))
+        <= SOLVER_NUMERICAL_CONVERGENCE_TOLERANCE
       ) {
-        theta = candidate;
-        accepted = true;
+        converged = true;
         break;
       }
-      scale /= 2;
-    }
-    if (!accepted) {
       throw new Error("Consistency posterior failed to find a safe improving step");
     }
+    theta = candidate;
   }
 
   if (!converged) {
@@ -445,7 +617,11 @@ function solvePosterior(
         signedRatingDifference,
       ).gradient,
     );
-    if (Math.max(...finalGradient.map(Math.abs)) > SOLVER_TOLERANCE) {
+    const finalGroupedGradient = symmetryGroups.map((group) => group.reduce(
+      (sum, index) => sum + finalGradient[index],
+      0,
+    ));
+    if (Math.max(...finalGroupedGradient.map(Math.abs)) > SOLVER_GRADIENT_TOLERANCE) {
       throw new Error("Consistency posterior did not converge");
     }
   }
@@ -457,7 +633,24 @@ function solvePosterior(
     squaredWeights,
     signedRatingDifference,
   );
-  const lower = cholesky(negativeHessian(finalEvaluation.hessian));
+  const finalPrecision = negativeHessian(finalEvaluation.hessian);
+  let lower: number[][] | undefined;
+  let finalDamping = 0;
+  for (let attempt = 0; attempt < 16 && !lower; attempt += 1) {
+    const dampedPrecision = finalPrecision.map((row, rowIndex) => row.map(
+      (value, columnIndex) => (
+        rowIndex === columnIndex ? value + finalDamping : value
+      ),
+    ));
+    try {
+      lower = cholesky(dampedPrecision);
+    } catch {
+      finalDamping = finalDamping === 0 ? 1e-8 : finalDamping * 10;
+    }
+  }
+  if (!lower) {
+    throw new Error("Consistency posterior Hessian is not positive definite");
+  }
   const marginalVariances = theta.map((_, index) => {
     const unit = theta.map((__, unitIndex) => unitIndex === index ? 1 : 0);
     const covarianceColumn = solveFromCholesky(lower, unit);
@@ -508,18 +701,11 @@ function buildMatchResult(
   const states = new Map<string, ConsistencyState>();
   const events = participants.map(({ participant, team }, index) => {
     const before = { ...participant.consistency };
-    const after = {
+    const after = canonicalizeConsistencyState({
       logKappaMean: means[index],
       logKappaVariance: variances[index],
       matchesPlayed: before.matchesPlayed + 1,
-    };
-    if (
-      !Number.isFinite(after.logKappaMean)
-      || !Number.isFinite(after.logKappaVariance)
-      || after.logKappaVariance <= 0
-    ) {
-      throw new Error("Non-finite consistency posterior");
-    }
+    });
     states.set(participant.userId, { ...after });
     return {
       matchId: input.matchId,
@@ -543,15 +729,30 @@ export function updateMatchConsistency(
   input: ConsistencyMatchInput,
   config: ConsistencyConfig = DEFAULT_CONSISTENCY_CONFIG,
 ): ConsistencyMatchResult {
-  assertValidMatchInput(input, config);
-  const ratingA = input.teamA.reduce((sum, participant) => sum + participant.rating, 0)
-    / input.teamA.length;
-  const ratingB = input.teamB.reduce((sum, participant) => sum + participant.rating, 0)
-    / input.teamB.length;
+  const normalizedInput = {
+    ...input,
+    teamA: input.teamA.map((participant) => ({
+      ...participant,
+      consistency: canonicalizeConsistencyState(participant.consistency),
+    })),
+    teamB: input.teamB.map((participant) => ({
+      ...participant,
+      consistency: canonicalizeConsistencyState(participant.consistency),
+    })),
+  };
+  assertValidMatchInput(normalizedInput, config);
+  const ratingA = normalizedInput.teamA.reduce(
+    (sum, participant) => sum + participant.rating,
+    0,
+  ) / normalizedInput.teamA.length;
+  const ratingB = normalizedInput.teamB.reduce(
+    (sum, participant) => sum + participant.rating,
+    0,
+  ) / normalizedInput.teamB.length;
   const ratingDifference = ratingA - ratingB;
   const participants = [
-    ...input.teamA.map((participant) => ({ participant, team: "A" as const })),
-    ...input.teamB.map((participant) => ({ participant, team: "B" as const })),
+    ...normalizedInput.teamA.map((participant) => ({ participant, team: "A" as const })),
+    ...normalizedInput.teamB.map((participant) => ({ participant, team: "B" as const })),
   ];
   if (!Number.isFinite(ratingDifference)) {
     throw new Error("Non-finite consistency model input");

@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(53);
+select plan(58);
 
 select is(
   (
@@ -44,6 +44,30 @@ select ok(
   'current consistency state rejects non-finite or impossible values'
 );
 
+select ok(
+  (select is_nullable = 'NO' and data_type = 'text'
+    and column_default like '%consistency-v1:200:0.35:0.02%'
+    from information_schema.columns
+    where table_schema = 'public' and table_name = 'group_rating_states'
+      and column_name = 'consistency_config_fingerprint')
+    and (select is_nullable = 'NO' and data_type = 'text'
+      and column_default like '%consistency-v1:200:0.35:0.02%'
+      from information_schema.columns
+      where table_schema = 'public' and table_name = 'consistency_events'
+        and column_name = 'config_fingerprint')
+    and exists (
+      select 1 from pg_constraint
+      where conrelid = 'public.group_rating_states'::regclass
+        and conname = 'group_rating_states_consistency_config_fingerprint_check'
+    )
+    and exists (
+      select 1 from pg_constraint
+      where conrelid = 'public.consistency_events'::regclass
+        and conname = 'consistency_events_config_fingerprint_check'
+    ),
+  'current and event consistency state persist bounded non-null fallback config fingerprints'
+);
+
 select is(
   (
     select count(*)
@@ -53,11 +77,12 @@ select is(
         'id', 'group_id', 'match_id', 'revision_id', 'user_id', 'occurred_at',
         'format', 'team', 'sequence', 'expected_score', 'actual_score',
         'before_log_mean', 'before_log_variance', 'before_matches_played',
-        'after_log_mean', 'after_log_variance', 'after_matches_played', 'created_at'
+        'after_log_mean', 'after_log_variance', 'after_matches_played',
+        'config_fingerprint', 'created_at'
       )
       and is_nullable = 'NO'
   ),
-  18::bigint,
+  19::bigint,
   'consistency events persist the complete required canonical fact'
 );
 
@@ -101,6 +126,11 @@ select ok(
       select 1 from information_schema.columns
       where table_schema = 'public' and table_name = 'consistency_events'
         and column_name = 'team' and data_type = 'USER-DEFINED' and udt_name = 'team_code'
+    )
+    and exists (
+      select 1 from information_schema.columns
+      where table_schema = 'public' and table_name = 'consistency_events'
+        and column_name = 'config_fingerprint' and data_type = 'text'
     ),
   'consistency event probability, state, result, sequence, and count types are exact'
 );
@@ -167,22 +197,22 @@ select ok(
 );
 
 select ok(
-  to_regprocedure('public.begin_incremental_rating_rebuild_v2(uuid,uuid)') is not null
-    and to_regprocedure('public.apply_incremental_rating_rebuild_v2(uuid,bigint,integer,integer,jsonb,jsonb,jsonb)') is not null,
+  to_regprocedure('public.begin_incremental_rating_rebuild_v2(uuid,uuid,text)') is not null
+    and to_regprocedure('public.apply_incremental_rating_rebuild_v2(uuid,bigint,integer,integer,jsonb,jsonb,jsonb,text)') is not null,
   'versioned consistency-aware rebuild RPCs expose the accepted worker signature'
 );
 
 select ok(
-  has_function_privilege('service_role', 'public.begin_incremental_rating_rebuild_v2(uuid,uuid)', 'EXECUTE')
-    and has_function_privilege('service_role', 'public.apply_incremental_rating_rebuild_v2(uuid,bigint,integer,integer,jsonb,jsonb,jsonb)', 'EXECUTE'),
+  has_function_privilege('service_role', to_regprocedure('public.begin_incremental_rating_rebuild_v2(uuid,uuid,text)'), 'EXECUTE')
+    and has_function_privilege('service_role', to_regprocedure('public.apply_incremental_rating_rebuild_v2(uuid,bigint,integer,integer,jsonb,jsonb,jsonb,text)'), 'EXECUTE'),
   'service role can execute both versioned rebuild RPCs'
 );
 
 select ok(
-  not has_function_privilege('anon', 'public.begin_incremental_rating_rebuild_v2(uuid,uuid)', 'EXECUTE')
-    and not has_function_privilege('authenticated', 'public.begin_incremental_rating_rebuild_v2(uuid,uuid)', 'EXECUTE')
-    and not has_function_privilege('anon', 'public.apply_incremental_rating_rebuild_v2(uuid,bigint,integer,integer,jsonb,jsonb,jsonb)', 'EXECUTE')
-    and not has_function_privilege('authenticated', 'public.apply_incremental_rating_rebuild_v2(uuid,bigint,integer,integer,jsonb,jsonb,jsonb)', 'EXECUTE'),
+  not coalesce(has_function_privilege('anon', to_regprocedure('public.begin_incremental_rating_rebuild_v2(uuid,uuid,text)'), 'EXECUTE'), false)
+    and not coalesce(has_function_privilege('authenticated', to_regprocedure('public.begin_incremental_rating_rebuild_v2(uuid,uuid,text)'), 'EXECUTE'), false)
+    and not coalesce(has_function_privilege('anon', to_regprocedure('public.apply_incremental_rating_rebuild_v2(uuid,bigint,integer,integer,jsonb,jsonb,jsonb,text)'), 'EXECUTE'), false)
+    and not coalesce(has_function_privilege('authenticated', to_regprocedure('public.apply_incremental_rating_rebuild_v2(uuid,bigint,integer,integer,jsonb,jsonb,jsonb,text)'), 'EXECUTE'), false),
   'anonymous and authenticated clients cannot execute versioned rebuild RPCs'
 );
 
@@ -338,8 +368,16 @@ select ok(
       and consistency_log_mean = 5.2
       and consistency_log_variance = 0.1
       and consistency_matches_played = 1
+      and to_jsonb(group_rating_states)->>'consistency_config_fingerprint'
+        = 'consistency-v1:200:0.35:0.02'
+  )
+    and not exists (
+      select 1 from public.consistency_events
+      where group_id = 'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+        and to_jsonb(consistency_events)->>'config_fingerprint'
+          is distinct from 'consistency-v1:200:0.35:0.02'
   ),
-  'valid apply persists the latest current consistency state'
+  'valid apply persists the requested fingerprint on events and current state'
 );
 
 select ok(
@@ -426,6 +464,27 @@ insert into invalid_apply_snapshot
 select pg_temp.consistency_persistence_snapshot(
   'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   'f0111111-1111-4111-8111-111111111111'
+);
+
+select throws_ok(
+  $$
+    select public.apply_incremental_rating_rebuild_v2(
+      'f0111111-1111-4111-8111-111111111111', 1, 0, 0,
+      ratings, rating_events, consistency_events, '   '
+    ) from consistency_payloads
+  $$,
+  'MRVAL',
+  'Invalid consistency config fingerprint',
+  'a malformed config fingerprint is rejected before legacy apply'
+);
+
+select is(
+  pg_temp.consistency_persistence_snapshot(
+    'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'f0111111-1111-4111-8111-111111111111'
+  ),
+  (select value from invalid_apply_snapshot),
+  'malformed fingerprint rejection leaves exact persisted contents unchanged'
 );
 
 select throws_ok(
@@ -643,6 +702,29 @@ select ok(
   (select jsonb_array_length(value->'history') from consistency_suffix_state) = 1
     and (select value#>>'{history,0,id}' from consistency_suffix_state) = 'f1333333-3333-4333-8333-333333333333',
   'append-only begin returns only the dirty suffix history'
+);
+
+create temporary table consistency_config_mismatch_state (value jsonb not null) on commit drop;
+select lives_ok(
+  $$
+    insert into consistency_config_mismatch_state
+    select public.begin_incremental_rating_rebuild_v2(
+      'f1666666-6666-4666-8666-666666666666',
+      'f1777777-7777-4777-8777-777777777777',
+      'consistency-v1:175:0.2:0.01'
+    )
+  $$,
+  'a qualified fingerprint is accepted by the versioned begin RPC'
+);
+
+select ok(
+  (select (value->>'prefixEventCount')::integer from consistency_config_mismatch_state) = 0
+    and (select (value->>'prefixConsistencyEventCount')::integer from consistency_config_mismatch_state) = 0
+    and (select jsonb_array_length(value->'initialRatings') from consistency_config_mismatch_state) = 0
+    and (select jsonb_array_length(value->'history') from consistency_config_mismatch_state) = 2
+    and (select value->>'consistencyConfigFingerprint' from consistency_config_mismatch_state)
+      = 'consistency-v1:175:0.2:0.01',
+  'a different qualified fingerprint invalidates the fallback-built dual prefix'
 );
 
 update public.consistency_events set actual_score = 0

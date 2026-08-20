@@ -19,16 +19,26 @@ const runtimeConfigMocks = vi.hoisted(() => ({
     priorLogSd: 0.35,
     driftLogSd: 0.02,
   })),
+  consistencyConfigFingerprint: vi.fn((config: {
+    populationKappa: number;
+    priorLogSd: number;
+    driftLogSd: number;
+  }) => (
+    `consistency-v1:${config.populationKappa}:${config.priorLogSd}:${config.driftLogSd}`
+  )),
 }));
 
 vi.mock("@/lib/supabase/server", () => supabaseMocks);
 vi.mock("@/lib/ratings/consistency-runtime-config", () => runtimeConfigMocks);
+
+const FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT = "consistency-v1:200:0.35:0.02";
 
 function canonicalSinglesInput() {
   return {
     groupId: "50000000-0000-4000-8000-000000000001",
     jobId: "50000000-0000-4000-8000-000000000002",
     targetVersion: 8,
+    consistencyConfigFingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
     prefixEventCount: 10,
     prefixConsistencyEventCount: 5,
     initialRatings: [],
@@ -93,6 +103,7 @@ describe("rating rebuild workflow failure handling", () => {
       groupId: "group-1",
       jobId: "job-1",
       targetVersion: 8,
+      consistencyConfigFingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
       prefixEventCount: 6,
       prefixConsistencyEventCount: 3,
       initialRatings: [
@@ -115,6 +126,7 @@ describe("rating rebuild workflow failure handling", () => {
     expect(supabaseMocks.rpc).toHaveBeenCalledWith("begin_incremental_rating_rebuild_v2", {
       p_job_id: "job-1",
       p_dispatch_token: "dispatch-1",
+      p_consistency_config_fingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
     });
   });
 
@@ -123,6 +135,7 @@ describe("rating rebuild workflow failure handling", () => {
       groupId: "group-1",
       jobId: "job-1",
       targetVersion: 8,
+      consistencyConfigFingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
       prefixEventCount: 6,
       prefixConsistencyEventCount: 3,
       initialRatings: [
@@ -155,7 +168,7 @@ describe("rating rebuild workflow failure handling", () => {
       userId: "prefix-only",
       rating: 1600,
       gamesPlayed: 5,
-      logKappaMean: Math.log(160),
+      logKappaMean: 5.075173815234,
       consistencyMatchesPlayed: 4,
     }));
   });
@@ -165,6 +178,7 @@ describe("rating rebuild workflow failure handling", () => {
       groupId: "group-1",
       jobId: "job-1",
       targetVersion: 8,
+      consistencyConfigFingerprint: "consistency-v1:175:0.2:0.01",
       prefixEventCount: 6,
       prefixConsistencyEventCount: 3,
       initialRatings: [],
@@ -183,6 +197,7 @@ describe("rating rebuild workflow failure handling", () => {
       p_ratings: [],
       p_events: [],
       p_consistency_events: [],
+      p_consistency_config_fingerprint: "consistency-v1:175:0.2:0.01",
     });
   });
 
@@ -191,6 +206,7 @@ describe("rating rebuild workflow failure handling", () => {
       groupId: "10000000-0000-4000-8000-000000000001",
       jobId: "10000000-0000-4000-8000-000000000002",
       targetVersion: 8,
+      consistencyConfigFingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
       prefixEventCount: 0,
       prefixConsistencyEventCount: 0,
       initialRatings: [],
@@ -222,6 +238,7 @@ describe("rating rebuild workflow failure handling", () => {
       groupId: "20000000-0000-4000-8000-000000000001",
       jobId: "20000000-0000-4000-8000-000000000002",
       targetVersion: 8,
+      consistencyConfigFingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
       prefixEventCount: 0,
       prefixConsistencyEventCount: 0,
       initialRatings: [],
@@ -253,6 +270,7 @@ describe("rating rebuild workflow failure handling", () => {
       groupId: "30000000-0000-4000-8000-000000000001",
       jobId: "30000000-0000-4000-8000-000000000002",
       targetVersion: 8,
+      consistencyConfigFingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
       prefixEventCount: 0,
       prefixConsistencyEventCount: 0,
       initialRatings: [],
@@ -284,6 +302,7 @@ describe("rating rebuild workflow failure handling", () => {
       groupId: "40000000-0000-4000-8000-000000000001",
       jobId: "40000000-0000-4000-8000-000000000002",
       targetVersion: 8,
+      consistencyConfigFingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
       prefixEventCount: 0,
       prefixConsistencyEventCount: 0,
       initialRatings: [],
@@ -317,10 +336,13 @@ describe("rating rebuild workflow failure handling", () => {
       driftLogSd: 0,
     });
 
-    const projection = await calculateProjection(canonicalSinglesInput());
+    const projection = await calculateProjection({
+      ...canonicalSinglesInput(),
+      consistencyConfigFingerprint: "consistency-v1:120:0.2:0",
+    });
 
     expect(runtimeConfigMocks.getRuntimeConsistencyConfig).toHaveBeenCalledTimes(1);
-    expect(projection.consistencyEvents[0].before.logKappaMean).toBe(Math.log(120));
+    expect(projection.consistencyEvents[0].before.logKappaMean).toBe(4.787491742782);
     expect(projection.consistencyEvents[0].before.logKappaVariance).toBeCloseTo(0.04, 12);
     expect(projection.consistencyEvents[0].before.matchesPlayed).toBe(0);
   });
@@ -425,6 +447,7 @@ describe("rating rebuild workflow failure handling", () => {
       groupId: "group-1",
       jobId: "job-1",
       targetVersion: 8,
+      consistencyConfigFingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
       prefixEventCount: 6,
       prefixConsistencyEventCount: 3,
       initialRatings: [],
@@ -449,6 +472,7 @@ describe("rating rebuild workflow failure handling", () => {
     expect(supabaseMocks.rpc).toHaveBeenNthCalledWith(3, "begin_incremental_rating_rebuild_v2", {
       p_job_id: "job-1",
       p_dispatch_token: "dispatch-1",
+      p_consistency_config_fingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
     });
     expect(supabaseMocks.rpc).toHaveBeenNthCalledWith(4, "apply_incremental_rating_rebuild_v2", {
       p_job_id: "job-1",
@@ -458,6 +482,7 @@ describe("rating rebuild workflow failure handling", () => {
       p_ratings: [],
       p_events: [],
       p_consistency_events: [],
+      p_consistency_config_fingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
     });
   });
 
@@ -517,6 +542,7 @@ describe("rating rebuild workflow failure handling", () => {
       groupId: "group-1",
       jobId: "job-1",
       targetVersion: 8,
+      consistencyConfigFingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
       prefixEventCount: 0,
       prefixConsistencyEventCount: 0,
       initialRatings: [],
@@ -541,6 +567,7 @@ describe("rating rebuild workflow failure handling", () => {
       groupId: "group-1",
       jobId: "job-1",
       targetVersion: 8,
+      consistencyConfigFingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
       prefixEventCount: 6,
       prefixConsistencyEventCount: 3,
       initialRatings: [
@@ -560,6 +587,7 @@ describe("rating rebuild workflow failure handling", () => {
           groupId: "group-1",
           jobId: "job-1",
           targetVersion: 8,
+          consistencyConfigFingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
           prefixEventCount: 0,
           prefixConsistencyEventCount: 0,
           initialRatings: [],

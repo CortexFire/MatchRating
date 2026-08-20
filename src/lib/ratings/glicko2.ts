@@ -4,6 +4,7 @@ import {
   type Team,
 } from "../matches/validation";
 import {
+  canonicalizeConsistencyState,
   createDefaultConsistencyState,
   updateMatchConsistency,
   DEFAULT_CONSISTENCY_CONFIG,
@@ -381,7 +382,10 @@ export function rebuildGroupRatingsFromMatches(
   );
   const events: RatingEvent[] = [];
   const consistencyStates = new Map<string, ConsistencyState>(
-    Array.from(initialConsistencyStates.entries()).map(([userId, state]) => [userId, { ...state }]),
+    Array.from(initialConsistencyStates.entries()).map(([userId, state]) => [
+      userId,
+      canonicalizeConsistencyState(state),
+    ]),
   );
   const consistencyEvents: ConsistencyEvent[] = [];
   const orderedMatches = [...matches].sort((a, b) => {
