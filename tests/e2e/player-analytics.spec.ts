@@ -49,3 +49,18 @@ test("rankings rows use the same player analytics destinations", async ({ page }
   await expect(page.getByRole("heading", { level: 1, name: "Analytics" })).toBeVisible();
   await expect(page.locator("header").getByText("Cory Shah", { exact: true })).toBeVisible();
 });
+
+test("provisional rating marker uses secondary color without inheriting bold weight", async ({ page }) => {
+  await signInAsDemoPlayer(page, "alice@demo.matchrating.app");
+  await page.goto(`/groups/${DEMO_GROUP_ID}`);
+  await page.getByText("Members (8)", { exact: true }).click();
+
+  const provisionalDescription = page.getByText(/, provisional rating$/).first();
+  await expect(provisionalDescription).toBeAttached();
+  const provisionalMarker = provisionalDescription
+    .locator("..")
+    .locator('span[aria-hidden="true"] > span');
+
+  await expect(provisionalMarker).toHaveCSS("color", "rgb(111, 135, 126)");
+  await expect(provisionalMarker).toHaveCSS("font-weight", "400");
+});
