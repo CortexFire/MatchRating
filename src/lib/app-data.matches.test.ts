@@ -486,6 +486,32 @@ describe("stored match reads", () => {
     ]);
   });
 
+  test("selects and hydrates the stored performance variation for group players", async () => {
+    rowsByTable.group_memberships = [
+      { id: "membership-1", group_id: GROUP_ONE, user_id: OPPONENT, role: "member", status: "active", left_at: null },
+    ];
+    rowsByTable.profiles = [
+      { id: OPPONENT, display_name: "Bea Rivera", is_guest: false, active_until: null },
+    ];
+    rowsByTable.group_rating_states = [
+      {
+        group_id: GROUP_ONE,
+        user_id: OPPONENT,
+        rating: "1510.2",
+        rd: "88.1",
+        games_played: 9,
+        consistency_log_mean: "4.442651256490317",
+      },
+    ];
+
+    const players = await listGroupPlayers(GROUP_ONE);
+
+    expect(queriesByTable.group_rating_states[0].select).toHaveBeenCalledWith(
+      "user_id, rating, rd, games_played, consistency_log_mean",
+    );
+    expect(players[0]?.performanceSd).toBe(85);
+  });
+
   test("enforces exact group and match pairing", async () => {
     await expect(getGroupMatchDetail(GROUP_ONE, MATCH_NEW)).resolves.toMatchObject({
       id: MATCH_NEW,

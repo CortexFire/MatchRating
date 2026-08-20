@@ -1,5 +1,6 @@
 import { createSupabaseServerClient, createSupabaseServiceClient, requireUserId } from "@/lib/supabase/server";
 import { cache } from "react";
+import { performanceSdFromLogMean } from "@/lib/player-performance";
 import { type MatchFormat } from "@/lib/matches/validation";
 import { type ActiveMatchDraftGameInput } from "@/lib/matches/drafts";
 import {
@@ -57,6 +58,7 @@ export type AppPlayer = {
   role: "Owner" | "Admin" | "Member" | "Guest";
   rating: number;
   rd: number;
+  performanceSd: number;
   rank: number;
   gamesPlayed: number;
   status: "Active" | "Inactive";
@@ -96,6 +98,7 @@ type RatingRow = {
   rating: number | string;
   rd: number | string;
   games_played: number;
+  consistency_log_mean?: number | string | null;
 };
 
 const getCurrentUserId = cache(requireUserId);
@@ -366,7 +369,7 @@ export async function listGroupPlayers(groupId: string): Promise<AppPlayer[]> {
 
   const { data: ratings, error: ratingsError } = await service
     .from("group_rating_states")
-    .select("user_id, rating, rd, games_played")
+    .select("user_id, rating, rd, games_played, consistency_log_mean")
     .eq("group_id", groupId)
     .in("user_id", userIds);
 
@@ -388,6 +391,7 @@ export async function listGroupPlayers(groupId: string): Promise<AppPlayer[]> {
       role: profile?.isGuest ? "Guest" : displayRole(membership.role),
       rating: Math.round(Number(rating?.rating ?? 1500)),
       rd: Math.round(Number(rating?.rd ?? 350)),
+      performanceSd: performanceSdFromLogMean(rating?.consistency_log_mean),
       gamesPlayed: rating?.games_played ?? 0,
       status:
         profile?.activeUntil && new Date(profile.activeUntil).getTime() >= Date.now()

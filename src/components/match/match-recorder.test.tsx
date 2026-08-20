@@ -34,6 +34,7 @@ function groupPlayer(id: string, name: string, initials: string): AppPlayer {
     role: "Member",
     rating: 1500,
     rd: 350,
+    performanceSd: 200,
     rank: 0,
     gamesPlayed: 0,
     status: "Active",
@@ -49,6 +50,13 @@ describe("MatchRecorder", () => {
     vi.restoreAllMocks();
     window.history.replaceState(null, "", "/");
     vi.useRealTimers();
+  });
+  test("keeps the match selector focused on player identity and activity", () => {
+    openPlayerSelect();
+
+    expect(screen.getByRole("button", { name: "Select Dev Okafor" })).toBeTruthy();
+    expect(screen.queryByText(/±/)).toBeNull();
+    expect(screen.queryByText(/rating points/i)).toBeNull();
   });
   test("offers the provided groups in a native group selector while recording", () => {
     render(
@@ -509,6 +517,7 @@ describe("MatchRecorder", () => {
             role: "Guest" as const,
             rating: 1500,
             rd: 350,
+            performanceSd: 200,
             rank: 0,
             gamesPlayed: 0,
             status: "Active" as const,

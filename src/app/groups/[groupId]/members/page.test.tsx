@@ -17,9 +17,9 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const groupId = "11111111-1111-4111-8111-111111111111";
 const players = [
-  { id: "alice", name: "Alice Tan", initials: "AT", role: "Owner" as const, rating: 1640, rd: 72, rank: 1, gamesPlayed: 18, status: "Active" as const },
-  { id: "bea", name: "Bea Rivera", initials: "BR", role: "Member" as const, rating: 1580, rd: 81, rank: 2, gamesPlayed: 14, status: "Inactive" as const },
-  { id: "cory", name: "Cory Shah", initials: "CS", role: "Member" as const, rating: 1510, rd: 90, rank: 3, gamesPlayed: 10, status: "Inactive" as const },
+  { id: "alice", name: "Alice Tan", initials: "AT", role: "Owner" as const, rating: 1640, rd: 72, performanceSd: 85, rank: 1, gamesPlayed: 18, status: "Active" as const },
+  { id: "bea", name: "Bea Rivera", initials: "BR", role: "Member" as const, rating: 1580, rd: 81, performanceSd: 91, rank: 2, gamesPlayed: 14, status: "Inactive" as const },
+  { id: "cory", name: "Cory Shah", initials: "CS", role: "Member" as const, rating: 1510, rd: 90, performanceSd: 98, rank: 3, gamesPlayed: 10, status: "Inactive" as const },
 ];
 
 beforeEach(() => {
@@ -44,6 +44,7 @@ test("reports recency-active players separately from the full membership count",
   expect(html).not.toContain("3 active players in this group");
   expect(html).toContain(`href="/groups/${groupId}/players/alice/analytics"`);
   expect(html).toContain('aria-label="View analytics for Alice Tan"');
+  expect(html).toContain("± 85");
 });
 
 test("uses membership language when the roster is empty", async () => {

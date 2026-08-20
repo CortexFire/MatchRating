@@ -12,6 +12,7 @@ const player: AppPlayer = {
   role: "Owner",
   rating: 1640,
   rd: 72,
+  performanceSd: 85,
   rank: 1,
   gamesPlayed: 18,
   status: "Active",
@@ -31,6 +32,10 @@ describe("PlayerRow", () => {
 
     const rating = screen.getByText("1640");
     expect(rating).toBeTruthy();
-    expect(screen.getByText("± 72 RD")).toBeTruthy();
+    const description = "Estimated one-standard-deviation match-performance variation: plus or minus 85 rating points.";
+    const variation = screen.getByText("± 85");
+    expect(variation.getAttribute("title")).toBe(description);
+    expect(variation.getAttribute("aria-label")).toBe(description);
+    expect(screen.queryByText(/RD/)).toBeNull();
   });
 });

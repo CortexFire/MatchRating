@@ -936,6 +936,7 @@ function toGuestPlayer(id: string, name: string): AppPlayer {
     role: "Guest",
     rating: 1500,
     rd: 350,
+    performanceSd: 200,
     rank: 0,
     gamesPlayed: 0,
     status: "Active",

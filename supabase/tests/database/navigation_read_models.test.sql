@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(18);
+select plan(21);
 
 select has_index(
   'public',
@@ -43,12 +43,12 @@ values
   ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '44444444-4444-4444-8444-444444444444', 'member', 'active'),
   ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '55555555-5555-4555-8555-555555555555', 'owner', 'active');
 
-insert into public.group_rating_states (group_id, user_id, rating, rd, games_played)
+insert into public.group_rating_states (group_id, user_id, rating, rd, games_played, consistency_log_mean)
 values
-  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111', 1642, 72, 18),
-  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '22222222-2222-4222-8222-222222222222', 1510, 88, 9),
-  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '33333333-3333-4333-8333-333333333333', 1490, 350, 0),
-  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '44444444-4444-4444-8444-444444444444', 1480, 350, 0);
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111', 1642, 72, 18, 4.442651256490),
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '22222222-2222-4222-8222-222222222222', 1510, 88, 9, 4.521788577049),
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '33333333-3333-4333-8333-333333333333', 1490, 350, 0, 5.298317366548),
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '44444444-4444-4444-8444-444444444444', 1480, 350, 0, 5.298317366548);
 
 insert into public.matches (id, group_id, created_by_user_id, status, submitted_at, review_started_at)
 values
@@ -122,6 +122,36 @@ select is(
   jsonb_array_length(public.get_home_page_data(3)->'memberships'),
   3,
   'home includes associated guests but excludes orphan guests'
+);
+
+select is(
+  (
+    select (entry->>'consistency_log_mean')::numeric
+    from jsonb_array_elements(public.get_home_page_data(3)->'ratings') entry
+    where entry->>'user_id' = '11111111-1111-4111-8111-111111111111'
+  ),
+  4.442651256490::numeric,
+  'home ratings expose the stored consistency log mean'
+);
+
+select is(
+  (
+    select (entry->>'consistency_log_mean')::numeric
+    from jsonb_array_elements(public.get_group_page_data('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 5)->'ratings') entry
+    where entry->>'user_id' = '11111111-1111-4111-8111-111111111111'
+  ),
+  4.442651256490::numeric,
+  'group ratings expose the stored consistency log mean'
+);
+
+select is(
+  (
+    select (entry->>'consistency_log_mean')::numeric
+    from jsonb_array_elements(public.get_match_recorder_page_data('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', null)->'ratings') entry
+    where entry->>'user_id' = '11111111-1111-4111-8111-111111111111'
+  ),
+  4.442651256490::numeric,
+  'recorder ratings expose the stored consistency log mean'
 );
 
 select is(

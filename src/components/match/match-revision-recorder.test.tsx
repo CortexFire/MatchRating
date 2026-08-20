@@ -11,8 +11,8 @@ vi.mock("@/app/actions", () => actionMocks);
 vi.mock("next/navigation", () => ({ useRouter: () => navigationMocks }));
 
 const players = [
-  { id: "alice", name: "Alice Tan", initials: "AT", role: "Member" as const, rating: 1500, rd: 350, rank: 1, gamesPlayed: 1, status: "Active" as const },
-  { id: "bea", name: "Bea Rivera", initials: "BR", role: "Member" as const, rating: 1500, rd: 350, rank: 2, gamesPlayed: 1, status: "Active" as const },
+  { id: "alice", name: "Alice Tan", initials: "AT", role: "Member" as const, rating: 1500, rd: 350, performanceSd: 200, rank: 1, gamesPlayed: 1, status: "Active" as const },
+  { id: "bea", name: "Bea Rivera", initials: "BR", role: "Member" as const, rating: 1500, rd: 350, performanceSd: 200, rank: 2, gamesPlayed: 1, status: "Active" as const },
 ];
 
 test("submits a correction through the atomic action without free-text metadata", async () => {
