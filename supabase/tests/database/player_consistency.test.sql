@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(63);
+select plan(71);
 
 select is(
   (
@@ -278,6 +278,32 @@ select throws_ok(
   'MRVAL',
   'Invalid consistency config fingerprint',
   'begin rejects a tab-and-newline-only config fingerprint before its legacy claim'
+);
+
+select throws_ok(
+  $$
+    select public.begin_incremental_rating_rebuild_v2(
+      'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      'efffffff-ffff-4fff-8fff-ffffffffffff',
+      chr(160)
+    )
+  $$,
+  'MRVAL',
+  'Invalid consistency config fingerprint',
+  'begin rejects a non-breaking-space-only config fingerprint before its legacy claim'
+);
+
+select throws_ok(
+  $$
+    select public.begin_incremental_rating_rebuild_v2(
+      'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      'efffffff-ffff-4fff-8fff-ffffffffffff',
+      chr(8239)
+    )
+  $$,
+  'MRVAL',
+  'Invalid consistency config fingerprint',
+  'begin rejects a narrow-non-breaking-space-only config fingerprint before its legacy claim'
 );
 
 select ok(
@@ -639,13 +665,37 @@ select throws_ok(
 select throws_ok(
   $$
     select public.apply_incremental_rating_rebuild_v2(
-      'f0111111-1111-4111-8111-111111111111', 1, 0, 0,
-      ratings, rating_events, consistency_events, E'\t\n\r\f\v'
+      'ffffffff-0000-4000-8000-000000000001', 1, 0, 0,
+      ratings, rating_events, consistency_events, chr(11)
     ) from consistency_payloads
   $$,
   'MRVAL',
   'Invalid consistency config fingerprint',
-  'apply rejects an all-whitespace config fingerprint before persistent changes'
+  'apply rejects an actual vertical-tab-only config fingerprint before job lookup'
+);
+
+select throws_ok(
+  $$
+    select public.apply_incremental_rating_rebuild_v2(
+      'ffffffff-0000-4000-8000-000000000001', 1, 0, 0,
+      ratings, rating_events, consistency_events, chr(160)
+    ) from consistency_payloads
+  $$,
+  'MRVAL',
+  'Invalid consistency config fingerprint',
+  'apply rejects a non-breaking-space-only config fingerprint before job lookup'
+);
+
+select throws_ok(
+  $$
+    select public.apply_incremental_rating_rebuild_v2(
+      'ffffffff-0000-4000-8000-000000000001', 1, 0, 0,
+      ratings, rating_events, consistency_events, chr(8239)
+    ) from consistency_payloads
+  $$,
+  'MRVAL',
+  'Invalid consistency config fingerprint',
+  'apply rejects a narrow-non-breaking-space-only config fingerprint before job lookup'
 );
 
 select ok(
@@ -833,24 +883,70 @@ select is(
 select throws_ok(
   $$
     update public.group_rating_states
-    set consistency_config_fingerprint = E'\t\n'
+    set consistency_config_fingerprint = chr(11)
     where group_id = 'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
   $$,
   '23514',
   'new row for relation "group_rating_states" violates check constraint "group_rating_states_consistency_config_fingerprint_check"',
-  'current consistency state rejects a tab-and-newline-only config fingerprint'
+  'current consistency state rejects an actual vertical-tab-only config fingerprint'
 );
 
 select throws_ok(
   $$
     update public.consistency_events
-    set config_fingerprint = E'\r\n\t'
+    set config_fingerprint = chr(11)
     where group_id = 'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
       and sequence = 1
   $$,
   '23514',
   'new row for relation "consistency_events" violates check constraint "consistency_events_config_fingerprint_check"',
-  'consistency events reject a whitespace-only config fingerprint'
+  'consistency events reject an actual vertical-tab-only config fingerprint'
+);
+
+select throws_ok(
+  $$
+    update public.group_rating_states
+    set consistency_config_fingerprint = chr(160)
+    where group_id = 'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  $$,
+  '23514',
+  'new row for relation "group_rating_states" violates check constraint "group_rating_states_consistency_config_fingerprint_check"',
+  'current consistency state rejects a non-breaking-space-only config fingerprint'
+);
+
+select throws_ok(
+  $$
+    update public.consistency_events
+    set config_fingerprint = chr(160)
+    where group_id = 'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+      and sequence = 1
+  $$,
+  '23514',
+  'new row for relation "consistency_events" violates check constraint "consistency_events_config_fingerprint_check"',
+  'consistency events reject a non-breaking-space-only config fingerprint'
+);
+
+select throws_ok(
+  $$
+    update public.group_rating_states
+    set consistency_config_fingerprint = chr(8239)
+    where group_id = 'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  $$,
+  '23514',
+  'new row for relation "group_rating_states" violates check constraint "group_rating_states_consistency_config_fingerprint_check"',
+  'current consistency state rejects a narrow-non-breaking-space-only config fingerprint'
+);
+
+select throws_ok(
+  $$
+    update public.consistency_events
+    set config_fingerprint = chr(8239)
+    where group_id = 'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+      and sequence = 1
+  $$,
+  '23514',
+  'new row for relation "consistency_events" violates check constraint "consistency_events_config_fingerprint_check"',
+  'consistency events reject a narrow-non-breaking-space-only config fingerprint'
 );
 
 select * from finish();

@@ -15,9 +15,10 @@ alter table public.group_rating_states
     check (consistency_matches_played >= 0),
   add constraint group_rating_states_consistency_config_fingerprint_check
     check (
-      consistency_config_fingerprint ~ '[^[:space:]]'
-      and consistency_config_fingerprint !~ '^[[:space:]]'
-      and consistency_config_fingerprint !~ '[[:space:]]$'
+      consistency_config_fingerprint = btrim(
+        consistency_config_fingerprint,
+        U&'\0009\000A\000B\000C\000D\0020\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000\FEFF'
+      )
       and char_length(consistency_config_fingerprint) between 1 and 200
     );
 
@@ -66,9 +67,10 @@ create table public.consistency_events (
     check (after_matches_played = before_matches_played + 1),
   constraint consistency_events_config_fingerprint_check
     check (
-      config_fingerprint ~ '[^[:space:]]'
-      and config_fingerprint !~ '^[[:space:]]'
-      and config_fingerprint !~ '[[:space:]]$'
+      config_fingerprint = btrim(
+        config_fingerprint,
+        U&'\0009\000A\000B\000C\000D\0020\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000\FEFF'
+      )
       and char_length(config_fingerprint) between 1 and 200
     )
 );
@@ -130,9 +132,10 @@ declare
   v_history jsonb := '[]'::jsonb;
 begin
   if p_consistency_config_fingerprint is null
-    or p_consistency_config_fingerprint !~ '[^[:space:]]'
-    or p_consistency_config_fingerprint ~ '^[[:space:]]'
-    or p_consistency_config_fingerprint ~ '[[:space:]]$'
+    or p_consistency_config_fingerprint <> btrim(
+      p_consistency_config_fingerprint,
+      U&'\0009\000A\000B\000C\000D\0020\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000\FEFF'
+    )
     or char_length(p_consistency_config_fingerprint) not between 1 and 200 then
     raise exception using errcode = 'MRVAL', message = 'Invalid consistency config fingerprint';
   end if;
@@ -484,9 +487,10 @@ declare
   v_rating_result jsonb;
 begin
   if p_consistency_config_fingerprint is null
-    or p_consistency_config_fingerprint !~ '[^[:space:]]'
-    or p_consistency_config_fingerprint ~ '^[[:space:]]'
-    or p_consistency_config_fingerprint ~ '[[:space:]]$'
+    or p_consistency_config_fingerprint <> btrim(
+      p_consistency_config_fingerprint,
+      U&'\0009\000A\000B\000C\000D\0020\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000\FEFF'
+    )
     or char_length(p_consistency_config_fingerprint) not between 1 and 200 then
     raise exception using errcode = 'MRVAL', message = 'Invalid consistency config fingerprint';
   end if;
