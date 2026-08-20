@@ -11,7 +11,8 @@ const player: AppPlayer = {
   initials: "AT",
   role: "Owner",
   rating: 1640,
-  rd: 72,
+  rd: 110.01,
+  performanceSd: 85,
   rank: 1,
   gamesPlayed: 18,
   status: "Active",
@@ -27,10 +28,12 @@ describe("PlayerRow", () => {
     expect(link.getAttribute("href")).toBe("/groups/group-1/players/alice/analytics");
     expect(screen.getByLabelText("Rank 1").textContent).toBe("#1");
     expect(screen.getByText("18 games")).toBeTruthy();
-    expect(screen.queryByText(/RD 72 -/)).toBeNull();
-
-    const rating = screen.getByText("1640");
-    expect(rating).toBeTruthy();
-    expect(screen.getByText("± 72 RD")).toBeTruthy();
+    expect(screen.getByText("1640?")).toBeTruthy();
+    expect(screen.getByText("1640, provisional rating")).toBeTruthy();
+    const description = "Estimated one-standard-deviation match-performance variation: plus or minus 85 rating points.";
+    const variation = screen.getByText("± 85");
+    expect(variation.getAttribute("title")).toBe(description);
+    expect(variation.getAttribute("aria-label")).toBe(description);
+    expect(screen.queryByText(/RD/i)).toBeNull();
   });
 });

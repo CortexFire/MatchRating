@@ -115,7 +115,7 @@ describe("navigation read models", () => {
       scores: ["21-18"],
       role: "Creator",
     });
-    expect(result.currentRankings).toEqual([{ groupId, playerId: actorId, groupName: "Wednesday Club", rating: 1642, rank: 1, memberCount: 2 }]);
+    expect(result.currentRankings).toEqual([{ groupId, playerId: actorId, groupName: "Wednesday Club", rating: 1642, rd: 71.6, rank: 1, memberCount: 2 }]);
     expect(result.latestMatches).toHaveLength(1);
     expect(result.latestMatches[0]).toMatchObject({ id: matchId, groupName: "Wednesday Club" });
     expect(mocks.rpc.mock.calls).toEqual([["get_home_page_data", { p_match_limit: 3 }]]);
@@ -146,10 +146,51 @@ describe("navigation read models", () => {
       { name: "Alice Tan", rank: 1, role: "Owner" },
       { name: "Bea Rivera", rank: 2, role: "Member" },
     ]);
+    expect(result?.players.map(({ name, rd }) => ({ name, rd }))).toEqual([
+      { name: "Alice Tan", rd: 71.6 },
+      { name: "Bea Rivera", rd: 88.1 },
+    ]);
     expect(result?.ratingStatus).toEqual({ id: "77777777-7777-4777-8777-777777777777", status: "failed", canRetry: true });
     expect(result?.activeDrafts).toHaveLength(1);
     expect(result?.recentMatches).toHaveLength(1);
     expect(mocks.rpc.mock.calls).toEqual([["get_group_page_data", { p_group_id: groupId, p_match_limit: 5 }]]);
+  });
+
+  test("hydrates numeric and string log means while safely defaulting null, legacy, and non-finite values", async () => {
+    const extraMemberships = [
+      { ...memberships[0], user_id: "44444444-4444-4444-8444-444444444441", display_name: "Cara Null" },
+      { ...memberships[0], user_id: "44444444-4444-4444-8444-444444444442", display_name: "Dev Legacy" },
+      { ...memberships[0], user_id: "44444444-4444-4444-8444-444444444443", display_name: "Emi Overflow" },
+    ];
+    mocks.rpc.mockResolvedValue({
+      data: {
+        actorUserId: actorId,
+        group: { id: groupId, name: "Wednesday Club", description: "Weekly ladder" },
+        memberships: [...memberships, ...extraMemberships],
+        ratings: [
+          { ...ratings[0], consistency_log_mean: 4.442651256490317 },
+          { ...ratings[1], consistency_log_mean: "4.5217885770490405" },
+          { group_id: groupId, user_id: extraMemberships[0].user_id, rating: 1490, rd: 90, games_played: 4, consistency_log_mean: null },
+          { group_id: groupId, user_id: extraMemberships[1].user_id, rating: 1480, rd: 95, games_played: 3 },
+          { group_id: groupId, user_id: extraMemberships[2].user_id, rating: 1470, rd: 100, games_played: 2, consistency_log_mean: 1000 },
+        ],
+        drafts: [],
+        profiles: [],
+        ratingStatus: null,
+        matchBundle: { groups: [], matches: [], revisions: [], participants: [], games: [], ratingEvents: [], profiles: [] },
+      },
+      error: null,
+    });
+
+    const result = await getGroupPageData(groupId);
+
+    expect(Object.fromEntries(result?.players.map((player) => [player.name, player.performanceSd]) ?? [])).toEqual({
+      "Alice Tan": 85,
+      "Bea Rivera": 92,
+      "Cara Null": 200,
+      "Dev Legacy": 200,
+      "Emi Overflow": 200,
+    });
   });
 
   test("summarizes partial draft teams and scores without inventing zeroes", async () => {

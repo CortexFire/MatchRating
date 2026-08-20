@@ -1,42 +1,39 @@
 .form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 1rem;
 }
 
 .title {
-  margin: 0;
   color: var(--muted);
-  font-size: 20px;
+  font-size: 1.25rem;
   font-weight: 700;
-  line-height: 28px;
+  line-height: 1.75rem;
   text-align: center;
 }
 
-.profileList {
+.profilePanel {
+  padding: 0.5rem;
   border: 1px solid var(--stroke);
-  border-radius: 8px;
+  border-radius: 0.5rem;
   background: var(--surface);
-  padding: 8px;
 }
 
-.profileItems {
+.profileList {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .profileButton {
   display: flex;
   min-height: 58px;
-  width: 100%;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  border: 1px solid var(--stroke);
-  border-radius: 8px;
-  padding: 0 12px;
-  color: var(--ink);
+  gap: 0.75rem;
+  padding: 0 0.75rem;
+  border: 1px solid;
+  border-radius: 0.5rem;
   text-align: left;
   transition: background-color 150ms ease, border-color 150ms ease;
 }
@@ -46,26 +43,28 @@
   outline-offset: 2px;
 }
 
-.selectedProfileButton {
-  border-color: var(--selection-stroke);
+.profileIdle {
+  border-color: var(--stroke);
+  background: var(--surface);
+}
+
+.profileSelected {
+  border-color: var(--victory-stroke);
   background: var(--selection);
 }
 
-.unselectedProfileButton {
-  background: var(--surface);
-}
-
 .profileName {
-  font-size: 14px;
+  color: var(--ink);
+  font-size: 0.875rem;
   font-weight: 700;
 }
 
-.profileRating {
-  min-width: 56px;
+.profileRanking {
+  min-width: 3.5rem;
+  padding: 0.5rem 0.75rem;
   border: 1px solid var(--stroke);
-  border-radius: 8px;
+  border-radius: 0.5rem;
   background: var(--surface);
-  padding: 8px 12px;
   text-align: center;
 }
 
@@ -76,19 +75,18 @@
 
 .rank {
   color: var(--action);
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 700;
 }
 
 .rating {
   color: var(--muted);
-  font-size: 10px;
-  font-weight: 700;
+  font-size: 0.625rem;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 .message {
-  margin: 0;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 0.875rem;
 }

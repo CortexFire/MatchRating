@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import clsx from "clsx";
 import { claimGuestProfiles, type ClaimableGuestProfile } from "@/app/actions";
+import { RatingValue } from "@/components/ratings/rating-value";
 import { Button } from "@/components/ui/button";
 import styles from "./claim-profile-form.module.css";
 
@@ -43,8 +44,8 @@ export function ClaimProfileForm({
   return (
     <div className={styles.form}>
       <h1 className={styles.title}>Are any of these you?</h1>
-      <div className={styles.profileList}>
-        <div className={styles.profileItems}>
+      <div className={styles.profilePanel}>
+        <div className={styles.profileList}>
           {profiles.map((profile) => {
             const selected = selectedIds.includes(profile.id);
             return (
@@ -54,15 +55,12 @@ export function ClaimProfileForm({
                 aria-label={`Select ${profile.name}`}
                 aria-pressed={selected}
                 onClick={() => toggle(profile.id)}
-                className={clsx(
-                  styles.profileButton,
-                  selected ? styles.selectedProfileButton : styles.unselectedProfileButton,
-                )}
+                className={clsx(styles.profileButton, selected ? styles.profileSelected : styles.profileIdle)}
               >
                 <span className={styles.profileName}>{profile.name}</span>
-                <span className={styles.profileRating}>
+                <span className={styles.profileRanking}>
                   <span className={styles.rank}>#{profile.rank}</span>
-                  <span className={styles.rating}>{profile.rating}</span>
+                  <RatingValue rating={profile.rating} rd={profile.rd} className={styles.rating} />
                 </span>
               </button>
             );

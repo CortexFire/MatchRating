@@ -34,9 +34,24 @@ describe("player analytics read model", () => {
         subject: { id: playerId, name: "Bea Rivera" },
         group: { id: groupId, name: "Downtown Rec" },
         availableGroups: [{ id: groupId, name: "Downtown Rec" }],
-        current: { rating: 1580, rank: 2, rankedPlayerCount: 8 },
+        current: { rating: 1580, rd: 110.01, rank: 2, rankedPlayerCount: 8 },
         activePlayerIds: [playerId],
-        matches: [],
+        matches: [{
+          id: "match-1",
+          occurredAt: "2026-08-18T12:00:00.000Z",
+          format: "singles",
+          matchWon: true,
+          gameCount: 1,
+          gameWins: 1,
+          expectedGameWins: 0.5,
+          ratingBefore: 1568,
+          rdBefore: 112.4,
+          ratingAfter: 1580,
+          rdAfter: 109.8,
+          ratingDelta: 12,
+          partners: [],
+          opponents: [],
+        }],
         cohortDaily: [],
         cohortPartners: [],
       },
@@ -49,6 +64,14 @@ describe("player analytics read model", () => {
       status: "ready",
       subject: { id: playerId, name: "Bea Rivera" },
     }));
+    expect(result).toMatchObject({
+      periods: {
+        all: {
+          summary: { currentRd: 110.01 },
+          ratingHistory: [{ rating: 1580, rd: 109.8 }],
+        },
+      },
+    });
     expect(mocks.rpc).toHaveBeenCalledWith("get_player_analytics_facts", {
       p_group_id: groupId,
       p_user_id: playerId,

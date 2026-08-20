@@ -1,0 +1,18 @@
+{
+  "qualified": false,
+  "populationKappa": 200,
+  "priorLogSd": 0.35,
+  "driftLogSd": 0.02,
+  "groupCount": 0,
+  "trainingMatches": 0,
+  "heldOutMatches": 0,
+  "individualizedTrainingLogLoss": null,
+  "individualizedTrainingBrier": null,
+  "individualizedHeldOutLogLoss": null,
+  "individualizedHeldOutBrier": null,
+  "nullTrainingLogLoss": null,
+  "nullTrainingBrier": null,
+  "nullHeldOutLogLoss": null,
+  "nullHeldOutBrier": null,
+  "dataThrough": null
+}

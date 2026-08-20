@@ -102,8 +102,8 @@ export function buildMatchViews(rows: MatchReadRows): MatchView[] {
         initials: initialsFor(name),
         ...(events ? {
           ratingChange: {
-            previous: { rating: Math.round(Number(events.first.before_rating)), rd: Math.round(Number(events.first.before_rd)) },
-            next: { rating: Math.round(Number(events.last.after_rating)), rd: Math.round(Number(events.last.after_rd)) },
+            previous: { rating: Math.round(Number(events.first.before_rating)), rd: Number(events.first.before_rd) },
+            next: { rating: Math.round(Number(events.last.after_rating)), rd: Number(events.last.after_rd) },
           },
         } : {}),
       };

@@ -87,8 +87,8 @@ describe("buildMatchViews", () => {
       profiles: [{ id: "submitter", display_name: "Alice" }, { id: "opponent", display_name: "Bea" }, { id: "without-event", display_name: "Cory" }],
     });
 
-    expect(match.teamA[0].ratingChange).toEqual({ previous: { rating: 1500, rd: 350 }, next: { rating: 1525, rd: 141 } });
-    expect(match.teamB[0].ratingChange).toEqual({ previous: { rating: 1466, rd: 220 }, next: { rating: 1444, rd: 160 } });
+    expect(match.teamA[0].ratingChange).toEqual({ previous: { rating: 1500, rd: 349.6 }, next: { rating: 1525, rd: 140.6 } });
+    expect(match.teamB[0].ratingChange).toEqual({ previous: { rating: 1466, rd: 220.4 }, next: { rating: 1444, rd: 160.4 } });
     expect(match.teamB[1].ratingChange).toBeUndefined();
   });
 

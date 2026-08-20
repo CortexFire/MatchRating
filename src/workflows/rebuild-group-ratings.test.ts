@@ -13,7 +13,68 @@ const supabaseMocks = vi.hoisted(() => ({
   createSupabaseServiceClient: vi.fn(),
 }));
 
+const runtimeConfigMocks = vi.hoisted(() => ({
+  getRuntimeConsistencyConfig: vi.fn(() => ({
+    populationKappa: 200,
+    priorLogSd: 0.35,
+    driftLogSd: 0.02,
+  })),
+  consistencyConfigFingerprint: vi.fn((config: {
+    populationKappa: number;
+    priorLogSd: number;
+    driftLogSd: number;
+  }) => (
+    `consistency-v1:${config.populationKappa}:${config.priorLogSd}:${config.driftLogSd}`
+  )),
+}));
+
 vi.mock("@/lib/supabase/server", () => supabaseMocks);
+vi.mock("@/lib/ratings/consistency-runtime-config", () => runtimeConfigMocks);
+
+const FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT = "consistency-v1:200:0.35:0.02";
+
+function canonicalSinglesInput() {
+  return {
+    groupId: "50000000-0000-4000-8000-000000000001",
+    jobId: "50000000-0000-4000-8000-000000000002",
+    targetVersion: 8,
+    consistencyConfigFingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
+    prefixEventCount: 10,
+    prefixConsistencyEventCount: 5,
+    initialRatings: [],
+    history: [{
+      id: "50000000-0000-4000-8000-000000000003",
+      revisionId: "50000000-0000-4000-8000-000000000004",
+      submittedAt: "2026-08-02T00:00:00.000Z",
+      format: "singles" as const,
+      teamAUserIds: ["50000000-0000-4000-8000-000000000005"],
+      teamBUserIds: ["50000000-0000-4000-8000-000000000006"],
+      games: [
+        {
+          gameId: "50000000-0000-4000-8000-000000000007",
+          gameNumber: 1,
+          teamAScore: 18,
+          teamBScore: 21,
+          winnerTeam: "B" as const,
+        },
+        {
+          gameId: "50000000-0000-4000-8000-000000000008",
+          gameNumber: 2,
+          teamAScore: 21,
+          teamBScore: 17,
+          winnerTeam: "A" as const,
+        },
+        {
+          gameId: "50000000-0000-4000-8000-000000000009",
+          gameNumber: 3,
+          teamAScore: 21,
+          teamBScore: 19,
+          winnerTeam: "A" as const,
+        },
+      ],
+    }],
+  };
+}
 
 describe("rating rebuild workflow failure handling", () => {
   beforeEach(() => {
@@ -42,18 +103,30 @@ describe("rating rebuild workflow failure handling", () => {
       groupId: "group-1",
       jobId: "job-1",
       targetVersion: 8,
+      consistencyConfigFingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
       prefixEventCount: 6,
+      prefixConsistencyEventCount: 3,
       initialRatings: [
-        { userId: "alice", rating: 1510, rd: 120, volatility: 0.06, gamesPlayed: 3 },
+        {
+          userId: "alice",
+          rating: 1510,
+          rd: 120,
+          volatility: 0.06,
+          gamesPlayed: 3,
+          logKappaMean: Math.log(180),
+          logKappaVariance: 0.08,
+          consistencyMatchesPlayed: 2,
+        },
       ],
       history: [],
     };
     supabaseMocks.rpc.mockResolvedValue({ data: input, error: null });
 
     await expect(loadRebuildInput("job-1", "dispatch-1")).resolves.toEqual(input);
-    expect(supabaseMocks.rpc).toHaveBeenCalledWith("begin_incremental_rating_rebuild", {
+    expect(supabaseMocks.rpc).toHaveBeenCalledWith("begin_incremental_rating_rebuild_v2", {
       p_job_id: "job-1",
       p_dispatch_token: "dispatch-1",
+      p_consistency_config_fingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
     });
   });
 
@@ -62,11 +135,13 @@ describe("rating rebuild workflow failure handling", () => {
       groupId: "group-1",
       jobId: "job-1",
       targetVersion: 8,
+      consistencyConfigFingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
       prefixEventCount: 6,
+      prefixConsistencyEventCount: 3,
       initialRatings: [
-        { userId: "alice", rating: 1510, rd: 120, volatility: 0.06, gamesPlayed: 3 },
-        { userId: "bea", rating: 1490, rd: 130, volatility: 0.06, gamesPlayed: 3 },
-        { userId: "prefix-only", rating: 1600, rd: 100, volatility: 0.05, gamesPlayed: 5 },
+        { userId: "alice", rating: 1510, rd: 120, volatility: 0.06, gamesPlayed: 3, logKappaMean: Math.log(180), logKappaVariance: 0.08, consistencyMatchesPlayed: 2 },
+        { userId: "bea", rating: 1490, rd: 130, volatility: 0.06, gamesPlayed: 3, logKappaMean: Math.log(220), logKappaVariance: 0.09, consistencyMatchesPlayed: 2 },
+        { userId: "prefix-only", rating: 1600, rd: 100, volatility: 0.05, gamesPlayed: 5, logKappaMean: Math.log(160), logKappaVariance: 0.07, consistencyMatchesPlayed: 4 },
       ],
       history: [
         {
@@ -88,10 +163,13 @@ describe("rating rebuild workflow failure handling", () => {
     });
 
     expect(projection.events.map((event) => event.sequence)).toEqual([7, 8]);
+    expect(projection.consistencyEvents.map((event) => event.sequence)).toEqual([4, 5]);
     expect(projection.ratings).toContainEqual(expect.objectContaining({
       userId: "prefix-only",
       rating: 1600,
       gamesPlayed: 5,
+      logKappaMean: 5.075173815234,
+      consistencyMatchesPlayed: 4,
     }));
   });
 
@@ -100,21 +178,26 @@ describe("rating rebuild workflow failure handling", () => {
       groupId: "group-1",
       jobId: "job-1",
       targetVersion: 8,
+      consistencyConfigFingerprint: "consistency-v1:175:0.2:0.01",
       prefixEventCount: 6,
+      prefixConsistencyEventCount: 3,
       initialRatings: [],
       history: [],
     };
     supabaseMocks.rpc.mockResolvedValue({ data: { status: "completed" }, error: null });
 
-    await expect(applyProjection(input, { ratings: [], events: [] })).resolves.toEqual({
+    await expect(applyProjection(input, { ratings: [], events: [], consistencyEvents: [] })).resolves.toEqual({
       status: "completed",
     });
-    expect(supabaseMocks.rpc).toHaveBeenCalledWith("apply_incremental_rating_rebuild", {
+    expect(supabaseMocks.rpc).toHaveBeenCalledWith("apply_incremental_rating_rebuild_v2", {
       p_job_id: "job-1",
       p_expected_version: 8,
       p_prefix_event_count: 6,
+      p_prefix_consistency_event_count: 3,
       p_ratings: [],
       p_events: [],
+      p_consistency_events: [],
+      p_consistency_config_fingerprint: "consistency-v1:175:0.2:0.01",
     });
   });
 
@@ -123,7 +206,9 @@ describe("rating rebuild workflow failure handling", () => {
       groupId: "10000000-0000-4000-8000-000000000001",
       jobId: "10000000-0000-4000-8000-000000000002",
       targetVersion: 8,
+      consistencyConfigFingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
       prefixEventCount: 0,
+      prefixConsistencyEventCount: 0,
       initialRatings: [],
       history: [{
         id: "10000000-0000-4000-8000-000000000003",
@@ -153,7 +238,9 @@ describe("rating rebuild workflow failure handling", () => {
       groupId: "20000000-0000-4000-8000-000000000001",
       jobId: "20000000-0000-4000-8000-000000000002",
       targetVersion: 8,
+      consistencyConfigFingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
       prefixEventCount: 0,
+      prefixConsistencyEventCount: 0,
       initialRatings: [],
       history: [{
         id: "20000000-0000-4000-8000-000000000003",
@@ -183,7 +270,9 @@ describe("rating rebuild workflow failure handling", () => {
       groupId: "30000000-0000-4000-8000-000000000001",
       jobId: "30000000-0000-4000-8000-000000000002",
       targetVersion: 8,
+      consistencyConfigFingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
       prefixEventCount: 0,
+      prefixConsistencyEventCount: 0,
       initialRatings: [],
       history: [{
         id: "30000000-0000-4000-8000-000000000003",
@@ -213,7 +302,9 @@ describe("rating rebuild workflow failure handling", () => {
       groupId: "40000000-0000-4000-8000-000000000001",
       jobId: "40000000-0000-4000-8000-000000000002",
       targetVersion: 8,
+      consistencyConfigFingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
       prefixEventCount: 0,
+      prefixConsistencyEventCount: 0,
       initialRatings: [],
       history: [{
         id: "40000000-0000-4000-8000-000000000003",
@@ -238,12 +329,127 @@ describe("rating rebuild workflow failure handling", () => {
     expect(supabaseMocks.rpc).not.toHaveBeenCalled();
   });
 
+  test("uses the validated runtime consistency config for rating rebuilds", async () => {
+    runtimeConfigMocks.getRuntimeConsistencyConfig.mockReturnValueOnce({
+      populationKappa: 120,
+      priorLogSd: 0.2,
+      driftLogSd: 0,
+    });
+
+    const projection = await calculateProjection({
+      ...canonicalSinglesInput(),
+      consistencyConfigFingerprint: "consistency-v1:120:0.2:0",
+    });
+
+    expect(runtimeConfigMocks.getRuntimeConsistencyConfig).toHaveBeenCalledTimes(1);
+    expect(projection.consistencyEvents[0].before.logKappaMean).toBe(4.787491742782);
+    expect(projection.consistencyEvents[0].before.logKappaVariance).toBeCloseTo(0.04, 12);
+    expect(projection.consistencyEvents[0].before.matchesPlayed).toBe(0);
+  });
+
+  test("rejects an invalid consistency prefix count before calculation", async () => {
+    await expect(calculateProjection({
+      ...canonicalSinglesInput(),
+      prefixConsistencyEventCount: -1,
+    })).rejects.toBeInstanceOf(FatalError);
+  });
+
+  test.each([
+    ["mean", { logKappaMean: Number.NaN, logKappaVariance: 0.1, consistencyMatchesPlayed: 2 }],
+    ["variance", { logKappaMean: Math.log(200), logKappaVariance: 0, consistencyMatchesPlayed: 2 }],
+    ["count", { logKappaMean: Math.log(200), logKappaVariance: 0.1, consistencyMatchesPlayed: -1 }],
+  ])("rejects an invalid seeded consistency %s before calculation", async (_, consistency) => {
+    await expect(calculateProjection({
+      ...canonicalSinglesInput(),
+      initialRatings: [{
+        userId: "50000000-0000-4000-8000-000000000005",
+        rating: 1500,
+        rd: 120,
+        volatility: 0.06,
+        gamesPlayed: 3,
+        ...consistency,
+      }],
+    })).rejects.toBeInstanceOf(FatalError);
+  });
+
+  test.each([
+    ["invalid UUID", (projection: Awaited<ReturnType<typeof calculateProjection>>) => {
+      projection.consistencyEvents[0].matchId = "not-a-uuid";
+    }],
+    ["nonfinite expectation", (projection: Awaited<ReturnType<typeof calculateProjection>>) => {
+      projection.consistencyEvents[0].expectedScore = Number.NaN;
+    }],
+    ["noncomplementary expectation", (projection: Awaited<ReturnType<typeof calculateProjection>>) => {
+      projection.consistencyEvents[0].expectedScore = 0.25;
+    }],
+    ["wrong chronology", (projection: Awaited<ReturnType<typeof calculateProjection>>) => {
+      projection.consistencyEvents[0].occurredAt = "2026-08-03T00:00:00.000Z";
+    }],
+    ["wrong team", (projection: Awaited<ReturnType<typeof calculateProjection>>) => {
+      projection.consistencyEvents[0].team = "B";
+    }],
+    ["wrong format", (projection: Awaited<ReturnType<typeof calculateProjection>>) => {
+      projection.consistencyEvents[0].format = "doubles";
+    }],
+    ["wrong match result", (projection: Awaited<ReturnType<typeof calculateProjection>>) => {
+      projection.consistencyEvents[0].actualScore = 0;
+    }],
+    ["wrong sequence", (projection: Awaited<ReturnType<typeof calculateProjection>>) => {
+      projection.consistencyEvents[0].sequence += 1;
+    }],
+    ["invalid before state", (projection: Awaited<ReturnType<typeof calculateProjection>>) => {
+      projection.consistencyEvents[0].before.logKappaVariance = 0;
+    }],
+    ["invalid matches-played transition", (projection: Awaited<ReturnType<typeof calculateProjection>>) => {
+      projection.consistencyEvents[0].after.matchesPlayed = projection.consistencyEvents[0].before.matchesPlayed;
+    }],
+  ])("rejects a consistency event with %s before applying", async (_, mutate) => {
+    const input = canonicalSinglesInput();
+    const projection = await calculateProjection(input);
+    mutate(projection);
+
+    await expect(applyProjection(input, projection)).rejects.toBeInstanceOf(FatalError);
+    expect(supabaseMocks.rpc).not.toHaveBeenCalled();
+  });
+
+  test("rejects duplicate consistency facts before applying", async () => {
+    const input = canonicalSinglesInput();
+    const projection = await calculateProjection(input);
+    projection.consistencyEvents.push({
+      ...structuredClone(projection.consistencyEvents[0]),
+      sequence: input.prefixConsistencyEventCount + 3,
+    });
+
+    await expect(applyProjection(input, projection)).rejects.toBeInstanceOf(FatalError);
+    expect(supabaseMocks.rpc).not.toHaveBeenCalled();
+  });
+
+  test("rejects an incomplete consistency event set before applying", async () => {
+    const input = canonicalSinglesInput();
+    const projection = await calculateProjection(input);
+    projection.consistencyEvents.pop();
+
+    await expect(applyProjection(input, projection)).rejects.toBeInstanceOf(FatalError);
+    expect(supabaseMocks.rpc).not.toHaveBeenCalled();
+  });
+
+  test("rejects an invalid final consistency state before applying", async () => {
+    const input = canonicalSinglesInput();
+    const projection = await calculateProjection(input);
+    projection.ratings[0].logKappaVariance = 0;
+
+    await expect(applyProjection(input, projection)).rejects.toBeInstanceOf(FatalError);
+    expect(supabaseMocks.rpc).not.toHaveBeenCalled();
+  });
+
   test("reloads the coalesced boundary after a stale apply", async () => {
     const firstInput = {
       groupId: "group-1",
       jobId: "job-1",
       targetVersion: 8,
+      consistencyConfigFingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
       prefixEventCount: 6,
+      prefixConsistencyEventCount: 3,
       initialRatings: [],
       history: [],
     };
@@ -251,6 +457,7 @@ describe("rating rebuild workflow failure handling", () => {
       ...firstInput,
       targetVersion: 9,
       prefixEventCount: 4,
+      prefixConsistencyEventCount: 2,
     };
     supabaseMocks.rpc
       .mockResolvedValueOnce({ data: firstInput, error: null })
@@ -262,16 +469,20 @@ describe("rating rebuild workflow failure handling", () => {
       status: "completed",
     });
 
-    expect(supabaseMocks.rpc).toHaveBeenNthCalledWith(3, "begin_incremental_rating_rebuild", {
+    expect(supabaseMocks.rpc).toHaveBeenNthCalledWith(3, "begin_incremental_rating_rebuild_v2", {
       p_job_id: "job-1",
       p_dispatch_token: "dispatch-1",
+      p_consistency_config_fingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
     });
-    expect(supabaseMocks.rpc).toHaveBeenNthCalledWith(4, "apply_incremental_rating_rebuild", {
+    expect(supabaseMocks.rpc).toHaveBeenNthCalledWith(4, "apply_incremental_rating_rebuild_v2", {
       p_job_id: "job-1",
       p_expected_version: 9,
       p_prefix_event_count: 4,
+      p_prefix_consistency_event_count: 2,
       p_ratings: [],
       p_events: [],
+      p_consistency_events: [],
+      p_consistency_config_fingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
     });
   });
 
@@ -331,7 +542,9 @@ describe("rating rebuild workflow failure handling", () => {
       groupId: "group-1",
       jobId: "job-1",
       targetVersion: 8,
+      consistencyConfigFingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
       prefixEventCount: 0,
+      prefixConsistencyEventCount: 0,
       initialRatings: [],
       history: [
         {
@@ -354,9 +567,11 @@ describe("rating rebuild workflow failure handling", () => {
       groupId: "group-1",
       jobId: "job-1",
       targetVersion: 8,
+      consistencyConfigFingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
       prefixEventCount: 6,
+      prefixConsistencyEventCount: 3,
       initialRatings: [
-        { userId: "alice", rating: "invalid", rd: 120, volatility: 0.06, gamesPlayed: 3 },
+        { userId: "alice", rating: "invalid", rd: 120, volatility: 0.06, gamesPlayed: 3, logKappaMean: Math.log(200), logKappaVariance: 0.1, consistencyMatchesPlayed: 2 },
       ],
       history: [],
     } as never)).rejects.toBeInstanceOf(FatalError);
@@ -372,11 +587,13 @@ describe("rating rebuild workflow failure handling", () => {
           groupId: "group-1",
           jobId: "job-1",
           targetVersion: 8,
+          consistencyConfigFingerprint: FALLBACK_CONSISTENCY_CONFIG_FINGERPRINT,
           prefixEventCount: 0,
+          prefixConsistencyEventCount: 0,
           initialRatings: [],
           history: [],
         },
-        { ratings: [], events: [] },
+        { ratings: [], events: [], consistencyEvents: [] },
       ),
     ).rejects.not.toBeInstanceOf(FatalError);
   });

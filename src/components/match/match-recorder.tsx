@@ -5,6 +5,7 @@ import clsx from "clsx";
 import { Medal, Plus, Trash2, X } from "lucide-react";
 import { type ActionResult, type MatchCommandResult } from "@/app/actions";
 import { useNavigationSyncRegistration } from "@/components/app/navigation-sync";
+import { RatingValue } from "@/components/ratings/rating-value";
 import { Button } from "@/components/ui/button";
 import {
   PlayerSelectView,
@@ -45,7 +46,7 @@ type SaveActiveMatchDraft = (
 }>>;
 type SubmitMatchAction = (input: MatchSubmissionInput & { draftId?: string; commandId: string }) => Promise<ActionResult<MatchCommandResult>>;
 type TeamSlot =
-  | { id: string; initials: string; name: string; fullName: string; empty?: false }
+  | { id: string; initials: string; name: string; fullName: string; rating: number; rd: number; empty?: false }
   | { empty: true };
 
 const defaultMatchRecording: Omit<InitialMatchRecording, "games"> = {
@@ -547,7 +548,7 @@ export function MatchRecorder({
   }
 
   return (
-    <section className={styles.screen}>
+    <section className={styles.page}>
       <div className={styles.header}>
         <h1 className={styles.title}>Match Recording</h1>
         <GroupSwitcher groups={groupOptions} currentGroupId={groupId} disabled={!recorderEditable} />
@@ -596,14 +597,14 @@ export function MatchRecorder({
         ) : null}
       </div>
 
-      <div className={styles.footer}>
+      <div className={styles.submitSection}>
         {message ? (
           <p className={styles.message}>
             {message}
           </p>
         ) : null}
         {canEdit ? (
-          <Button type="button" onClick={submitMatch} disabled={!canSubmit} className={styles.submitButton}>
+          <Button type="button" onClick={submitMatch} disabled={!canSubmit} className={styles.fullWidth}>
             Submit
           </Button>
         ) : null}
@@ -736,7 +737,7 @@ function FormatToggle({
           onClick={() => onChange(option)}
           disabled={disabled}
           aria-pressed={value === option}
-          className={clsx(styles.formatOption, value === option && styles.formatOptionActive)}
+          className={clsx(styles.formatButton, value === option && styles.formatActive)}
         >
           {option}
         </button>
@@ -773,7 +774,7 @@ function TeamSummaryCard({
                 aria-label={`${label} empty player slot ${index + 1}`}
                 aria-haspopup="dialog"
               >
-                <span className={styles.emptyAvatarInteractive}>
+                <span className={styles.emptyAvatar}>
                   <Plus className={styles.mediumIcon} />
                 </span>
                 <span className={styles.emptyLabel}>Empty</span>
@@ -787,7 +788,7 @@ function TeamSummaryCard({
               </div>
             )
           ) : (
-            <div key={`${slot.id}-${index}`} className={styles.playerSlot}>
+            <div key={`${slot.id}-${index}`} className={styles.filledSlot} aria-label={`${label} player ${slot.fullName}`}>
               <span className={styles.playerAvatar}>
                 {slot.initials}
               </span>
@@ -798,10 +799,11 @@ function TeamSummaryCard({
                   aria-label={`Remove ${slot.name} from ${label}`}
                   className={styles.removePlayerButton}
                 >
-                  <X className={styles.removePlayerIcon} />
+                  <X className={styles.removeIcon} />
                 </button>
               ) : null}
-              <span className={styles.playerName}>{slot.name}</span>
+              <span className={styles.playerFirstName}>{slot.name}</span>
+              <RatingValue rating={slot.rating} rd={slot.rd} className={styles.teamRating} />
             </div>
           ),
         )}
@@ -829,8 +831,8 @@ function SetScoreRow({
 
   return (
     <div className={styles.setRow}>
-      <div className={styles.setHeader}>
-        <h3 className={styles.setTitle}>Set {index + 1}</h3>
+      <div className={styles.setHeading}>
+        <h3>Set {index + 1}</h3>
         {onRemove ? (
           <button
             type="button"
@@ -886,7 +888,7 @@ function ScoreTile({
   return (
     <div
       aria-label={`Set ${setNumber} Team ${team} ${score === "" ? "not entered" : score} ${selected ? "Win" : "Loss"}`}
-      className={clsx(styles.scoreTile, selected ? styles.scoreTileSelected : styles.scoreTileNeutral)}
+      className={clsx(styles.scoreTile, selected ? styles.scoreWinner : styles.scoreLoser)}
     >
       {selected ? <Medal className={styles.medal} aria-hidden="true" /> : null}
       <button
@@ -898,7 +900,7 @@ function ScoreTile({
         className={styles.winnerButton}
       />
       <div
-        className={clsx(styles.scorePanel, selected ? styles.scorePanelSelected : styles.scorePanelNeutral)}
+        className={clsx(styles.scoreInputWrap, selected ? styles.scoreInputWinner : styles.scoreInputLoser)}
       >
         <input
           aria-label={`Set ${setNumber} Team ${team} score`}
@@ -915,7 +917,7 @@ function ScoreTile({
         />
         <span
           aria-hidden="true"
-          className={clsx(styles.scoreResult, selected && styles.scoreResultSelected)}
+          className={clsx(styles.scoreResult, selected && styles.scoreResultWinner)}
         >
           {selected ? "Win" : "Loss"}
         </span>
@@ -936,6 +938,7 @@ function toGuestPlayer(id: string, name: string): AppPlayer {
     role: "Guest",
     rating: 1500,
     rd: 350,
+    performanceSd: 200,
     rank: 0,
     gamesPlayed: 0,
     status: "Active",
@@ -973,6 +976,8 @@ function buildTeamSlots(
       initials: player?.initials ?? "?",
       name: player ? fullName.split(" ")[0] : "Unknown",
       fullName,
+      rating: player?.rating ?? 1500,
+      rd: player?.rd ?? 350,
     };
   });
 }

@@ -28,8 +28,8 @@ test("renders rankings without the redundant group-isolation explanation", async
 
 test("links every ranked player row to that player's analytics", async () => {
   mocks.listGroupPlayers.mockResolvedValue([
-    { id: "alice", name: "Alice Tan", initials: "AT", role: "Owner", rating: 1640, rd: 72, rank: 1, gamesPlayed: 18, status: "Active" },
-    { id: "bea", name: "Bea Rivera", initials: "BR", role: "Member", rating: 1580, rd: 81, rank: 2, gamesPlayed: 14, status: "Active" },
+    { id: "alice", name: "Alice Tan", initials: "AT", role: "Owner", rating: 1640, rd: 72, performanceSd: 85, rank: 1, gamesPlayed: 18, status: "Active" },
+    { id: "bea", name: "Bea Rivera", initials: "BR", role: "Member", rating: 1580, rd: 81, performanceSd: 91, rank: 2, gamesPlayed: 14, status: "Active" },
   ]);
 
   const html = renderToStaticMarkup(await RankingsContent({ params: Promise.resolve({ groupId: "group-1" }) }));
@@ -37,4 +37,5 @@ test("links every ranked player row to that player's analytics", async () => {
   expect(html).toContain('href="/groups/group-1/players/alice/analytics"');
   expect(html).toContain('aria-label="View analytics for Alice Tan"');
   expect(html).toContain('href="/groups/group-1/players/bea/analytics"');
+  expect(html).toContain("± 85");
 });

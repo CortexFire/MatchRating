@@ -6,8 +6,8 @@ import { type AppPlayer } from "@/lib/app-data";
 import { GroupMembersDisclosure } from "./group-members-disclosure";
 
 const players: AppPlayer[] = [
-  { id: "alice", name: "Alice Tan", initials: "AT", role: "Owner", rating: 1640, rd: 72, rank: 1, gamesPlayed: 18, status: "Active" },
-  { id: "bea", name: "Bea Rivera", initials: "BR", role: "Guest", rating: 1580, rd: 81, rank: 2, gamesPlayed: 14, status: "Active", isGuest: true },
+  { id: "alice", name: "Alice Tan", initials: "AT", role: "Owner", rating: 1640, rd: 72, performanceSd: 85, rank: 1, gamesPlayed: 18, status: "Active" },
+  { id: "bea", name: "Bea Rivera", initials: "BR", role: "Guest", rating: 1580, rd: 81, performanceSd: 91, rank: 2, gamesPlayed: 14, status: "Active", isGuest: true },
 ];
 
 const longRoster: AppPlayer[] = Array.from({ length: 6 }, (_, index) => ({
@@ -17,6 +17,7 @@ const longRoster: AppPlayer[] = Array.from({ length: 6 }, (_, index) => ({
   role: "Member" as const,
   rating: 1600 - index * 10,
   rd: 70 + index,
+  performanceSd: 80 + index,
   rank: index + 1,
   gamesPlayed: 10 + index,
   status: "Active" as const,
@@ -43,6 +44,7 @@ describe("GroupMembersDisclosure", () => {
     expect(screen.getByText("Bea Rivera")).toBeTruthy();
     expect(invite.getAttribute("href")).toBe("/groups/group-1/invite");
     expect(screen.getByText("Guest")).toBeTruthy();
+    expect(screen.getByText("± 85")).toBeTruthy();
     expect(screen.getByRole("link", { name: "View analytics for Alice Tan" }).getAttribute("href"))
       .toBe("/groups/group-1/players/alice/analytics");
     expect(screen.getByRole("link", { name: "View analytics for Bea Rivera" }).getAttribute("href"))

@@ -31,7 +31,7 @@ const draft = {
   role: "Participant" as const,
 };
 const players = [
-  { id: "alice", name: "Alice Tan", initials: "AT", role: "Owner" as const, rating: 1640, rd: 72, rank: 1, gamesPlayed: 18, status: "Active" as const },
+  { id: "alice", name: "Alice Tan", initials: "AT", role: "Owner" as const, rating: 1640, rd: 72, performanceSd: 85, rank: 1, gamesPlayed: 18, status: "Active" as const },
 ];
 const recentMatches = ["pending_confirmation", "confirmed", "disputed"].map((status, index) => ({
   id: `match-${index + 1}`, groupId, groupName: group.name, revisionId: `revision-${index + 1}`, submittedByUserId: "alice",

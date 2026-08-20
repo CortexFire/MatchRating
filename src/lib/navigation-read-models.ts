@@ -12,6 +12,7 @@ import {
 import { buildMatchViews, type MatchReadRows } from "@/lib/matches/read-model";
 import { type ActiveMatchDraftGameInput } from "@/lib/matches/drafts";
 import { type MatchFormat } from "@/lib/matches/validation";
+import { performanceSdFromLogMean } from "@/lib/player-performance";
 
 export type HomePageData = {
   profile: AppProfile;
@@ -63,6 +64,7 @@ type RawRating = {
   rating: number | string;
   rd: number | string;
   games_played: number;
+  consistency_log_mean?: number | string | null;
 };
 
 type RawDraft = {
@@ -220,7 +222,8 @@ function toPlayers(groupId: string, memberships: RawMembership[], ratings: RawRa
           initials: initialsFor(name),
           role: membership.is_guest ? "Guest" : displayRole(membership.role),
           rating: Math.round(Number(rating?.rating ?? 1500)),
-          rd: Math.round(Number(rating?.rd ?? 350)),
+          rd: Number(rating?.rd ?? 350),
+          performanceSd: performanceSdFromLogMean(rating?.consistency_log_mean),
           gamesPlayed: rating?.games_played ?? 0,
           status: membership.active_until && new Date(membership.active_until).getTime() >= Date.now()
             ? "Active"
@@ -246,6 +249,7 @@ function toCurrentRankings(
         playerId: actorUserId,
         groupName: group.name,
         rating: current.rating,
+        rd: current.rd,
         rank: current.rank,
         memberCount: ranked.length,
       }] : [];

@@ -20,10 +20,10 @@ const readyModel: PlayerAnalyticsViewModel = {
   ],
   periods: {
     all: {
-      summary: { rank: 1, rankedPlayerCount: 18, currentRating: 1578, ratingChange: 42, wins: 18, losses: 10, winRate: 64 },
+      summary: { rank: 1, rankedPlayerCount: 18, currentRating: 1578, currentRd: 110.01, ratingChange: 42, wins: 18, losses: 10, winRate: 64 },
       ratingHistory: [
-        { matchId: "m1", occurredAt: "2026-07-20T12:00:00.000Z", rating: 1566, ratingDelta: 8 },
-        { matchId: "m2", occurredAt: "2026-08-01T12:00:00.000Z", rating: 1578, ratingDelta: 12 },
+        { matchId: "m1", occurredAt: "2026-07-20T12:00:00.000Z", rating: 1566, rd: 110, ratingDelta: 8 },
+        { matchId: "m2", occurredAt: "2026-08-01T12:00:00.000Z", rating: 1578, rd: 110.01, ratingDelta: 12 },
       ],
       flags: [{ key: "hot-streak", label: "Hot Streak", explanation: "Won the last 5 matches." }],
       matchups: [{
@@ -34,17 +34,17 @@ const readyModel: PlayerAnalyticsViewModel = {
       }],
     },
     "30d": {
-      summary: { rank: 1, rankedPlayerCount: 18, currentRating: 1578, ratingChange: -3, wins: 1, losses: 1, winRate: 50 },
+      summary: { rank: 1, rankedPlayerCount: 18, currentRating: 1578, currentRd: 110.01, ratingChange: -3, wins: 1, losses: 1, winRate: 50 },
       ratingHistory: [],
       flags: [],
       matchups: [],
     },
     "90d": {
-      summary: { rank: 1, rankedPlayerCount: 18, currentRating: 1578, ratingChange: 10, wins: 4, losses: 2, winRate: 67 },
+      summary: { rank: 1, rankedPlayerCount: 18, currentRating: 1578, currentRd: 110.01, ratingChange: 10, wins: 4, losses: 2, winRate: 67 },
       ratingHistory: [], flags: [], matchups: [],
     },
     "1y": {
-      summary: { rank: 1, rankedPlayerCount: 18, currentRating: 1578, ratingChange: 25, wins: 10, losses: 5, winRate: 67 },
+      summary: { rank: 1, rankedPlayerCount: 18, currentRating: 1578, currentRd: 110.01, ratingChange: 25, wins: 10, losses: 5, winRate: 67 },
       ratingHistory: [], flags: [], matchups: [],
     },
   },
@@ -67,7 +67,7 @@ describe("PlayerAnalyticsView", () => {
 
     expect(screen.getByRole("article", { name: "Group Rank" }).textContent).toBe("#1of 18Group Rank");
     expect(screen.getByRole("article", { name: "Win Rate" }).textContent).toBe("64%18–10Win Rate");
-    expect(screen.getByRole("article", { name: "Current Rating" }).textContent).toBe("1578+42Current Rating");
+    expect(screen.getByRole("article", { name: "Current Rating" }).textContent).toBe("1578?1578, provisional rating+42Current Rating");
 
     fireEvent.click(screen.getByRole("button", { name: "Hot Streak" }));
     expect(screen.getByText("Won the last 5 matches.")).toBeTruthy();
@@ -78,7 +78,7 @@ describe("PlayerAnalyticsView", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "30 days" }));
     expect(screen.getByRole("article", { name: "Win Rate" }).textContent).toBe("50%1–1Win Rate");
-    expect(screen.getByRole("article", { name: "Current Rating" }).textContent).toBe("1578−3Current Rating");
+    expect(screen.getByRole("article", { name: "Current Rating" }).textContent).toBe("1578?1578, provisional rating−3Current Rating");
     expect(screen.getByText("No completed matches in this period.")).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Player flags" })).toBeNull();
     expect(screen.queryByText("No current-form flags qualify in this period.")).toBeNull();
@@ -97,7 +97,7 @@ describe("PlayerAnalyticsView", () => {
 
     const selector = screen.getByLabelText("Inspect rating point");
     expect(screen.getByRole("status", { name: "Selected rating point" }).textContent)
-      .toContain("Aug 1, 2026: rating 1578, change +12");
+      .toContain("Aug 1, 2026: rating 1578?, change +12");
 
     fireEvent.change(selector, { target: { value: "m1" } });
 

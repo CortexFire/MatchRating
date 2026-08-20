@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RatingValue } from "@/components/ratings/rating-value";
 import { type AppCurrentRanking } from "@/lib/app-data";
 import styles from "./current-ranking-list.module.css";
 
@@ -19,7 +20,7 @@ export function CurrentRankingList({ rankings }: { rankings: AppCurrentRanking[]
                 <span className={styles.groupName}>{ranking.groupName}</span>
                 <span className={styles.position}>#{ranking.rank} of {ranking.memberCount}</span>
               </span>
-              <span className={styles.rating}>{ranking.rating}</span>
+              <RatingValue rating={ranking.rating} rd={ranking.rd} className={styles.rating} />
             </Link>
           ))}
         </div>

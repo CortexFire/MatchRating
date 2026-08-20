@@ -29,8 +29,8 @@ beforeEach(() => {
     ratingSummary: "2 rating changes", canCorrect: true, canRevise: false,
   });
   mocks.listGroupPlayers.mockResolvedValue([
-    { id: "alice", name: "Alice Tan", initials: "AT", role: "Member", rating: 1500, rd: 350, rank: 1, gamesPlayed: 1, status: "Active" },
-    { id: "bea", name: "Bea Rivera", initials: "BR", role: "Member", rating: 1500, rd: 350, rank: 2, gamesPlayed: 1, status: "Active" },
+    { id: "alice", name: "Alice Tan", initials: "AT", role: "Member", rating: 1500, rd: 350, performanceSd: 200, rank: 1, gamesPlayed: 1, status: "Active" },
+    { id: "bea", name: "Bea Rivera", initials: "BR", role: "Member", rating: 1500, rd: 350, performanceSd: 200, rank: 2, gamesPlayed: 1, status: "Active" },
   ]);
   mocks.getGroupRatingRebuildStatus.mockResolvedValue({ id: null, status: null, canRetry: false });
 });
