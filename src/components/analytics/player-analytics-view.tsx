@@ -4,9 +4,10 @@ import { type ReactNode, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import {
+  Area,
   CartesianGrid,
+  ComposedChart,
   Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -21,6 +22,7 @@ import {
   type PlayerAnalyticsViewModel,
 } from "@/lib/analytics/analytics-policy";
 import { formatRating } from "@/lib/ratings/rating-display";
+import { buildRatingHistoryChartData } from "./rating-history-chart-data";
 import styles from "./player-analytics-view.module.css";
 
 const PERIODS: Array<{ key: AnalyticsPeriod; label: string }> = [
@@ -182,26 +184,31 @@ function RatingHistoryChart({ snapshot }: { snapshot: AnalyticsPeriodSnapshot })
 
   if (!points.length) return <p className={styles.chartEmpty}>No completed matches in this period.</p>;
   const selectedValue = selected?.matchId ?? points.at(-1)?.matchId ?? "";
-  const chartData = points.map((point, index) => ({
-    ...point,
-    latestRating: index === points.length - 1 ? point.rating : null,
-  }));
+  const chart = buildRatingHistoryChartData(points);
 
   return (
     <div className={styles.chartWrap}>
       <div className={styles.chart} aria-hidden="true">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData} margin={{ top: 12, right: 10, bottom: 0, left: -18 }}>
+          <ComposedChart data={chart.points} margin={{ top: 12, right: 10, bottom: 0, left: -18 }}>
             <CartesianGrid vertical={false} stroke="var(--stroke)" strokeDasharray="3 3" />
             <XAxis dataKey="occurredAt" tickFormatter={shortDate} tick={{ fill: "var(--muted)", fontSize: 10 }} minTickGap={24} />
-            <YAxis domain={["dataMin - 20", "dataMax + 20"]} tick={{ fill: "var(--muted)", fontSize: 10 }} width={48} />
+            <YAxis domain={chart.yDomain} tick={{ fill: "var(--muted)", fontSize: 10 }} width={48} />
             <Tooltip
               labelFormatter={(value) => longDate(String(value))}
-              formatter={(value, _name, item) => [
-                `${formatRating(Number(value), Number(item.payload.rd))} (${formatSigned(Number(item.payload.ratingDelta))})`,
-                "Rating",
-              ]}
+              formatter={(_value, _name, item) => [describeRatingPoint(item.payload), "Rating"]}
               contentStyle={{ background: "var(--surface)", border: "1px solid var(--stroke)", borderRadius: 8, fontSize: 12 }}
+            />
+            <Area
+              type="monotone"
+              dataKey="performanceRange"
+              stroke="none"
+              fill="var(--muted)"
+              fillOpacity={0.18}
+              dot={false}
+              activeDot={false}
+              tooltipType="none"
+              isAnimationActive={false}
             />
             <Line type="monotone" dataKey="rating" stroke="var(--action)" strokeWidth={3} dot={{ r: 3, fill: "var(--surface)", strokeWidth: 2 }} activeDot={{ r: 5 }} />
             <Line
@@ -214,7 +221,7 @@ function RatingHistoryChart({ snapshot }: { snapshot: AnalyticsPeriodSnapshot })
               tooltipType="none"
               isAnimationActive={false}
             />
-          </LineChart>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
       <div className={styles.chartInspector}>
@@ -225,11 +232,22 @@ function RatingHistoryChart({ snapshot }: { snapshot: AnalyticsPeriodSnapshot })
           </select>
         </label>
         <p role="status" aria-label="Selected rating point" aria-live="polite">
-          {selected ? `${longDate(selected.occurredAt)}: rating ${formatRating(selected.rating, selected.rd)}, change ${formatSigned(selected.ratingDelta)}` : ""}
+          {selected ? `${longDate(selected.occurredAt)}: ${describeRatingPoint(selected)}` : ""}
         </p>
       </div>
     </div>
   );
+}
+
+function describeRatingPoint(point: {
+  rating: number;
+  rd: number;
+  performanceSd: number;
+  ratingDelta: number;
+}) {
+  const lower = point.rating - point.performanceSd;
+  const upper = point.rating + point.performanceSd;
+  return `rating ${formatRating(point.rating, point.rd)}, typical performance range ${lower}–${upper} (±${point.performanceSd}), change ${formatSigned(point.ratingDelta)}`;
 }
 
 function SummaryCard({ primary, secondary, label }: { primary: ReactNode; secondary: string; label: string }) {

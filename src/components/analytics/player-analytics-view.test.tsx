@@ -22,8 +22,8 @@ const readyModel: PlayerAnalyticsViewModel = {
     all: {
       summary: { rank: 1, rankedPlayerCount: 18, currentRating: 1578, currentRd: 110.01, ratingChange: 42, wins: 18, losses: 10, winRate: 64 },
       ratingHistory: [
-        { matchId: "m1", occurredAt: "2026-07-20T12:00:00.000Z", rating: 1566, rd: 110, ratingDelta: 8 },
-        { matchId: "m2", occurredAt: "2026-08-01T12:00:00.000Z", rating: 1578, rd: 110.01, ratingDelta: 12 },
+        { matchId: "m1", occurredAt: "2026-07-20T12:00:00.000Z", rating: 1566, rd: 110, performanceSd: 200, ratingDelta: 8 },
+        { matchId: "m2", occurredAt: "2026-08-01T12:00:00.000Z", rating: 1578, rd: 110.01, performanceSd: 85, ratingDelta: 12 },
       ],
       flags: [{ key: "hot-streak", label: "Hot Streak", explanation: "Won the last 5 matches." }],
       matchups: [{
@@ -97,12 +97,12 @@ describe("PlayerAnalyticsView", () => {
 
     const selector = screen.getByLabelText("Inspect rating point");
     expect(screen.getByRole("status", { name: "Selected rating point" }).textContent)
-      .toContain("Aug 1, 2026: rating 1578?, change +12");
+      .toContain("Aug 1, 2026: rating 1578?, typical performance range 1493–1663 (±85), change +12");
 
     fireEvent.change(selector, { target: { value: "m1" } });
 
     expect(screen.getByRole("status", { name: "Selected rating point" }).textContent)
-      .toContain("Jul 20, 2026: rating 1566, change +8");
+      .toContain("Jul 20, 2026: rating 1566, typical performance range 1366–1766 (±200), change +8");
   });
 
   test("renders the projection updating state without partial summary cards", () => {

@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(8);
+select plan(12);
 
 select has_function(
   'public',
@@ -41,7 +41,9 @@ insert into public.matches (id, group_id, created_by_user_id, status, submitted_
 values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111', 'confirmed', '2026-08-18T12:00:00Z');
 
 insert into public.match_revisions (id, match_id, version, submitted_by_user_id, format)
-values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 1, '11111111-1111-4111-8111-111111111111', 'singles');
+values
+  ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 1, '11111111-1111-4111-8111-111111111111', 'singles'),
+  ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 2, '11111111-1111-4111-8111-111111111111', 'singles');
 
 update public.matches
 set active_revision_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
@@ -83,6 +85,21 @@ begin
   end if;
 end;
 $$;
+
+insert into public.consistency_events (
+  group_id, match_id, revision_id, user_id, occurred_at, format, team,
+  sequence, expected_score, actual_score,
+  before_log_mean, before_log_variance, before_matches_played,
+  after_log_mean, after_log_variance, after_matches_played
+)
+values (
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+  '22222222-2222-4222-8222-222222222222',
+  '2026-08-18T12:00:00Z', 'singles', 'B', 1, .6, 1,
+  ln(90), .12, 4, ln(85), .11, 5
+);
 
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"11111111-1111-4111-8111-111111111111","role":"authenticated"}', true);
@@ -127,6 +144,76 @@ select is(
   ],
   array['110.01', '109.99'],
   'analytics returns the unrounded deviation for each historical rating state'
+);
+
+select is(
+  public.get_player_analytics_facts(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    '22222222-2222-4222-8222-222222222222'
+  )->'matches'->0->>'performanceSdAfter',
+  '85',
+  'analytics returns the active revision canonical post-match consistency'
+);
+
+set local role postgres;
+update public.consistency_events
+set after_log_mean = 50
+where group_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  and match_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  and user_id = '22222222-2222-4222-8222-222222222222';
+set local role authenticated;
+
+select throws_ok(
+  $$
+    select public.get_player_analytics_facts(
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      '22222222-2222-4222-8222-222222222222'
+    )
+  $$,
+  'MRVAL',
+  'Invalid historical consistency coverage',
+  'analytics rejects a consistency value outside the safe integer projection range'
+);
+
+set local role postgres;
+update public.consistency_events
+set
+  revision_id = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+  after_log_mean = ln(85)
+where group_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  and match_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  and user_id = '22222222-2222-4222-8222-222222222222';
+set local role authenticated;
+
+select throws_ok(
+  $$
+    select public.get_player_analytics_facts(
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      '22222222-2222-4222-8222-222222222222'
+    )
+  $$,
+  'MRVAL',
+  'Invalid historical consistency coverage',
+  'analytics rejects a consistency event from an inactive revision'
+);
+
+set local role postgres;
+delete from public.consistency_events
+where group_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  and match_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  and user_id = '22222222-2222-4222-8222-222222222222';
+set local role authenticated;
+
+select throws_ok(
+  $$
+    select public.get_player_analytics_facts(
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      '22222222-2222-4222-8222-222222222222'
+    )
+  $$,
+  'MRVAL',
+  'Invalid historical consistency coverage',
+  'analytics rejects a missing canonical consistency event'
 );
 
 select set_config('request.jwt.claims', '{"sub":"33333333-3333-4333-8333-333333333333","role":"authenticated"}', true);

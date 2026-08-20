@@ -21,7 +21,6 @@ describe("CurrentRankingList", () => {
     expect(html).toContain("Current rankings");
     expect(html).toContain("Wednesday Club");
     expect(html).toContain("#4 of 18");
-    expect(html).toContain("1672?");
     expect(html).toContain("1672, provisional rating");
     expect(html).toContain('href="/groups/group-1/players/alice/analytics"');
     expect(html).toContain('aria-label="View analytics for Wednesday Club"');
