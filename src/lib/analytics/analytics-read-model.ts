@@ -75,6 +75,7 @@ function isMatch(value: unknown) {
     && finiteNumber(value.rdBefore)
     && finiteNumber(value.ratingAfter)
     && finiteNumber(value.rdAfter)
+    && positiveInteger(value.performanceSdAfter)
     && finiteNumber(value.ratingDelta)
     && Array.isArray(value.partners)
     && value.partners.every(isPerson)
@@ -100,6 +101,10 @@ function isCohortPartner(value: unknown) {
 
 function finiteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+function positiveInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) > 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

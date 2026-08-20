@@ -48,6 +48,7 @@ describe("player analytics read model", () => {
           rdBefore: 112.4,
           ratingAfter: 1580,
           rdAfter: 109.8,
+          performanceSdAfter: 85,
           ratingDelta: 12,
           partners: [],
           opponents: [],
@@ -68,7 +69,7 @@ describe("player analytics read model", () => {
       periods: {
         all: {
           summary: { currentRd: 110.01 },
-          ratingHistory: [{ rating: 1580, rd: 109.8 }],
+          ratingHistory: [{ rating: 1580, rd: 109.8, performanceSd: 85 }],
         },
       },
     });
@@ -87,6 +88,52 @@ describe("player analytics read model", () => {
 
   test("rejects malformed successful payloads", async () => {
     mocks.rpc.mockResolvedValue({ data: { status: "ready" }, error: null });
+
+    await expect(getPlayerAnalyticsData(groupId, playerId)).rejects.toThrow(
+      "get_player_analytics_facts returned an invalid payload",
+    );
+  });
+
+  test.each([
+    ["missing", undefined],
+    ["zero", 0],
+    ["negative", -1],
+    ["fractional", 85.5],
+    ["non-finite", Number.POSITIVE_INFINITY],
+  ])("rejects a %s historical consistency value", async (_label, performanceSdAfter) => {
+    const match = {
+      id: "match-1",
+      occurredAt: "2026-08-18T12:00:00.000Z",
+      format: "singles",
+      matchWon: true,
+      gameCount: 1,
+      gameWins: 1,
+      expectedGameWins: 0.5,
+      ratingBefore: 1568,
+      rdBefore: 112.4,
+      ratingAfter: 1580,
+      rdAfter: 109.8,
+      ratingDelta: 12,
+      partners: [],
+      opponents: [],
+      ...(performanceSdAfter === undefined ? {} : { performanceSdAfter }),
+    };
+    mocks.rpc.mockResolvedValue({
+      data: {
+        status: "ready",
+        asOf: "2026-08-19T12:00:00.000Z",
+        viewerUserId: playerId,
+        subject: { id: playerId, name: "Bea Rivera" },
+        group: { id: groupId, name: "Downtown Rec" },
+        availableGroups: [{ id: groupId, name: "Downtown Rec" }],
+        current: { rating: 1580, rd: 110.01, rank: 2, rankedPlayerCount: 8 },
+        activePlayerIds: [playerId],
+        matches: [match],
+        cohortDaily: [],
+        cohortPartners: [],
+      },
+      error: null,
+    });
 
     await expect(getPlayerAnalyticsData(groupId, playerId)).rejects.toThrow(
       "get_player_analytics_facts returned an invalid payload",

@@ -33,6 +33,7 @@ export type AnalyticsMatchFact = {
   rdBefore: number;
   ratingAfter: number;
   rdAfter: number;
+  performanceSdAfter: number;
   ratingDelta: number;
   partners: AnalyticsPerson[];
   opponents: AnalyticsPerson[];
@@ -102,6 +103,7 @@ export type AnalyticsPeriodSnapshot = {
     occurredAt: string;
     rating: number;
     rd: number;
+    performanceSd: number;
     ratingDelta: number;
   }>;
   flags: AnalyticsFlag[];
@@ -168,6 +170,7 @@ function projectPeriod(payload: Extract<AnalyticsFactsPayload, { status: "ready"
       occurredAt: item.occurredAt,
       rating: Math.round(item.ratingAfter),
       rd: item.rdAfter,
+      performanceSd: item.performanceSdAfter,
       ratingDelta: round(item.ratingDelta),
     })),
     flags: buildFlags({ payload, matches, cohort, partnerCounts, gameCount, gameWins, expectedGameWins }),

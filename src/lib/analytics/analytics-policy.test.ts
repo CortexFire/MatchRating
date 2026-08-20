@@ -26,12 +26,23 @@ function match(
     rdBefore: 120.25,
     ratingAfter: 1510,
     rdAfter: 109.75,
+    performanceSdAfter: 200,
     ratingDelta: 10,
     partners: [],
     opponents: [bea],
     ...overrides,
   };
 }
+
+test("projects each match's canonical post-match consistency into rating history", () => {
+  const first = { ...match("first", "2026-08-01T12:00:00.000Z"), performanceSdAfter: 200 };
+  const second = { ...match("second", "2026-08-02T12:00:00.000Z", { ratingAfter: 1525 }), performanceSdAfter: 85 };
+
+  expect(allPeriod({ matches: [first, second] }).ratingHistory).toEqual([
+    expect.objectContaining({ matchId: "first", rating: 1510, performanceSd: 200 }),
+    expect.objectContaining({ matchId: "second", rating: 1525, performanceSd: 85 }),
+  ]);
+});
 
 function facts(overrides: Partial<AnalyticsFactsPayload> = {}): AnalyticsFactsPayload {
   return {
@@ -88,8 +99,8 @@ describe("player analytics policy", () => {
       winRate: 100,
     });
     expect(result.periods.all.ratingHistory).toEqual([
-      { matchId: "old", occurredAt: "2025-01-01T12:00:00.000Z", rating: 1490, rd: 109.75, ratingDelta: -10 },
-      { matchId: "recent", occurredAt: "2026-08-10T12:00:00.000Z", rating: 1510, rd: 109.75, ratingDelta: 20 },
+      { matchId: "old", occurredAt: "2025-01-01T12:00:00.000Z", rating: 1490, rd: 109.75, performanceSd: 200, ratingDelta: -10 },
+      { matchId: "recent", occurredAt: "2026-08-10T12:00:00.000Z", rating: 1510, rd: 109.75, performanceSd: 200, ratingDelta: 20 },
     ]);
   });
 
