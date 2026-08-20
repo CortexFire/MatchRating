@@ -98,11 +98,19 @@ export function createDefaultConsistencyState(
   config: ConsistencyConfig = DEFAULT_CONSISTENCY_CONFIG,
 ): ConsistencyState {
   assertValidConfig(config);
-  return {
+  const state = {
     logKappaMean: Math.log(config.populationKappa),
     logKappaVariance: config.priorLogSd ** 2,
     matchesPlayed: 0,
   };
+  if (
+    !Number.isFinite(state.logKappaMean)
+    || !Number.isFinite(state.logKappaVariance)
+    || state.logKappaVariance <= 0
+  ) {
+    throw new Error("Invalid consistency configuration");
+  }
+  return state;
 }
 
 export function performanceSd(state: ConsistencyState) {
@@ -171,6 +179,9 @@ function assertValidMatchInput(input: ConsistencyMatchInput, config: Consistency
   if (!Number.isSafeInteger(sequenceOffset) || sequenceOffset < 0) {
     throw new Error("Invalid consistency sequence offset");
   }
+  if (!Number.isSafeInteger(sequenceOffset + input.teamA.length + input.teamB.length)) {
+    throw new Error("Invalid consistency sequence range");
+  }
 
   const userIds = new Set<string>();
   for (const participant of [...input.teamA, ...input.teamB]) {
@@ -181,6 +192,9 @@ function assertValidMatchInput(input: ConsistencyMatchInput, config: Consistency
       throw new Error("Invalid consistency participant");
     }
     assertValidState(participant.consistency);
+    if (!Number.isSafeInteger(participant.consistency.matchesPlayed + 1)) {
+      throw new Error("Invalid consistency matches played");
+    }
     if (userIds.has(participant.userId)) {
       throw new Error("Duplicate consistency participant");
     }

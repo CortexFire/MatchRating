@@ -81,6 +81,14 @@ describe("consistency scalar helpers", () => {
     );
   });
 
+  it("rejects a prior whose derived default variance is non-finite", () => {
+    expect(() => createDefaultConsistencyState({
+      populationKappa: 200,
+      priorLogSd: Number.MAX_VALUE,
+      driftLogSd: 0.02,
+    })).toThrow("Invalid consistency configuration");
+  });
+
   it.each([
     [0, 0.5],
     [1, 0.8413447461],
@@ -343,5 +351,30 @@ describe("match-level consistency replay", () => {
       priorLogSd: 0.35,
       driftLogSd: Number.MAX_VALUE,
     })).toThrow("Non-finite consistency posterior");
+  });
+
+  it("rejects an unsafe post-match count before building results", () => {
+    expect(() => updateMatchConsistency({
+      matchId: "match-count-overflow",
+      revisionId: "revision-count-overflow",
+      occurredAt: "2026-03-10T12:00:00.000Z",
+      format: "singles",
+      winnerTeam: "A",
+      teamA: [participant("alice", 1500, 200, 0.1, Number.MAX_SAFE_INTEGER)],
+      teamB: [participant("bea")],
+    })).toThrow("Invalid consistency matches played");
+  });
+
+  it("rejects an unsafe event sequence range before building results", () => {
+    expect(() => updateMatchConsistency({
+      matchId: "match-sequence-overflow",
+      revisionId: "revision-sequence-overflow",
+      occurredAt: "2026-03-11T12:00:00.000Z",
+      format: "singles",
+      winnerTeam: "A",
+      teamA: [participant("alice")],
+      teamB: [participant("bea")],
+      sequenceOffset: Number.MAX_SAFE_INTEGER,
+    })).toThrow("Invalid consistency sequence range");
   });
 });
