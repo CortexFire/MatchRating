@@ -44,7 +44,7 @@ export async function GroupContent({ params }: GroupPageProps) {
         canRetry={ratingStatus.canRetry}
         refreshOnComplete
       />
-      <GroupMembersDisclosure players={players} inviteHref={`/groups/${groupId}/invite`} />
+      <GroupMembersDisclosure groupId={groupId} players={players} inviteHref={`/groups/${groupId}/invite`} />
       <ActiveMatchDraftList drafts={activeDrafts} />
       <RecentMatchList matches={recentMatches} historyHref={`/groups/${groupId}/history`} />
     </MobileShell>

@@ -1,0 +1,20 @@
+.inviteButton {
+  flex-shrink: 0;
+  padding-inline: 0.75rem;
+  font-size: 0.75rem;
+}
+
+.memberList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.empty {
+  padding: 1rem;
+  border: 1px solid var(--stroke);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.875rem;
+}

@@ -150,6 +150,22 @@ async function upsertDemoRows(
       { onConflict: "group_id,user_id" },
     ),
   );
+
+  const { data: groupVersion, error: groupVersionError } = await service
+    .from("groups")
+    .select("rating_applied_version")
+    .eq("id", DEMO_GROUP_ID)
+    .single();
+  if (groupVersionError) throw groupVersionError;
+  await checked(
+    service
+      .from("groups")
+      .update({
+        analytics_applied_version: groupVersion.rating_applied_version,
+        analytics_updated_at: new Date().toISOString(),
+      })
+      .eq("id", DEMO_GROUP_ID),
+  );
 }
 
 async function checked(result: PromiseLike<{ error: unknown }>) {

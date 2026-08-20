@@ -115,7 +115,7 @@ describe("navigation read models", () => {
       scores: ["21-18"],
       role: "Creator",
     });
-    expect(result.currentRankings).toEqual([{ groupId, groupName: "Wednesday Club", rating: 1642, rank: 1, memberCount: 2 }]);
+    expect(result.currentRankings).toEqual([{ groupId, playerId: actorId, groupName: "Wednesday Club", rating: 1642, rank: 1, memberCount: 2 }]);
     expect(result.latestMatches).toHaveLength(1);
     expect(result.latestMatches[0]).toMatchObject({ id: matchId, groupName: "Wednesday Club" });
     expect(mocks.rpc.mock.calls).toEqual([["get_home_page_data", { p_match_limit: 3 }]]);

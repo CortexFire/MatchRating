@@ -1,0 +1,32 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--stroke);
+  border-radius: 0.5rem;
+  background: var(--surface);
+}
+
+.card h1 {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.card p {
+  color: var(--muted);
+}
+
+.card button {
+  min-height: 44px;
+  padding-inline: 1rem;
+  border-radius: 0.5rem;
+  background: var(--action);
+  color: var(--surface);
+  font-weight: 700;
+}
+
+.card button:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}

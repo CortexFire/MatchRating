@@ -18,20 +18,19 @@ const player: AppPlayer = {
 };
 
 describe("PlayerRow", () => {
-  test("shows a stable ranked row with games metadata and a right-aligned rating deviation stack", () => {
-    render(<PlayerRow player={player} />);
+  test("links the full ranked row to the player's analytics with an accessible name", () => {
+    render(<PlayerRow player={player} analyticsHref="/groups/group-1/players/alice/analytics" />);
 
     const row = screen.getByRole("article");
-    expect(row.className).toContain("h-[70px]");
-    expect(row.className).toContain("shrink-0");
+    const link = screen.getByRole("link", { name: "View analytics for Alice Tan" });
+    expect(row.contains(link)).toBe(true);
+    expect(link.getAttribute("href")).toBe("/groups/group-1/players/alice/analytics");
     expect(screen.getByLabelText("Rank 1").textContent).toBe("#1");
     expect(screen.getByText("18 games")).toBeTruthy();
     expect(screen.queryByText(/RD 72 -/)).toBeNull();
 
     const rating = screen.getByText("1640");
-    expect(rating.className).toContain("font-bold");
-    expect(rating.parentElement?.className).toContain("text-right");
-    expect(rating.parentElement?.className).toContain("tabular-nums");
-    expect(screen.getByText("± 72 RD").className).toContain("text-muted");
+    expect(rating).toBeTruthy();
+    expect(screen.getByText("± 72 RD")).toBeTruthy();
   });
 });

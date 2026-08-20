@@ -1,28 +1,30 @@
 import Link from "next/link";
 import { type AppCurrentRanking } from "@/lib/app-data";
+import styles from "./current-ranking-list.module.css";
 
 export function CurrentRankingList({ rankings }: { rankings: AppCurrentRanking[] }) {
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-lg font-bold text-ink">Current rankings</h2>
+    <section className={styles.section}>
+      <h2>Current rankings</h2>
       {rankings.length ? (
-        <div className="flex flex-col gap-2">
+        <div className={styles.list}>
           {rankings.map((ranking) => (
             <Link
               key={ranking.groupId}
-              href={`/groups/${ranking.groupId}/rankings`}
-              className="flex items-center justify-between gap-4 rounded-lg border border-stroke bg-surface p-4 transition hover:border-selection-stroke focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+              href={`/groups/${ranking.groupId}/players/${ranking.playerId}/analytics`}
+              aria-label={`View analytics for ${ranking.groupName}`}
+              className={styles.card}
             >
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-semibold text-ink">{ranking.groupName}</span>
-                <span className="mt-1 block text-xs text-muted">#{ranking.rank} of {ranking.memberCount}</span>
+              <span className={styles.details}>
+                <span className={styles.groupName}>{ranking.groupName}</span>
+                <span className={styles.position}>#{ranking.rank} of {ranking.memberCount}</span>
               </span>
-              <span className="shrink-0 text-base font-bold tabular-nums text-ink">{ranking.rating}</span>
+              <span className={styles.rating}>{ranking.rating}</span>
             </Link>
           ))}
         </div>
       ) : (
-        <p className="rounded-lg border border-stroke bg-surface p-4 text-sm text-muted">
+        <p className={styles.empty}>
           Join a group to see your rankings.
         </p>
       )}

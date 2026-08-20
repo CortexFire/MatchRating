@@ -243,6 +243,7 @@ function toCurrentRankings(
       const current = ranked.find((player) => player.id === actorUserId);
       return current ? [{
         groupId: group.id,
+        playerId: actorUserId,
         groupName: group.name,
         rating: current.rating,
         rank: current.rank,

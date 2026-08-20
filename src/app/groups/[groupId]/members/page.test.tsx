@@ -42,6 +42,8 @@ test("reports recency-active players separately from the full membership count",
 
   expect(html).toContain("1 active of 3 members");
   expect(html).not.toContain("3 active players in this group");
+  expect(html).toContain(`href="/groups/${groupId}/players/alice/analytics"`);
+  expect(html).toContain('aria-label="View analytics for Alice Tan"');
 });
 
 test("uses membership language when the roster is empty", async () => {

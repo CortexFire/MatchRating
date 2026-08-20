@@ -8,6 +8,7 @@ describe("CurrentRankingList", () => {
       <CurrentRankingList rankings={[
         {
           groupId: "group-1",
+          playerId: "alice",
           groupName: "Wednesday Club",
           rating: 1672,
           rank: 4,
@@ -20,7 +21,9 @@ describe("CurrentRankingList", () => {
     expect(html).toContain("Wednesday Club");
     expect(html).toContain("#4 of 18");
     expect(html).toContain("1672");
-    expect(html).toContain('href="/groups/group-1/rankings"');
+    expect(html).toContain('href="/groups/group-1/players/alice/analytics"');
+    expect(html).toContain('aria-label="View analytics for Wednesday Club"');
+    expect(html).not.toContain('href="/groups/group-1/rankings"');
   });
 
   test("shows the rankings empty state", () => {

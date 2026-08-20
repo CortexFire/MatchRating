@@ -65,6 +65,7 @@ export type AppPlayer = {
 
 export type AppCurrentRanking = {
   groupId: string;
+  playerId: string;
   groupName: string;
   rating: number;
   rank: number;

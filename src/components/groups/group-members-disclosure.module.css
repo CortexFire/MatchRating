@@ -1,0 +1,70 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.details {
+  overflow: hidden;
+  border: 1px solid var(--stroke);
+  border-radius: 0.5rem;
+  background: var(--surface);
+}
+
+.summary {
+  display: flex;
+  min-height: 44px;
+  cursor: pointer;
+  list-style: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+.summary:focus-visible,
+.roster:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: -2px;
+}
+
+.chevron {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--muted);
+  transition: transform 150ms ease;
+}
+
+.details[open] .chevron {
+  transform: rotate(180deg);
+}
+
+.content {
+  padding: 1rem;
+  border-top: 1px solid var(--stroke);
+}
+
+.roster {
+  display: flex;
+  max-height: 425px;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow-y: auto;
+  border-radius: 0.5rem;
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.inviteButton {
+  width: 100%;
+}
