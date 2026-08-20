@@ -389,6 +389,10 @@ function solvePosterior(
     if (!step) {
       throw new Error("Consistency posterior failed to find a safe improving step");
     }
+    if (Math.max(...step.map(Math.abs)) <= SOLVER_TOLERANCE) {
+      converged = true;
+      break;
+    }
 
     const directionalDerivative = evaluation.gradient.reduce(
       (sum, value, index) => sum + value * step![index],

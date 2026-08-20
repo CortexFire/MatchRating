@@ -284,6 +284,31 @@ describe("match-level consistency replay", () => {
     ]);
   });
 
+  it("converges for a doubles upset with four default consistency states", () => {
+    const defaultState = createDefaultConsistencyState();
+    const result = updateMatchConsistency({
+      matchId: "match-default-doubles-upset",
+      revisionId: "revision-default-doubles-upset",
+      occurredAt: "2026-03-05T13:00:00.000Z",
+      format: "doubles",
+      winnerTeam: "B",
+      teamA: [
+        { userId: "alice", rating: 1650, consistency: { ...defaultState } },
+        { userId: "cory", rating: 1550, consistency: { ...defaultState } },
+      ],
+      teamB: [
+        { userId: "bea", rating: 1400, consistency: { ...defaultState } },
+        { userId: "dev", rating: 1350, consistency: { ...defaultState } },
+      ],
+    });
+
+    expect(result.events).toHaveLength(4);
+    for (const state of result.states.values()) {
+      expect(performanceSd(state)).toBeGreaterThan(200);
+      expect(state.matchesPlayed).toBe(1);
+    }
+  });
+
   it("keeps posterior kappas and marginal variances finite and bounded", () => {
     const lowerBoundResult = updateMatchConsistency({
       matchId: "match-lower-bound",
