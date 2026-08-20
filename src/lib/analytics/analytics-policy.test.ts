@@ -23,7 +23,9 @@ function match(
     gameWins: 1,
     expectedGameWins: 0.5,
     ratingBefore: 1500,
+    rdBefore: 120.25,
     ratingAfter: 1510,
+    rdAfter: 109.75,
     ratingDelta: 10,
     partners: [],
     opponents: [bea],
@@ -39,7 +41,7 @@ function facts(overrides: Partial<AnalyticsFactsPayload> = {}): AnalyticsFactsPa
     subject: alice,
     group: { id: "group-1", name: "Downtown Rec" },
     availableGroups: [{ id: "group-1", name: "Downtown Rec" }],
-    current: { rating: 1580, rank: 1, rankedPlayerCount: 3 },
+    current: { rating: 1580, rd: 110.01, rank: 1, rankedPlayerCount: 3 },
     activePlayerIds: ["alice", "bea", "cory"],
     matches: [],
     cohortDaily: [],
@@ -69,6 +71,7 @@ describe("player analytics policy", () => {
       rank: 1,
       rankedPlayerCount: 3,
       currentRating: 1580,
+      currentRd: 110.01,
       ratingChange: 10,
       wins: 1,
       losses: 1,
@@ -78,11 +81,16 @@ describe("player analytics policy", () => {
       rank: 1,
       rankedPlayerCount: 3,
       currentRating: 1580,
+      currentRd: 110.01,
       ratingChange: 20,
       wins: 1,
       losses: 0,
       winRate: 100,
     });
+    expect(result.periods.all.ratingHistory).toEqual([
+      { matchId: "old", occurredAt: "2025-01-01T12:00:00.000Z", rating: 1490, rd: 109.75, ratingDelta: -10 },
+      { matchId: "recent", occurredAt: "2026-08-10T12:00:00.000Z", rating: 1510, rd: 109.75, ratingDelta: 20 },
+    ]);
   });
 
   test("awards current and period flags at their exact v1 boundaries", () => {

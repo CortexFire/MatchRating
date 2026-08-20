@@ -115,7 +115,7 @@ describe("navigation read models", () => {
       scores: ["21-18"],
       role: "Creator",
     });
-    expect(result.currentRankings).toEqual([{ groupId, playerId: actorId, groupName: "Wednesday Club", rating: 1642, rank: 1, memberCount: 2 }]);
+    expect(result.currentRankings).toEqual([{ groupId, playerId: actorId, groupName: "Wednesday Club", rating: 1642, rd: 71.6, rank: 1, memberCount: 2 }]);
     expect(result.latestMatches).toHaveLength(1);
     expect(result.latestMatches[0]).toMatchObject({ id: matchId, groupName: "Wednesday Club" });
     expect(mocks.rpc.mock.calls).toEqual([["get_home_page_data", { p_match_limit: 3 }]]);
@@ -145,6 +145,10 @@ describe("navigation read models", () => {
     expect(result?.players.map(({ name, rank, role }) => ({ name, rank, role }))).toEqual([
       { name: "Alice Tan", rank: 1, role: "Owner" },
       { name: "Bea Rivera", rank: 2, role: "Member" },
+    ]);
+    expect(result?.players.map(({ name, rd }) => ({ name, rd }))).toEqual([
+      { name: "Alice Tan", rd: 71.6 },
+      { name: "Bea Rivera", rd: 88.1 },
     ]);
     expect(result?.ratingStatus).toEqual({ id: "77777777-7777-4777-8777-777777777777", status: "failed", canRetry: true });
     expect(result?.activeDrafts).toHaveLength(1);

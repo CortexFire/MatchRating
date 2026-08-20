@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import {
@@ -14,11 +14,13 @@ import {
 } from "recharts";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { ScreenHeader } from "@/components/app/screen-header";
+import { RatingValue } from "@/components/ratings/rating-value";
 import {
   type AnalyticsPeriod,
   type AnalyticsPeriodSnapshot,
   type PlayerAnalyticsViewModel,
 } from "@/lib/analytics/analytics-policy";
+import { formatRating } from "@/lib/ratings/rating-display";
 import styles from "./player-analytics-view.module.css";
 
 const PERIODS: Array<{ key: AnalyticsPeriod; label: string }> = [
@@ -120,7 +122,11 @@ function AnalyticsContent({
           secondary={`${snapshot.summary.wins}–${snapshot.summary.losses}`}
           label="Win Rate"
         />
-        <SummaryCard primary={String(snapshot.summary.currentRating)} secondary={formatSigned(snapshot.summary.ratingChange)} label="Current Rating" />
+        <SummaryCard
+          primary={<RatingValue rating={snapshot.summary.currentRating} rd={snapshot.summary.currentRd} />}
+          secondary={formatSigned(snapshot.summary.ratingChange)}
+          label="Current Rating"
+        />
       </section>
 
       {snapshot.flags.length ? (
@@ -192,7 +198,7 @@ function RatingHistoryChart({ snapshot }: { snapshot: AnalyticsPeriodSnapshot })
             <Tooltip
               labelFormatter={(value) => longDate(String(value))}
               formatter={(value, _name, item) => [
-                `${Math.round(Number(value))} (${formatSigned(Number(item.payload.ratingDelta))})`,
+                `${formatRating(Number(value), Number(item.payload.rd))} (${formatSigned(Number(item.payload.ratingDelta))})`,
                 "Rating",
               ]}
               contentStyle={{ background: "var(--surface)", border: "1px solid var(--stroke)", borderRadius: 8, fontSize: 12 }}
@@ -219,14 +225,14 @@ function RatingHistoryChart({ snapshot }: { snapshot: AnalyticsPeriodSnapshot })
           </select>
         </label>
         <p role="status" aria-label="Selected rating point" aria-live="polite">
-          {selected ? `${longDate(selected.occurredAt)}: rating ${selected.rating}, change ${formatSigned(selected.ratingDelta)}` : ""}
+          {selected ? `${longDate(selected.occurredAt)}: rating ${formatRating(selected.rating, selected.rd)}, change ${formatSigned(selected.ratingDelta)}` : ""}
         </p>
       </div>
     </div>
   );
 }
 
-function SummaryCard({ primary, secondary, label }: { primary: string; secondary: string; label: string }) {
+function SummaryCard({ primary, secondary, label }: { primary: ReactNode; secondary: string; label: string }) {
   return (
     <article className={styles.summaryCard} aria-label={label}>
       <strong>{primary}</strong>

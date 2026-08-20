@@ -89,7 +89,7 @@ describe("guest player actions", () => {
       },
     ]);
     supabaseMocks.ratingSelect.in.mockResolvedValue({
-      data: [{ user_id: "guest-1", rating: 1525, rank: 4 }],
+      data: [{ user_id: "guest-1", rating: 1525, rd: 110.01, rank: 4 }],
       error: null,
     });
   });
@@ -162,8 +162,9 @@ describe("guest player actions", () => {
     expect(result).toEqual({
       ok: true,
       data: {
-        profiles: [{ id: "guest-1", name: "Visible Guest", rating: 1525, rank: 4 }],
+        profiles: [{ id: "guest-1", name: "Visible Guest", rating: 1525, rd: 110.01, rank: 4 }],
       },
     });
+    expect(supabaseMocks.tables.group_rating_states.select).toHaveBeenCalledWith("user_id, rating, rd, rank");
   });
 });

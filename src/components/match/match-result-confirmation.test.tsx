@@ -130,8 +130,10 @@ describe("MatchResultConfirmation", () => {
       />,
     );
 
-    expect(html).toContain("1488 → 1512");
-    expect(html).toContain("1777 → …");
+    expect(html).toContain("1488?");
+    expect(html).toContain("1512?");
+    expect(html).toContain("1777?");
+    expect(html).toContain(" → ");
     expect(html).not.toContain("Previous");
     expect(html).not.toContain("New 1512");
     expect(html).not.toContain("±");

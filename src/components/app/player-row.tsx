@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AvatarInitials } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { RatingValue } from "@/components/ratings/rating-value";
 import { type AppPlayer } from "@/lib/app-data";
 import styles from "./player-row.module.css";
 
@@ -21,7 +22,7 @@ export function PlayerRow({ player, analyticsHref }: { player: AppPlayer; analyt
           <p className={styles.games}>{player.gamesPlayed} games</p>
         </div>
         <div className={styles.rating}>
-          <p className={styles.ratingValue}>{player.rating}</p>
+          <RatingValue rating={player.rating} rd={player.rd} className={styles.ratingValue} />
           <p
             aria-label={performanceVariationDescription}
             title={performanceVariationDescription}

@@ -57,6 +57,7 @@ function isGroup(value: unknown) {
 function isCurrent(value: unknown) {
   return isRecord(value)
     && finiteNumber(value.rating)
+    && finiteNumber(value.rd)
     && Number.isSafeInteger(value.rank)
     && Number.isSafeInteger(value.rankedPlayerCount);
 }
@@ -71,7 +72,9 @@ function isMatch(value: unknown) {
     && Number.isSafeInteger(value.gameWins)
     && finiteNumber(value.expectedGameWins)
     && finiteNumber(value.ratingBefore)
+    && finiteNumber(value.rdBefore)
     && finiteNumber(value.ratingAfter)
+    && finiteNumber(value.rdAfter)
     && finiteNumber(value.ratingDelta)
     && Array.isArray(value.partners)
     && value.partners.every(isPerson)

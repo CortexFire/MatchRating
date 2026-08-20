@@ -1,6 +1,7 @@
 import { ArrowLeft, ArrowRight, ChevronDown, Medal } from "lucide-react";
 import clsx from "clsx";
 import Link from "next/link";
+import { RatingValue } from "@/components/ratings/rating-value";
 import { Badge } from "@/components/ui/badge";
 import { DEFAULT_RATING } from "@/lib/ratings/glicko2";
 import styles from "./match-result-confirmation.module.css";
@@ -56,9 +57,9 @@ export function MatchResultConfirmation({
   match: MatchResultConfirmationData;
 }) {
   return (
-    <section className={styles.screen}>
+    <section className={styles.page}>
       <div className={styles.header}>
-        <div className={styles.headerTitle}>
+        <div className={styles.headerTitleWrap}>
           <h1 className={styles.title}>Match Result</h1>
         </div>
         <button
@@ -72,7 +73,7 @@ export function MatchResultConfirmation({
       </div>
 
       <article className={styles.card}>
-        <div className={styles.matchMeta}>
+        <div className={styles.metaRow}>
           <h2 className={styles.clubName}>{match.clubName}</h2>
           <p className={styles.submittedAt}>{match.submittedAt}</p>
         </div>
@@ -82,16 +83,16 @@ export function MatchResultConfirmation({
           <TeamSummary team={match.teamB} winner={match.winnerTeam === "B"} />
         </div>
 
-        <div className={styles.sets}>
+        <div className={styles.setList}>
           {match.sets.map((set) => (
             <SetScoreRow key={set.label} set={set} />
           ))}
         </div>
 
         <div className={styles.reviewSection}>
-          <div className={styles.reviewMeta}>
+          <div className={styles.statusRow}>
             {match.status !== "pending_confirmation" ? <Badge tone={match.status === "confirmed" ? "victory" : "neutral"}>{displayStatus(match.status)}</Badge> : null}
-            {canCorrect || canRevise ? <p className={styles.deadline}>Correct until {match.correctionUntil}</p> : null}
+            {canCorrect || canRevise ? <p className={styles.disputeUntil}>Correct until {match.correctionUntil}</p> : null}
           </div>
           {canCorrect || (match.status === "disputed" && canRevise) ? (
             <Link
@@ -117,16 +118,16 @@ function TeamSummary({ team, winner }: { team: Team; winner: boolean }) {
   return (
     <div className={styles.teamSummary}>
       <div
-        className={clsx(styles.teamLabel, winner ? styles.winningText : styles.mutedText)}
+        className={clsx(styles.teamHeading, winner ? styles.teamHeadingWinner : styles.teamHeadingOther)}
       >
         {winner ? <Medal aria-hidden="true" className={styles.medal} /> : null}
         <h3>{team.label}</h3>
       </div>
       <div
-        className={clsx(styles.teamCard, winner ? styles.winningSurface : styles.neutralSurface)}
+        className={clsx(styles.teamCard, winner ? styles.winningTeamCard : styles.otherTeamCard)}
       >
         {team.players.map((player, index) => (
-          <div key={`${team.label}-${player.name}-${index}`} className={styles.player}>
+          <div key={`${team.label}-${player.name}-${index}`} className={styles.playerRow}>
             <span className={styles.avatar}>
               {player.initials}
             </span>
@@ -146,7 +147,9 @@ function RatingChange({ ratingChange }: { ratingChange?: Player["ratingChange"] 
 
   return (
     <p className={styles.ratingChange}>
-      {previous.rating} → {ratingChange ? ratingChange.next.rating : "…"}
+      <RatingValue rating={previous.rating} rd={previous.rd} />
+      <span aria-hidden="true"> → </span>
+      {ratingChange ? <RatingValue rating={ratingChange.next.rating} rd={ratingChange.next.rd} /> : <span aria-label="pending rating">…</span>}
     </p>
   );
 }
@@ -154,8 +157,8 @@ function RatingChange({ ratingChange }: { ratingChange?: Player["ratingChange"] 
 function SetScoreRow({ set }: { set: SetScore }) {
   return (
     <div>
-      <div className={styles.setHeader}>
-        <h3 className={styles.setTitle}>{set.label}</h3>
+      <div className={styles.setHeading}>
+        <h3>{set.label}</h3>
       </div>
       <div className={styles.scoreRow}>
         <ScoreTile score={set.teamAScore} result={set.winner === "A" ? "Win" : "Loss"} />
@@ -171,8 +174,8 @@ function SetArrow({ winner }: { winner: TeamKey }) {
 
   return (
     <div className={styles.setArrow}>
-      <Icon aria-hidden="true" className={styles.arrowIcon} />
-      <span className={styles.visuallyHidden}>Winner: Team {winner}</span>
+      <Icon aria-hidden="true" className={styles.setArrowIcon} />
+      <span className={styles.srOnly}>Winner: Team {winner}</span>
     </div>
   );
 }
@@ -182,10 +185,10 @@ function ScoreTile({ score, result }: { score: number; result: "Win" | "Loss" })
 
   return (
     <div
-      className={clsx(styles.scoreTile, won ? styles.winningSurface : styles.neutralSurface)}
+      className={clsx(styles.scoreTile, won ? styles.winningScore : styles.losingScore)}
     >
-      <p className={styles.scoreValue}>{score}</p>
-      <p className={styles.scoreResult}>{result}</p>
+      <p className={styles.score}>{score}</p>
+      <p className={styles.result}>{result}</p>
     </div>
   );
 }

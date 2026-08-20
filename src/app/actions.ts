@@ -310,7 +310,7 @@ async function getClaimableGuestProfiles(groupId: string, service: SupabaseServi
 
   const { data: ratings, error: ratingsError } = await service
     .from("group_rating_states")
-    .select("user_id, rating, rank")
+    .select("user_id, rating, rd, rank")
     .eq("group_id", groupId)
     .in("user_id", userIds);
 
@@ -321,11 +321,12 @@ async function getClaimableGuestProfiles(groupId: string, service: SupabaseServi
   const ratingsByUserId = new Map((ratings ?? []).map((rating: { user_id: string }) => [rating.user_id, rating]));
   return visibleGuests
     .map((membership) => {
-      const rating = ratingsByUserId.get(membership.userId) as { rating?: number | string; rank?: number | null } | undefined;
+      const rating = ratingsByUserId.get(membership.userId) as { rating?: number | string; rd?: number | string; rank?: number | null } | undefined;
       return {
         id: membership.userId,
         name: membership.profile?.displayName ?? "Unknown player",
         rating: Math.round(Number(rating?.rating ?? 1500)),
+        rd: Number(rating?.rd ?? 350),
         rank: rating?.rank ?? 0,
       };
     })
@@ -455,6 +456,7 @@ export type ClaimableGuestProfile = {
   id: string;
   name: string;
   rating: number;
+  rd: number;
   rank: number;
 };
 

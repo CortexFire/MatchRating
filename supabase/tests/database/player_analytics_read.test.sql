@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(6);
+select plan(8);
 
 select has_function(
   'public',
@@ -35,7 +35,54 @@ values
 insert into public.group_rating_states (group_id, user_id, rating, rd, volatility, games_played, rank)
 values
   ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111', 1600, 80, .06, 10, 1),
-  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '22222222-2222-4222-8222-222222222222', 1550, 90, .06, 8, 2);
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '22222222-2222-4222-8222-222222222222', 1550, 110.01, .06, 8, 2);
+
+insert into public.matches (id, group_id, created_by_user_id, status, submitted_at)
+values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111', 'confirmed', '2026-08-18T12:00:00Z');
+
+insert into public.match_revisions (id, match_id, version, submitted_by_user_id, format)
+values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 1, '11111111-1111-4111-8111-111111111111', 'singles');
+
+update public.matches
+set active_revision_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+insert into public.match_participants (revision_id, user_id, team, slot)
+values
+  ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', '11111111-1111-4111-8111-111111111111', 'A', 1),
+  ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', '22222222-2222-4222-8222-222222222222', 'B', 1);
+
+insert into public.match_games (id, revision_id, game_number, team_a_score, team_b_score, winner_team)
+values ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 1, 18, 21, 'B');
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'rating_events' and column_name = 'before_games_played'
+  ) then
+    execute $insert$
+      insert into public.rating_events (
+        group_id, match_id, revision_id, game_id, game_number, occurred_at,
+        format, team, user_id, sequence, expected_score, actual_score,
+        points_for, points_against,
+        before_rating, before_rd, before_volatility, before_games_played,
+        after_rating, after_rd, after_volatility, after_games_played
+      ) values
+        ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', 1, '2026-08-18T12:00:00Z', 'singles', 'A', '11111111-1111-4111-8111-111111111111', 1, .4, 0, 18, 21, 1600, 80, .06, 10, 1588, 78, .06, 11),
+        ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', 1, '2026-08-18T12:00:00Z', 'singles', 'B', '22222222-2222-4222-8222-222222222222', 2, .6, 1, 21, 18, 1538, 110.01, .06, 8, 1550, 109.99, .06, 9)
+    $insert$;
+  else
+    insert into public.rating_events (
+      group_id, match_id, revision_id, user_id, sequence,
+      before_rating, before_rd, before_volatility,
+      after_rating, after_rd, after_volatility
+    ) values
+      ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', '11111111-1111-4111-8111-111111111111', 1, 1600, 80, .06, 1588, 78, .06),
+      ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', '22222222-2222-4222-8222-222222222222', 2, 1538, 110.01, .06, 1550, 109.99, .06);
+  end if;
+end;
+$$;
 
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"11111111-1111-4111-8111-111111111111","role":"authenticated"}', true);
@@ -56,6 +103,30 @@ select is(
   )->'current'->>'rating',
   '1550',
   'analytics returns the subject current rating'
+);
+
+select is(
+  public.get_player_analytics_facts(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    '22222222-2222-4222-8222-222222222222'
+  )->'current'->>'rd',
+  '110.01',
+  'analytics returns the unrounded current rating deviation'
+);
+
+select is(
+  array[
+    public.get_player_analytics_facts(
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      '22222222-2222-4222-8222-222222222222'
+    )->'matches'->0->>'rdBefore',
+    public.get_player_analytics_facts(
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      '22222222-2222-4222-8222-222222222222'
+    )->'matches'->0->>'rdAfter'
+  ],
+  array['110.01', '109.99'],
+  'analytics returns the unrounded deviation for each historical rating state'
 );
 
 select set_config('request.jwt.claims', '{"sub":"33333333-3333-4333-8333-333333333333","role":"authenticated"}', true);

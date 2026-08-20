@@ -471,18 +471,18 @@ describe("stored match reads", () => {
       { id: ratedAtDefaultId, display_name: "Bea Rated", is_guest: false, active_until: null },
     ];
     rowsByTable.group_rating_states = [
-      { group_id: GROUP_ONE, user_id: SUBMITTER, rating: "1600.4", rd: "120", rank: 1, games_played: 3 },
+      { group_id: GROUP_ONE, user_id: SUBMITTER, rating: "1600.4", rd: "110.01", rank: 1, games_played: 3 },
       { group_id: GROUP_ONE, user_id: ratedAtDefaultId, rating: "1500.2", rd: "140", rank: 2, games_played: 1 },
       { group_id: GROUP_ONE, user_id: OPPONENT, rating: "1400.4", rd: "160", rank: 3, games_played: 2 },
     ];
 
     const players = await listGroupPlayers(GROUP_ONE);
 
-    expect(players.map(({ id, rating, rank }) => ({ id, rating, rank }))).toEqual([
-      { id: SUBMITTER, rating: 1600, rank: 1 },
-      { id: ratedAtDefaultId, rating: 1500, rank: 2 },
-      { id: unplayedId, rating: 1500, rank: 3 },
-      { id: OPPONENT, rating: 1400, rank: 4 },
+    expect(players.map(({ id, rating, rd, rank }) => ({ id, rating, rd, rank }))).toEqual([
+      { id: SUBMITTER, rating: 1600, rd: 110.01, rank: 1 },
+      { id: ratedAtDefaultId, rating: 1500, rd: 140, rank: 2 },
+      { id: unplayedId, rating: 1500, rd: 350, rank: 3 },
+      { id: OPPONENT, rating: 1400, rd: 160, rank: 4 },
     ]);
   });
 
@@ -521,10 +521,10 @@ describe("stored match reads", () => {
   });
 
   test("hydrates every rating-event field needed for a match result", async () => {
-    rowsByTable.rating_events = [{ revision_id: REVISION_NEW, user_id: SUBMITTER, sequence: "1", before_rating: "1500", before_rd: "350", after_rating: "1512", after_rd: "280" }];
+    rowsByTable.rating_events = [{ revision_id: REVISION_NEW, user_id: SUBMITTER, sequence: "1", before_rating: "1500", before_rd: "110.01", after_rating: "1512", after_rd: "109.99" }];
 
     await expect(getGroupMatchDetail(GROUP_ONE, MATCH_NEW)).resolves.toMatchObject({
-      teamA: [{ id: SUBMITTER, ratingChange: { previous: { rating: 1500, rd: 350 }, next: { rating: 1512, rd: 280 } } }],
+      teamA: [{ id: SUBMITTER, ratingChange: { previous: { rating: 1500, rd: 110.01 }, next: { rating: 1512, rd: 109.99 } } }],
     });
     expect(queriesByTable.rating_events[0].select).toHaveBeenCalledWith("revision_id, user_id, sequence, before_rating, before_rd, after_rating, after_rd");
   });

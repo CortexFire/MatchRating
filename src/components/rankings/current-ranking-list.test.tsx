@@ -11,6 +11,7 @@ describe("CurrentRankingList", () => {
           playerId: "alice",
           groupName: "Wednesday Club",
           rating: 1672,
+          rd: 110.01,
           rank: 4,
           memberCount: 18,
         },
@@ -20,7 +21,8 @@ describe("CurrentRankingList", () => {
     expect(html).toContain("Current rankings");
     expect(html).toContain("Wednesday Club");
     expect(html).toContain("#4 of 18");
-    expect(html).toContain("1672");
+    expect(html).toContain("1672?");
+    expect(html).toContain("1672, provisional rating");
     expect(html).toContain('href="/groups/group-1/players/alice/analytics"');
     expect(html).toContain('aria-label="View analytics for Wednesday Club"');
     expect(html).not.toContain('href="/groups/group-1/rankings"');

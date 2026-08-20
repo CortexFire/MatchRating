@@ -279,30 +279,31 @@ describe("MatchRecorder", () => {
     expect(screen.queryByRole("searchbox", { name: "Search for a player" })).toBeNull();
   });
 
-  test("shows 5.2 compact player cards in a keyboard-focusable scroll region", () => {
+  test("shows compact player cards with confidence-aware ratings in a keyboard-focusable scroll region", () => {
     openPlayerSelect();
 
     const roster = screen.getByRole("region", { name: "Available players" });
     const player = screen.getByRole("button", { name: "Select Cory Shah" });
-    const avatar = screen.getByText("CS");
-    const name = screen.getByText("Cory Shah");
-    const statusDot = player.querySelector('[aria-hidden="true"]');
-
-    expect(roster.classList.contains("max-h-[352px]")).toBe(true);
-    expect(roster.classList.contains("gap-2")).toBe(true);
-    expect(roster.classList.contains("overflow-y-auto")).toBe(true);
-    expect(roster.classList.contains("focus-visible:outline-action")).toBe(true);
     expect(roster.getAttribute("tabindex")).toBe("0");
-    expect(player.classList.contains("h-[60px]")).toBe(true);
-    expect(player.classList.contains("shrink-0")).toBe(true);
-    expect(avatar.classList.contains("size-10")).toBe(true);
-    expect(name.classList.contains("text-sm")).toBe(true);
-    expect(name.classList.contains("truncate")).toBe(true);
-    expect(statusDot?.classList.contains("size-2")).toBe(true);
+    expect(player.textContent).toContain("Cory Shah");
+    expect(player.textContent).toContain("1588");
+    expect(screen.getAllByText("1588, established rating").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("1466?").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("1466, provisional rating").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Filter Selected" }));
 
     expect(screen.getByRole("region", { name: "Available players" }).hasAttribute("tabindex")).toBe(false);
+  });
+
+  test("keeps player ratings on selected previews and recorded team nameplates", () => {
+    openPlayerSelect("Team A empty player slot 2");
+
+    fireEvent.click(screen.getByRole("button", { name: "Select Finn Liu" }));
+    expect(screen.getByLabelText("Draft Team A player Finn Liu").textContent).toContain("1466?");
+
+    fireEvent.click(screen.getByRole("button", { name: "Add players" }));
+    expect(screen.getByLabelText("Team A player Finn Liu").textContent).toContain("1466?");
   });
 
   test("keeps draft player changes in Player Select until Add players is clicked", () => {
@@ -473,16 +474,12 @@ describe("MatchRecorder", () => {
 
     const addGuest = screen.getByRole("button", { name: "Add player" }) as HTMLButtonElement;
     expect(addGuest.disabled).toBe(true);
-    expect(addGuest.classList.contains("bg-surface")).toBe(true);
-    expect(addGuest.classList.contains("text-muted")).toBe(true);
 
     fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "Noah Kim" } });
     const enabledAddGuest = screen.getByRole("button", {
       name: "Add guest player Noah Kim",
     }) as HTMLButtonElement;
     expect(enabledAddGuest.disabled).toBe(false);
-    expect(enabledAddGuest.classList.contains("bg-action")).toBe(true);
-    expect(enabledAddGuest.classList.contains("text-white")).toBe(true);
 
     fireEvent.change(screen.getByLabelText("Add a guest or search for a player"), { target: { value: "Dev" } });
     fireEvent.click(screen.getByRole("button", { name: "Select Dev Okafor" }));
@@ -490,8 +487,6 @@ describe("MatchRecorder", () => {
 
     const fullTeamAddGuest = screen.getByRole("button", { name: "Add player" }) as HTMLButtonElement;
     expect(fullTeamAddGuest.disabled).toBe(true);
-    expect(fullTeamAddGuest.classList.contains("bg-surface")).toBe(true);
-    expect(fullTeamAddGuest.classList.contains("text-muted")).toBe(true);
   });
 
   test("discards draft guests when Player Select is canceled", () => {

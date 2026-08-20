@@ -30,7 +30,9 @@ export type AnalyticsMatchFact = {
   gameWins: number;
   expectedGameWins: number;
   ratingBefore: number;
+  rdBefore: number;
   ratingAfter: number;
+  rdAfter: number;
   ratingDelta: number;
   partners: AnalyticsPerson[];
   opponents: AnalyticsPerson[];
@@ -62,7 +64,7 @@ export type AnalyticsFactsPayload = AnalyticsFactsBase & ({
   status: "updating";
 } | {
   status: "ready";
-  current: { rating: number; rank: number; rankedPlayerCount: number };
+  current: { rating: number; rd: number; rank: number; rankedPlayerCount: number };
   activePlayerIds: string[];
   matches: AnalyticsMatchFact[];
   cohortDaily: AnalyticsCohortDailyFact[];
@@ -73,6 +75,7 @@ export type AnalyticsSummary = {
   rank: number;
   rankedPlayerCount: number;
   currentRating: number;
+  currentRd: number;
   ratingChange: number;
   wins: number;
   losses: number;
@@ -98,6 +101,7 @@ export type AnalyticsPeriodSnapshot = {
     matchId: string;
     occurredAt: string;
     rating: number;
+    rd: number;
     ratingDelta: number;
   }>;
   flags: AnalyticsFlag[];
@@ -153,6 +157,7 @@ function projectPeriod(payload: Extract<AnalyticsFactsPayload, { status: "ready"
       rank: payload.current.rank,
       rankedPlayerCount: payload.current.rankedPlayerCount,
       currentRating: Math.round(payload.current.rating),
+      currentRd: payload.current.rd,
       ratingChange,
       wins,
       losses: matches.length - wins,
@@ -162,6 +167,7 @@ function projectPeriod(payload: Extract<AnalyticsFactsPayload, { status: "ready"
       matchId: item.id,
       occurredAt: item.occurredAt,
       rating: Math.round(item.ratingAfter),
+      rd: item.rdAfter,
       ratingDelta: round(item.ratingDelta),
     })),
     flags: buildFlags({ payload, matches, cohort, partnerCounts, gameCount, gameWins, expectedGameWins }),

@@ -22,12 +22,17 @@ describe("ClaimProfileForm", () => {
       <ClaimProfileForm
         groupId="group-1"
         profiles={[
-          { id: "guest-1", name: "Jordan Lee", rating: 1631, rank: 3 },
-          { id: "guest-2", name: "Amanda Xu", rating: 1478, rank: 8 },
+          { id: "guest-1", name: "Jordan Lee", rating: 1631, rd: 110.01, rank: 3 },
+          { id: "guest-2", name: "Amanda Xu", rating: 1478, rd: 110, rank: 8 },
         ]}
         onRedirect={(url) => redirects.push(url)}
       />,
     );
+
+    expect(screen.getByText("1631?")).toBeTruthy();
+    expect(screen.getByText("1631, provisional rating")).toBeTruthy();
+    expect(screen.getByText("1478")).toBeTruthy();
+    expect(screen.getByText("1478, established rating")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Select Jordan Lee" }));
     fireEvent.click(screen.getByRole("button", { name: "Select Amanda Xu" }));
@@ -47,7 +52,7 @@ describe("ClaimProfileForm", () => {
     render(
       <ClaimProfileForm
         groupId="group-1"
-        profiles={[{ id: "guest-1", name: "Jordan Lee", rating: 1631, rank: 3 }]}
+        profiles={[{ id: "guest-1", name: "Jordan Lee", rating: 1631, rd: 110, rank: 3 }]}
         onRedirect={(url) => redirects.push(url)}
       />,
     );
@@ -62,7 +67,7 @@ describe("ClaimProfileForm", () => {
     render(
       <ClaimProfileForm
         groupId="group-1"
-        profiles={[{ id: "guest-1", name: "Jordan Lee", rating: 1631, rank: 3 }]}
+        profiles={[{ id: "guest-1", name: "Jordan Lee", rating: 1631, rd: 110, rank: 3 }]}
       />,
     );
 

@@ -70,6 +70,7 @@ export type AppCurrentRanking = {
   playerId: string;
   groupName: string;
   rating: number;
+  rd: number;
   rank: number;
   memberCount: number;
 };
@@ -390,7 +391,7 @@ export async function listGroupPlayers(groupId: string): Promise<AppPlayer[]> {
       initials: initialsFor(name),
       role: profile?.isGuest ? "Guest" : displayRole(membership.role),
       rating: Math.round(Number(rating?.rating ?? 1500)),
-      rd: Math.round(Number(rating?.rd ?? 350)),
+      rd: Number(rating?.rd ?? 350),
       performanceSd: performanceSdFromLogMean(rating?.consistency_log_mean),
       gamesPlayed: rating?.games_played ?? 0,
       status:

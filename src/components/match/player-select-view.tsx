@@ -1,13 +1,15 @@
 "use client";
 
 import { Search, UserPlus } from "lucide-react";
+import clsx from "clsx";
 import { GroupSwitcher, type GroupOption } from "@/components/match/group-switcher";
+import { RatingValue } from "@/components/ratings/rating-value";
 import { AvatarInitials } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { type AppPlayer } from "@/lib/app-data";
 import { type MatchFormat, type Team } from "@/lib/matches/validation";
-import { cn } from "@/lib/utils";
+import styles from "./player-select-view.module.css";
 
 export type PlayerFilter = "selected" | "all" | "active" | "inactive";
 export type PlayerSelection = Array<string | null>;
@@ -118,13 +120,13 @@ export function PlayerSelectView({
   }
 
   return (
-    <section className="flex min-h-full flex-col gap-4 bg-app-bg text-ink">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-[22px] font-bold leading-7 text-ink">Player Select</h1>
+    <section className={styles.page}>
+      <div className={styles.header}>
+        <h1 className={styles.title}>Player Select</h1>
         <GroupSwitcher groups={groups} currentGroupId={currentGroupId} />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className={styles.teamGrid}>
         <TeamPreview
           label="Team A"
           active={activeTeam === "A"}
@@ -141,8 +143,8 @@ export function PlayerSelectView({
         />
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 rounded-lg border border-stroke bg-surface p-3">
-        <div className="grid min-h-11 grid-cols-4 rounded-lg border border-stroke bg-surface p-1">
+      <div className={styles.selectorCard}>
+        <div className={styles.filters}>
           {filters.map((option) => (
             <button
               key={option.value}
@@ -150,29 +152,26 @@ export function PlayerSelectView({
               aria-pressed={filter === option.value}
               aria-label={`Filter ${option.label}`}
               onClick={() => onFilterChange(option.value)}
-              className={cn(
-                "rounded-md px-1 text-xs font-bold text-muted transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action",
-                filter === option.value && "bg-selection text-ink",
-              )}
+              className={clsx(styles.filterButton, filter === option.value && styles.filterActive)}
             >
               {option.label}
             </button>
           ))}
         </div>
 
-        <div className="flex gap-2">
-          <label className="relative min-w-0 flex-1">
-            <span className="sr-only">Add a guest or search for a player</span>
+        <div className={styles.searchRow}>
+          <label className={styles.searchLabel}>
+            <span className={styles.srOnly}>Add a guest or search for a player</span>
             <Search
               aria-hidden="true"
-              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted"
+              className={styles.searchIcon}
             />
             <Input
               type="search"
               value={search}
               placeholder="Add a guest or search for a player"
               onChange={(event) => onSearchChange(event.target.value)}
-              className="pl-9"
+              className={styles.searchInput}
             />
           </label>
           <Button
@@ -180,13 +179,9 @@ export function PlayerSelectView({
             disabled={!canAddGuest}
             aria-label={guestAddLabel}
             onClick={() => onAddGuest(guestName)}
-            className={cn(
-              "size-11 shrink-0 p-0",
-              !canAddGuest &&
-                "border border-stroke bg-surface text-muted hover:bg-surface disabled:opacity-60",
-            )}
+            className={clsx(styles.addGuestButton, !canAddGuest && styles.addGuestDisabled)}
           >
-            <UserPlus aria-hidden="true" className="size-5" />
+            <UserPlus aria-hidden="true" className={styles.addGuestIcon} />
           </Button>
         </div>
 
@@ -194,7 +189,7 @@ export function PlayerSelectView({
           role="region"
           aria-label="Available players"
           tabIndex={visiblePlayers.length > 5 ? 0 : undefined}
-          className="flex max-h-[352px] min-h-0 flex-col gap-2 overflow-y-auto rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action"
+          className={styles.roster}
         >
           {visiblePlayers.map((player) => {
             const selected = selectedIds.has(player.id);
@@ -222,18 +217,18 @@ export function PlayerSelectView({
             );
           })}
           {visiblePlayers.length === 0 ? (
-            <p className="rounded-lg border border-stroke bg-surface px-3 py-4 text-center text-sm font-semibold text-muted">
+            <p className={styles.emptyState}>
               No players found.
             </p>
           ) : null}
         </div>
       </div>
 
-      <div className="flex flex-col gap-2 pt-1">
-        <Button type="button" disabled={!canCommit} onClick={onCommit} className="w-full">
+      <div className={styles.actions}>
+        <Button type="button" disabled={!canCommit} onClick={onCommit} className={styles.actionButton}>
           Add players
         </Button>
-        <Button type="button" variant="secondary" onClick={onCancel} className="w-full">
+        <Button type="button" variant="secondary" onClick={onCancel} className={styles.actionButton}>
           Cancel
         </Button>
       </div>
@@ -255,17 +250,14 @@ function TeamPreview({
   onSelect: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <span className="text-sm font-bold text-muted">{label}</span>
+    <div className={styles.teamPreview}>
+      <span className={styles.teamLabel}>{label}</span>
       <button
         type="button"
         aria-label={`Select ${label}: ${describeSelection(selection, players)}`}
         aria-pressed={active}
         onClick={onSelect}
-        className={cn(
-          "flex min-h-[132px] flex-col gap-2 rounded-lg border p-2 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action",
-          active ? "border-selection-stroke bg-selection" : "border-stroke bg-surface hover:bg-app-bg",
-        )}
+        className={clsx(styles.teamButton, active ? styles.teamActive : styles.teamIdle)}
       >
         {selection.map((playerId, index) => {
           const player = players.find((candidate) => candidate.id === playerId);
@@ -274,14 +266,15 @@ function TeamPreview({
             <span
               key={`${label}-${index}`}
               aria-label={player ? `Draft ${label} player ${player.name}` : undefined}
-              className="flex min-h-11 items-center gap-2 rounded-lg border border-stroke bg-surface px-2"
+              className={styles.teamSlot}
             >
               <AvatarInitials
                 initials={player?.initials ?? `${index + 1}`}
-                className={cn("size-9", !player && "border border-stroke bg-app-bg text-muted")}
+                className={clsx(styles.previewAvatar, !player && styles.emptyAvatar)}
               />
-              <span className="min-w-0 flex-1 truncate text-sm font-bold text-ink">
-                {player ? shortenName(player.name) : "Empty"}
+              <span className={styles.previewDetails}>
+                <span className={styles.previewName}>{player ? shortenName(player.name) : "Empty"}</span>
+                {player ? <RatingValue rating={player.rating} rd={player.rd} className={styles.previewRating} /> : null}
               </span>
             </span>
           );
@@ -313,30 +306,28 @@ function PlayerRow({
       aria-pressed={selected}
       disabled={disabled}
       onClick={onSelect}
-      className={cn(
-        "flex h-[60px] w-full shrink-0 items-center gap-2 rounded-lg border px-2 py-2 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action disabled:cursor-not-allowed",
-        selected ? "border-selection-stroke bg-selection" : "border-stroke bg-surface hover:bg-app-bg",
-        (inactive || disabled) && "text-muted",
-        disabled && "opacity-55",
+      className={clsx(
+        styles.playerButton,
+        selected ? styles.playerSelected : styles.playerIdle,
+        (inactive || disabled) && styles.playerMuted,
+        disabled && styles.playerDisabled,
       )}
     >
       <span
         aria-hidden="true"
-        className={cn(
-          "size-2 shrink-0 rounded-full",
-          selected ? "bg-victory-stroke" : inactive ? "bg-stroke" : "bg-muted",
-        )}
+        className={clsx(styles.statusDot, selected ? styles.statusSelected : inactive ? styles.statusInactive : styles.statusActive)}
       />
       <AvatarInitials
         initials={player.initials}
-        className={cn("size-10 text-sm", (inactive || disabled) && "bg-app-bg text-muted")}
+        className={clsx(styles.playerAvatar, (inactive || disabled) && styles.playerAvatarMuted)}
       />
-      <span className="min-w-0 flex-1">
-        <span className={cn("block truncate text-sm font-bold", inactive || disabled ? "text-muted" : "text-ink")}>
+      <span className={styles.playerDetails}>
+        <span className={clsx(styles.playerName, (inactive || disabled) ? styles.playerNameMuted : styles.playerNameActive)}>
           {player.name}
         </span>
-        {inactive ? <span className="block text-xs font-semibold text-muted">{player.status}</span> : null}
+        {inactive ? <span className={styles.playerStatus}>{player.status}</span> : null}
       </span>
+      <RatingValue rating={player.rating} rd={player.rd} className={styles.playerRating} />
     </button>
   );
 }
