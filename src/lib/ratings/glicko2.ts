@@ -6,6 +6,8 @@ import {
 import {
   createDefaultConsistencyState,
   updateMatchConsistency,
+  DEFAULT_CONSISTENCY_CONFIG,
+  type ConsistencyConfig,
   type ConsistencyEvent,
   type ConsistencyState,
 } from "./consistency";
@@ -313,13 +315,17 @@ function getRating(map: Map<string, RatingState>, userId: string) {
   return created;
 }
 
-function getConsistencyState(map: Map<string, ConsistencyState>, userId: string) {
+function getConsistencyState(
+  map: Map<string, ConsistencyState>,
+  userId: string,
+  config: ConsistencyConfig,
+) {
   const consistency = map.get(userId);
   if (consistency) {
     return consistency;
   }
 
-  const created = createDefaultConsistencyState();
+  const created = createDefaultConsistencyState(config);
   map.set(userId, created);
   return created;
 }
@@ -363,6 +369,7 @@ export function rebuildGroupRatingsFromMatches(
   sequenceOffset = 0,
   initialConsistencyStates: Map<string, ConsistencyState> = new Map(),
   consistencySequenceOffset = 0,
+  consistencyConfig: ConsistencyConfig = DEFAULT_CONSISTENCY_CONFIG,
 ): {
   ratings: Map<string, RatingState>;
   events: RatingEvent[];
@@ -387,12 +394,12 @@ export function rebuildGroupRatingsFromMatches(
     const teamA = validated.teamAUserIds.map((userId) => ({
       userId,
       rating: getRating(ratings, userId).rating,
-      consistency: getConsistencyState(consistencyStates, userId),
+      consistency: getConsistencyState(consistencyStates, userId, consistencyConfig),
     }));
     const teamB = validated.teamBUserIds.map((userId) => ({
       userId,
       rating: getRating(ratings, userId).rating,
-      consistency: getConsistencyState(consistencyStates, userId),
+      consistency: getConsistencyState(consistencyStates, userId, consistencyConfig),
     }));
     const consistencyResult = updateMatchConsistency({
       matchId: match.id,
@@ -403,7 +410,7 @@ export function rebuildGroupRatingsFromMatches(
       teamA,
       teamB,
       sequenceOffset: consistencySequenceOffset + consistencyEvents.length,
-    });
+    }, consistencyConfig);
     for (const [userId, state] of consistencyResult.states) {
       consistencyStates.set(userId, state);
     }

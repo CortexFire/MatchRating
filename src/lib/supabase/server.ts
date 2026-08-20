@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { cache } from "react";
 import {
   getRequiredSupabasePublicEnv,
-  getRequiredSupabaseSecretKey,
+  getRequiredSupabaseServiceEnv,
 } from "./env";
 import { createPostgrestFutureJwtRetryFetch } from "./retry-fetch";
 
@@ -31,8 +31,8 @@ export async function createSupabaseServerClient() {
 }
 
 export function createSupabaseServiceClient() {
-  const env = getRequiredSupabasePublicEnv();
-  return createClient(env.url, getRequiredSupabaseSecretKey(), {
+  const env = getRequiredSupabaseServiceEnv();
+  return createClient(env.url, env.secretKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,

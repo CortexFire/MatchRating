@@ -12,6 +12,8 @@
     "db:start": "supabase start",
     "test:db": "supabase test db",
     "test:e2e": "playwright test",
+    "calibrate:consistency": "tsx scripts/calibrate-consistency.ts",
+    "backfill:consistency": "tsx scripts/backfill-consistency.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -44,6 +46,7 @@
     "jsdom": "^29.1.1",
     "supabase": "^2.112.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.12",
     "typescript": "^5",
     "vitest": "^4.1.8"
   }

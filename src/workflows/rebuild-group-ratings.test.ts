@@ -13,7 +13,16 @@ const supabaseMocks = vi.hoisted(() => ({
   createSupabaseServiceClient: vi.fn(),
 }));
 
+const runtimeConfigMocks = vi.hoisted(() => ({
+  getRuntimeConsistencyConfig: vi.fn(() => ({
+    populationKappa: 200,
+    priorLogSd: 0.35,
+    driftLogSd: 0.02,
+  })),
+}));
+
 vi.mock("@/lib/supabase/server", () => supabaseMocks);
+vi.mock("@/lib/ratings/consistency-runtime-config", () => runtimeConfigMocks);
 
 function canonicalSinglesInput() {
   return {
@@ -299,6 +308,21 @@ describe("rating rebuild workflow failure handling", () => {
 
     await expect(applyProjection(input, projection)).rejects.toBeInstanceOf(FatalError);
     expect(supabaseMocks.rpc).not.toHaveBeenCalled();
+  });
+
+  test("uses the validated runtime consistency config for rating rebuilds", async () => {
+    runtimeConfigMocks.getRuntimeConsistencyConfig.mockReturnValueOnce({
+      populationKappa: 120,
+      priorLogSd: 0.2,
+      driftLogSd: 0,
+    });
+
+    const projection = await calculateProjection(canonicalSinglesInput());
+
+    expect(runtimeConfigMocks.getRuntimeConsistencyConfig).toHaveBeenCalledTimes(1);
+    expect(projection.consistencyEvents[0].before.logKappaMean).toBe(Math.log(120));
+    expect(projection.consistencyEvents[0].before.logKappaVariance).toBeCloseTo(0.04, 12);
+    expect(projection.consistencyEvents[0].before.matchesPlayed).toBe(0);
   });
 
   test("rejects an invalid consistency prefix count before calculation", async () => {

@@ -303,6 +303,34 @@ describe("Glicko-2 rating engine", () => {
     expect(rebuilt.consistencyStates.get("bea")?.matchesPlayed).toBe(1);
   });
 
+  it("uses an optional final consistency config for missing states and match updates", () => {
+    const config = { populationKappa: 120, priorLogSd: 0.2, driftLogSd: 0 };
+    const rebuilt = rebuildGroupRatingsFromMatches(
+      [{
+        id: "m-calibrated",
+        revisionId: "r-calibrated",
+        submittedAt: "2026-02-04T10:00:00.000Z",
+        format: "singles",
+        teamAUserIds: ["alice"],
+        teamBUserIds: ["bea"],
+        games: [{ gameId: "g-calibrated", gameNumber: 1, teamAScore: 21, teamBScore: 17, winnerTeam: "A" }],
+      }],
+      new Map([
+        ["alice", { ...DEFAULT_RATING, rating: 1650, rd: 80 }],
+        ["bea", { ...DEFAULT_RATING, rating: 1500, rd: 80 }],
+      ]),
+      0,
+      new Map(),
+      0,
+      config,
+    );
+
+    expect(rebuilt.consistencyEvents[0].before.logKappaMean).toBe(Math.log(120));
+    expect(rebuilt.consistencyEvents[0].before.logKappaVariance).toBeCloseTo(0.04, 12);
+    expect(rebuilt.consistencyEvents[0].before.matchesPlayed).toBe(0);
+    expect(rebuilt.consistencyEvents[0].expectedScore).toBeGreaterThan(0.8);
+  });
+
   it("replays a seeded suffix identically for both event streams without mutating seeds", () => {
     const history = [
       {

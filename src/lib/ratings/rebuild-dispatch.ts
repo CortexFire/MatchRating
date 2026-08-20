@@ -13,7 +13,14 @@ function errorMessage(error: unknown) {
       : String(error);
 }
 
-export async function dispatchRatingRebuild(jobId: string) {
+type RatingDispatchOptions = {
+  logErrors?: boolean;
+};
+
+export async function dispatchRatingRebuild(
+  jobId: string,
+  options: RatingDispatchOptions = {},
+) {
   const service = createSupabaseServiceClient();
   const dispatchToken = randomUUID();
   const { data: claimed, error } = await service.rpc("claim_rating_rebuild_dispatch", {
@@ -31,7 +38,7 @@ export async function dispatchRatingRebuild(jobId: string) {
       .update({ workflow_run_id: run.runId, updated_at: new Date().toISOString() })
       .eq("id", jobId)
       .eq("dispatch_token", dispatchToken);
-    if (updateError) {
+    if (updateError && options.logErrors !== false) {
       console.error("rating_dispatch_metadata_update_failed", {
         jobId,
         runId: run.runId,
@@ -41,15 +48,20 @@ export async function dispatchRatingRebuild(jobId: string) {
     return run.runId;
   } catch (error) {
     // The leased queued job is intentionally left for the recovery route.
-    console.error("rating_workflow_start_failed", {
-      jobId,
-      error: errorMessage(error),
-    });
+    if (options.logErrors !== false) {
+      console.error("rating_workflow_start_failed", {
+        jobId,
+        error: errorMessage(error),
+      });
+    }
     return null;
   }
 }
 
-export async function dispatchRecoverableRatingJobs(limit = 25) {
+export async function dispatchRecoverableRatingJobs(
+  limit = 25,
+  options: RatingDispatchOptions = {},
+) {
   const service = createSupabaseServiceClient();
   const now = new Date().toISOString();
   const { data, error } = await service
@@ -64,12 +76,14 @@ export async function dispatchRecoverableRatingJobs(limit = 25) {
   return Promise.all(
     (data ?? []).map(async (job: { id: string }) => {
       try {
-        return await dispatchRatingRebuild(job.id);
+        return await dispatchRatingRebuild(job.id, options);
       } catch (jobError) {
-        console.error("rating_dispatch_recovery_failed", {
-          jobId: job.id,
-          error: errorMessage(jobError),
-        });
+        if (options.logErrors !== false) {
+          console.error("rating_dispatch_recovery_failed", {
+            jobId: job.id,
+            error: errorMessage(jobError),
+          });
+        }
         return null;
       }
     }),

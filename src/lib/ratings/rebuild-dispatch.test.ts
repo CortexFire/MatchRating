@@ -55,4 +55,22 @@ describe("dispatchRecoverableRatingJobs", () => {
     });
     errorSpy.mockRestore();
   });
+
+  test("can suppress identifier-bearing recovery logs for aggregate-only tooling", async () => {
+    const services = [
+      recoveryQuery(),
+      claimedJob({ message: "claim failed" }),
+      claimedJob(null),
+    ];
+    supabaseMocks.createSupabaseServiceClient.mockImplementation(() => services.shift());
+    workflowMocks.start.mockResolvedValue({ runId: "run-2" });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await expect(dispatchRecoverableRatingJobs(25, { logErrors: false })).resolves.toEqual([
+      null,
+      "run-2",
+    ]);
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
 });

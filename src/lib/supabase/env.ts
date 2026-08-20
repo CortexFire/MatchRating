@@ -23,11 +23,23 @@ export function getRequiredSupabasePublicEnv() {
 }
 
 export function getRequiredSupabaseSecretKey() {
-  const key = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!key) {
     throw new Error("Set SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY for trusted server writes.");
   }
 
   return key;
+}
+
+export function getRequiredSupabaseServiceEnv() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!url) {
+    throw new Error("Set NEXT_PUBLIC_SUPABASE_URL for trusted server access.");
+  }
+
+  return {
+    url,
+    secretKey: getRequiredSupabaseSecretKey(),
+  };
 }

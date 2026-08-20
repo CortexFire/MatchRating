@@ -6,6 +6,7 @@ import {
   type RatingState,
 } from "@/lib/ratings/glicko2";
 import type { ConsistencyState } from "@/lib/ratings/consistency";
+import { getRuntimeConsistencyConfig } from "@/lib/ratings/consistency-runtime-config";
 import { toRatingProjection } from "@/lib/ratings/projection";
 import { validateMatchSubmission } from "@/lib/matches/validation";
 
@@ -90,6 +91,7 @@ export async function calculateProjection(input: RebuildInput) {
       input.prefixEventCount,
       initialConsistencyStates,
       input.prefixConsistencyEventCount,
+      getRuntimeConsistencyConfig(),
     );
     return toRatingProjection(
       rebuilt.ratings,
