@@ -1,0 +1,75 @@
+.row {
+  min-width: 0;
+  min-height: 70px;
+  flex-shrink: 0;
+}
+
+.link {
+  display: flex;
+  min-height: 70px;
+  width: 100%;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--stroke);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--ink);
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.link:hover {
+  border-color: var(--selection-stroke);
+  background: var(--selection);
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}
+
+.rankBadge,
+.avatar,
+.rating {
+  flex-shrink: 0;
+}
+
+.playerDetails {
+  min-width: 0;
+  flex: 1;
+}
+
+.nameRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nameRow h3 {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.games,
+.ratingDeviation {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.games {
+  margin-top: 0.125rem;
+}
+
+.rating {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ratingValue {
+  font-size: 1rem;
+  font-weight: 700;
+}

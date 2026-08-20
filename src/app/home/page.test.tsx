@@ -63,6 +63,7 @@ const homeData = {
   currentRankings: [
     {
       groupId: "11111111-1111-4111-8111-111111111111",
+      playerId: "alice-id",
       groupName: "Wednesday Club Ladder",
       rating: 1642,
       rank: 4,
@@ -134,7 +135,8 @@ describe("HomePage", () => {
     expect(html).toContain('href="/matches/history"');
     expect(html).toContain("min-h-11");
     expect(html).toContain("focus-visible:outline-action");
-    expect(html).toContain('href="/groups/11111111-1111-4111-8111-111111111111/rankings"');
+    expect(html).toContain('href="/groups/11111111-1111-4111-8111-111111111111/players/alice-id/analytics"');
+    expect(html).not.toContain('href="/groups/11111111-1111-4111-8111-111111111111/rankings"');
     expect(html).toContain("#4 of 8");
     expect(html).toContain("1642");
     expect(mocks.getHomePageData).toHaveBeenCalledOnce();

@@ -12,6 +12,7 @@ import { RatingRebuildStatus } from "@/components/match/rating-rebuild-status";
 import { Button } from "@/components/ui/button";
 import { getGroup, getGroupRatingRebuildStatus, listGroupPlayers } from "@/lib/app-data";
 import GroupLoading from "../loading";
+import styles from "./page.module.css";
 
 type MembersPageProps = {
   params: Promise<{ groupId: string }>;
@@ -44,7 +45,7 @@ export async function MembersContent({
         subtitle={group ? `${activePlayerCount} active of ${group.memberCount} members.` : undefined}
         backHref={`/groups/${groupId}`}
         action={
-          <Button asChild className="shrink-0 px-3 text-xs">
+          <Button asChild className={styles.inviteButton}>
             <Link href={`/groups/${groupId}/invite`}>Invite Members</Link>
           </Button>
         }
@@ -58,13 +59,13 @@ export async function MembersContent({
         refreshOnComplete
       />
       {players.length ? (
-        <section className="flex flex-col gap-2">
+        <section className={styles.memberList}>
           {players.map((player) => (
-            <PlayerRow key={player.id} player={player} />
+            <PlayerRow key={player.id} player={player} analyticsHref={`/groups/${groupId}/players/${player.id}/analytics`} />
           ))}
         </section>
       ) : (
-        <p className="rounded-lg border border-stroke bg-surface p-4 text-sm text-muted">No members yet.</p>
+        <p className={styles.empty}>No members yet.</p>
       )}
     </MobileShell>
   );

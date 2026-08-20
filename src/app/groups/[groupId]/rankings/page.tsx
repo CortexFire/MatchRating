@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { RatingRebuildStatus } from "@/components/match/rating-rebuild-status";
 import { getGroupRatingRebuildStatus, listGroupPlayers } from "@/lib/app-data";
 import GroupLoading from "../loading";
+import styles from "./page.module.css";
 
 type RankingsPageProps = {
   params: Promise<{ groupId: string }>;
@@ -34,14 +35,14 @@ export async function RankingsContent({ params }: RankingsPageProps) {
   return (
     <MobileShell active="Rank" recordHref={recordHref}>
       <ScreenHeader title="Rankings" backHref={`/groups/${groupId}`} />
-      <div className="flex gap-2">
+      <div className={styles.filters}>
         <Badge tone="selected">Overall</Badge>
         <Badge>Singles</Badge>
         <Badge>Doubles</Badge>
       </div>
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-        <Input className="pl-9" placeholder="Search rankings" />
+      <div className={styles.searchWrap}>
+        <Search className={styles.searchIcon} aria-hidden="true" />
+        <Input className={styles.searchInput} placeholder="Search rankings" />
       </div>
       <RatingRebuildStatus
         key={ratingStatus.id ?? "no-rating-job"}
@@ -52,13 +53,13 @@ export async function RankingsContent({ params }: RankingsPageProps) {
         refreshOnComplete
       />
       {players.length ? (
-        <section className="flex flex-col gap-2">
+        <section className={styles.rankingList}>
           {players.map((player) => (
-            <PlayerRow key={player.id} player={player} />
+            <PlayerRow key={player.id} player={player} analyticsHref={`/groups/${groupId}/players/${player.id}/analytics`} />
           ))}
         </section>
       ) : (
-        <p className="rounded-lg border border-stroke bg-surface p-4 text-sm text-muted">No rankings yet.</p>
+        <p className={styles.empty}>No rankings yet.</p>
       )}
     </MobileShell>
   );

@@ -11,7 +11,14 @@ const supabaseMocks = vi.hoisted(() => {
   };
   const table = {
     upsert: vi.fn(),
+    select: vi.fn(),
+    update: vi.fn(),
+    eq: vi.fn(),
+    single: vi.fn(),
   };
+  table.select.mockReturnValue(table);
+  table.update.mockReturnValue(table);
+  table.eq.mockReturnValue(table);
 
   return {
     auth,
@@ -54,6 +61,7 @@ describe("auth actions", () => {
       }),
     );
     supabaseMocks.table.upsert.mockResolvedValue({ error: null });
+    supabaseMocks.table.single.mockResolvedValue({ data: { rating_applied_version: 3 }, error: null });
   });
 
 
