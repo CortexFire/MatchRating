@@ -181,6 +181,53 @@ describe("match-level consistency replay", () => {
     },
   );
 
+  it.each([2295, 2300, 2305])(
+    "keeps an asymmetric singles upset finite near the solver residual cutoff at rating %i",
+    (favoriteRating) => {
+      const result = updateMatchConsistency({
+        matchId: `match-asymmetric-upset-${favoriteRating}`,
+        revisionId: `revision-asymmetric-upset-${favoriteRating}`,
+        occurredAt: "2026-03-02T12:00:00.000Z",
+        format: "singles",
+        winnerTeam: "B",
+        teamA: [{
+          userId: "favorite",
+          rating: favoriteRating,
+          consistency: {
+            logKappaMean: Math.log(200),
+            logKappaVariance: 0.12,
+            matchesPlayed: 10,
+          },
+        }],
+        teamB: [{
+          userId: "underdog",
+          rating: 500,
+          consistency: {
+            logKappaMean: Math.log(220),
+            logKappaVariance: 0.12,
+            matchesPlayed: 10,
+          },
+        }],
+      });
+
+      expect(Number.isFinite(result.teamAWinProbability)).toBe(true);
+      expect(result.states.get("favorite")).toEqual(expect.objectContaining({
+        logKappaMean: expect.any(Number),
+        matchesPlayed: 11,
+      }));
+      expect(result.states.get("underdog")).toEqual(expect.objectContaining({
+        logKappaMean: expect.any(Number),
+        matchesPlayed: 11,
+      }));
+      expect(result.states.get("favorite")!.logKappaMean).toBeGreaterThan(5.298317366548);
+      expect(result.states.get("underdog")!.logKappaMean).toBeGreaterThan(5.393627546352);
+      for (const state of result.states.values()) {
+        expect(Number.isFinite(state.logKappaVariance)).toBe(true);
+        expect(state.logKappaVariance).toBeGreaterThan(0);
+      }
+    },
+  );
+
   it("rejects invalid teams, duplicate users, and non-finite ratings", () => {
     const base = {
       matchId: "match-1",
