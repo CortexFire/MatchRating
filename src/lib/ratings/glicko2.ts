@@ -3,6 +3,12 @@ import {
   type MatchFormat,
   type Team,
 } from "../matches/validation";
+import {
+  createDefaultConsistencyState,
+  updateMatchConsistency,
+  type ConsistencyEvent,
+  type ConsistencyState,
+} from "./consistency";
 
 const SCALE = 173.7178;
 
@@ -307,6 +313,17 @@ function getRating(map: Map<string, RatingState>, userId: string) {
   return created;
 }
 
+function getConsistencyState(map: Map<string, ConsistencyState>, userId: string) {
+  const consistency = map.get(userId);
+  if (consistency) {
+    return consistency;
+  }
+
+  const created = createDefaultConsistencyState();
+  map.set(userId, created);
+  return created;
+}
+
 function setRatingWithEvent(
   ratings: Map<string, RatingState>,
   events: RatingEvent[],
@@ -344,11 +361,22 @@ export function rebuildGroupRatingsFromMatches(
   matches: HistoricalMatch[],
   initialRatings: Map<string, RatingState> = new Map(),
   sequenceOffset = 0,
-): { ratings: Map<string, RatingState>; events: RatingEvent[] } {
+  initialConsistencyStates: Map<string, ConsistencyState> = new Map(),
+  consistencySequenceOffset = 0,
+): {
+  ratings: Map<string, RatingState>;
+  events: RatingEvent[];
+  consistencyStates: Map<string, ConsistencyState>;
+  consistencyEvents: ConsistencyEvent[];
+} {
   const ratings = new Map<string, RatingState>(
     Array.from(initialRatings.entries()).map(([userId, rating]) => [userId, { ...rating }]),
   );
   const events: RatingEvent[] = [];
+  const consistencyStates = new Map<string, ConsistencyState>(
+    Array.from(initialConsistencyStates.entries()).map(([userId, state]) => [userId, { ...state }]),
+  );
+  const consistencyEvents: ConsistencyEvent[] = [];
   const orderedMatches = [...matches].sort((a, b) => {
     const dateDiff = Date.parse(a.submittedAt) - Date.parse(b.submittedAt);
     return dateDiff === 0 ? a.id.localeCompare(b.id) : dateDiff;
@@ -356,6 +384,30 @@ export function rebuildGroupRatingsFromMatches(
 
   for (const match of orderedMatches) {
     const validated = validateMatchSubmission({ ...match, groupId: "rating-rebuild" });
+    const teamA = validated.teamAUserIds.map((userId) => ({
+      userId,
+      rating: getRating(ratings, userId).rating,
+      consistency: getConsistencyState(consistencyStates, userId),
+    }));
+    const teamB = validated.teamBUserIds.map((userId) => ({
+      userId,
+      rating: getRating(ratings, userId).rating,
+      consistency: getConsistencyState(consistencyStates, userId),
+    }));
+    const consistencyResult = updateMatchConsistency({
+      matchId: match.id,
+      revisionId: match.revisionId,
+      occurredAt: match.submittedAt,
+      format: validated.format,
+      winnerTeam: validated.matchWinnerTeam,
+      teamA,
+      teamB,
+      sequenceOffset: consistencySequenceOffset + consistencyEvents.length,
+    });
+    for (const [userId, state] of consistencyResult.states) {
+      consistencyStates.set(userId, state);
+    }
+    consistencyEvents.push(...consistencyResult.events);
 
     for (const [gameIndex, validatedGame] of validated.games.entries()) {
       const game = match.games[gameIndex];
@@ -412,5 +464,5 @@ export function rebuildGroupRatingsFromMatches(
     }
   }
 
-  return { ratings, events };
+  return { ratings, events, consistencyStates, consistencyEvents };
 }

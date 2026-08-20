@@ -5,20 +5,30 @@ import {
   type HistoricalMatch,
   type RatingState,
 } from "@/lib/ratings/glicko2";
+import type { ConsistencyState } from "@/lib/ratings/consistency";
 import { toRatingProjection } from "@/lib/ratings/projection";
+import { validateMatchSubmission } from "@/lib/matches/validation";
 
-type RebuildInput = {
+type SerializedRatingState = RatingState & {
+  userId: string;
+  logKappaMean: number;
+  logKappaVariance: number;
+  consistencyMatchesPlayed: number;
+};
+
+export type RebuildInput = {
   groupId: string;
   jobId: string;
   targetVersion: number;
   prefixEventCount: number;
-  initialRatings: Array<RatingState & { userId: string }>;
+  prefixConsistencyEventCount: number;
+  initialRatings: SerializedRatingState[];
   history: HistoricalMatch[];
 };
 
 export async function loadRebuildInput(jobId: string, dispatchToken: string): Promise<RebuildInput | null> {
   "use step";
-  const { data, error } = await createSupabaseServiceClient().rpc("begin_incremental_rating_rebuild", {
+  const { data, error } = await createSupabaseServiceClient().rpc("begin_incremental_rating_rebuild_v2", {
     p_job_id: jobId,
     p_dispatch_token: dispatchToken,
   });
@@ -32,9 +42,25 @@ export async function calculateProjection(input: RebuildInput) {
     if (!Number.isSafeInteger(input.prefixEventCount) || input.prefixEventCount < 0) {
       throw new Error("Invalid rating prefix event count");
     }
+    if (
+      !Number.isSafeInteger(input.prefixConsistencyEventCount)
+      || input.prefixConsistencyEventCount < 0
+    ) {
+      throw new Error("Invalid consistency prefix event count");
+    }
 
     const initialRatings = new Map<string, RatingState>();
-    for (const { userId, rating, rd, volatility, gamesPlayed } of input.initialRatings) {
+    const initialConsistencyStates = new Map<string, ConsistencyState>();
+    for (const {
+      userId,
+      rating,
+      rd,
+      volatility,
+      gamesPlayed,
+      logKappaMean,
+      logKappaVariance,
+      consistencyMatchesPlayed,
+    } of input.initialRatings) {
       if (
         !userId
         || initialRatings.has(userId)
@@ -47,14 +73,30 @@ export async function calculateProjection(input: RebuildInput) {
         throw new Error("Invalid initial rating state");
       }
       initialRatings.set(userId, { rating, rd, volatility, gamesPlayed });
+      const consistency = {
+        logKappaMean,
+        logKappaVariance,
+        matchesPlayed: consistencyMatchesPlayed,
+      };
+      if (!isValidConsistencyState(consistency)) {
+        throw new Error("Invalid initial consistency state");
+      }
+      initialConsistencyStates.set(userId, consistency);
     }
 
     const rebuilt = rebuildGroupRatingsFromMatches(
       input.history,
       initialRatings,
       input.prefixEventCount,
+      initialConsistencyStates,
+      input.prefixConsistencyEventCount,
     );
-    return toRatingProjection(rebuilt.ratings, rebuilt.events);
+    return toRatingProjection(
+      rebuilt.ratings,
+      rebuilt.events,
+      rebuilt.consistencyStates,
+      rebuilt.consistencyEvents,
+    );
   } catch (error) {
     throw new FatalError(errorMessage(error));
   }
@@ -68,12 +110,14 @@ export async function applyProjection(input: RebuildInput, projection: Awaited<R
     throw new FatalError(errorMessage(error));
   }
 
-  const { data, error } = await createSupabaseServiceClient().rpc("apply_incremental_rating_rebuild", {
+  const { data, error } = await createSupabaseServiceClient().rpc("apply_incremental_rating_rebuild_v2", {
     p_job_id: input.jobId,
     p_expected_version: input.targetVersion,
     p_prefix_event_count: input.prefixEventCount,
+    p_prefix_consistency_event_count: input.prefixConsistencyEventCount,
     p_ratings: projection.ratings,
     p_events: projection.events,
+    p_consistency_events: projection.consistencyEvents,
   });
   if (error) throw error;
   return data as { status: "completed" | "stale"; targetVersion?: number };
@@ -83,6 +127,15 @@ function assertCanonicalProjection(
   input: RebuildInput,
   projection: Awaited<ReturnType<typeof calculateProjection>>,
 ) {
+  if (
+    !Number.isSafeInteger(input.prefixEventCount)
+    || input.prefixEventCount < 0
+    || !Number.isSafeInteger(input.prefixConsistencyEventCount)
+    || input.prefixConsistencyEventCount < 0
+  ) {
+    throw new Error("Invalid canonical event prefix count");
+  }
+
   const expectedRatingUserIds = new Set(input.initialRatings.map((rating) => rating.userId));
   const expectedFacts = new Map<string, {
     matchId: string;
@@ -95,8 +148,23 @@ function assertCanonicalProjection(
     pointsFor: number;
     pointsAgainst: number;
   }>();
+  const expectedConsistencyFacts: Array<{
+    matchId: string;
+    revisionId: string;
+    occurredAt: string;
+    format: HistoricalMatch["format"];
+    team: "A" | "B";
+    userId: string;
+    actualScore: 0 | 1;
+  }> = [];
+  const expectedConsistencyKeys = new Set<string>();
 
-  for (const match of input.history) {
+  const orderedMatches = [...input.history].sort((a, b) => {
+    const dateDiff = Date.parse(a.submittedAt) - Date.parse(b.submittedAt);
+    return dateDiff === 0 ? a.id.localeCompare(b.id) : dateDiff;
+  });
+  for (const match of orderedMatches) {
+    const validated = validateMatchSubmission({ ...match, groupId: input.groupId });
     for (const userId of [...match.teamAUserIds, ...match.teamBUserIds]) {
       expectedRatingUserIds.add(userId);
     }
@@ -117,6 +185,27 @@ function assertCanonicalProjection(
             pointsAgainst: team === "A" ? game.teamBScore : game.teamAScore,
           });
         }
+      }
+    }
+    for (const [team, userIds] of [
+      ["A", validated.teamAUserIds],
+      ["B", validated.teamBUserIds],
+    ] as const) {
+      for (const userId of userIds) {
+        const key = `${match.id}:${userId}`;
+        if (expectedConsistencyKeys.has(key)) {
+          throw new Error("Duplicate canonical match and player identity");
+        }
+        expectedConsistencyKeys.add(key);
+        expectedConsistencyFacts.push({
+          matchId: match.id,
+          revisionId: match.revisionId,
+          occurredAt: match.submittedAt,
+          format: validated.format,
+          team,
+          userId,
+          actualScore: validated.matchWinnerTeam === team ? 1 : 0,
+        });
       }
     }
   }
@@ -171,9 +260,86 @@ function assertCanonicalProjection(
     throw new Error("Canonical rating event set is incomplete");
   }
 
+  const seenConsistencyFacts = new Set<string>();
+  const matchExpectations = new Map<string, { A?: number; B?: number }>();
+  projection.consistencyEvents.forEach((event, index) => {
+    if (
+      !isUuid(event.matchId)
+      || !isUuid(event.revisionId)
+      || !isUuid(event.userId)
+      || !Number.isFinite(Date.parse(event.occurredAt))
+      || (event.format !== "singles" && event.format !== "doubles")
+      || (event.team !== "A" && event.team !== "B")
+      || !Number.isFinite(event.expectedScore)
+      || event.expectedScore < 0
+      || event.expectedScore > 1
+      || (event.actualScore !== 0 && event.actualScore !== 1)
+      || event.sequence !== input.prefixConsistencyEventCount + index + 1
+      || !isValidConsistencyState(event.before)
+      || !isValidConsistencyState(event.after)
+      || event.after.matchesPlayed !== event.before.matchesPlayed + 1
+    ) {
+      throw new Error("Invalid canonical consistency event");
+    }
+
+    const key = `${event.matchId}:${event.userId}`;
+    if (seenConsistencyFacts.has(key)) {
+      throw new Error("Duplicate canonical match and player identity");
+    }
+    seenConsistencyFacts.add(key);
+    const expected = expectedConsistencyFacts[index];
+    if (
+      !expected
+      || event.matchId !== expected.matchId
+      || event.revisionId !== expected.revisionId
+      || event.occurredAt !== expected.occurredAt
+      || event.format !== expected.format
+      || event.team !== expected.team
+      || event.userId !== expected.userId
+      || event.actualScore !== expected.actualScore
+    ) {
+      throw new Error("Canonical consistency event does not match its historical match");
+    }
+
+    const expectations = matchExpectations.get(event.matchId) ?? {};
+    if (expectations[event.team] !== undefined && expectations[event.team] !== event.expectedScore) {
+      throw new Error("Canonical consistency team expectations disagree");
+    }
+    expectations[event.team] = event.expectedScore;
+    matchExpectations.set(event.matchId, expectations);
+  });
+
+  if (seenConsistencyFacts.size !== expectedConsistencyFacts.length) {
+    throw new Error("Canonical consistency event set is incomplete");
+  }
+  for (const expectations of matchExpectations.values()) {
+    if (
+      expectations.A === undefined
+      || expectations.B === undefined
+      || Math.abs(expectations.A + expectations.B - 1) > Number.EPSILON * 4
+    ) {
+      throw new Error("Canonical consistency expectations are not complementary");
+    }
+  }
+
   const ratingUserIds = new Set<string>();
-  for (const { userId, ...rating } of projection.ratings) {
-    if (!isUuid(userId) || ratingUserIds.has(userId) || !isValidRatingState(rating)) {
+  for (const {
+    userId,
+    logKappaMean,
+    logKappaVariance,
+    consistencyMatchesPlayed,
+    ...rating
+  } of projection.ratings) {
+    if (
+      !isUuid(userId)
+      || ratingUserIds.has(userId)
+      || !isValidRatingState(rating)
+      || !isValidConsistencyState({
+        logKappaMean,
+        logKappaVariance,
+        matchesPlayed: consistencyMatchesPlayed,
+      })
+    ) {
       throw new Error("Invalid canonical rating projection");
     }
     ratingUserIds.add(userId);
@@ -195,6 +361,18 @@ function isValidRatingState(state: RatingState) {
     && state.volatility > 0
     && Number.isSafeInteger(state.gamesPlayed)
     && state.gamesPlayed >= 0;
+}
+
+function isValidConsistencyState(state: ConsistencyState) {
+  const kappa = Math.exp(state.logKappaMean);
+  return Number.isFinite(state.logKappaMean)
+    && Number.isFinite(kappa)
+    && kappa >= 30
+    && kappa <= 600
+    && Number.isFinite(state.logKappaVariance)
+    && state.logKappaVariance > 0
+    && Number.isSafeInteger(state.matchesPlayed)
+    && state.matchesPlayed >= 0;
 }
 
 function isUuid(value: string) {
