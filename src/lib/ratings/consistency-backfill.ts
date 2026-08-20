@@ -65,7 +65,12 @@ export async function runConsistencyBackfill({
   let dispatchedCount = 0;
   while (true) {
     const batch = await dispatchRecoverableRatingJobs(DISPATCH_BATCH_SIZE);
-    dispatchedCount += batch.filter((runId) => typeof runId === "string" && runId.length > 0).length;
+    const batchProgress = batch.filter((runId) =>
+      typeof runId === "string" && runId.length > 0).length;
+    if (batch.length === DISPATCH_BATCH_SIZE && batchProgress === 0) {
+      throw new Error("Consistency backfill dispatch made no progress");
+    }
+    dispatchedCount += batchProgress;
     if (batch.length < DISPATCH_BATCH_SIZE) break;
   }
 

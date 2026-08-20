@@ -166,7 +166,7 @@ function addScore(accumulator: ScoreAccumulator, probability: number, actual: 0 
   );
   accumulator.count += 1;
   accumulator.logLoss += actual === 1 ? -Math.log(clamped) : -Math.log(1 - clamped);
-  accumulator.brier += (clamped - actual) ** 2;
+  accumulator.brier += (probability - actual) ** 2;
 }
 
 function finalizeMetrics(accumulator: ScoreAccumulator): CalibrationMetrics {
@@ -175,6 +175,16 @@ function finalizeMetrics(accumulator: ScoreAccumulator): CalibrationMetrics {
   const brier = accumulator.brier / accumulator.count;
   if (!Number.isFinite(logLoss) || !Number.isFinite(brier)) invalidHistory();
   return { logLoss, brier };
+}
+
+export function scoreCalibrationPredictions(
+  predictions: ReadonlyArray<{ probability: number; actual: 0 | 1 }>,
+): CalibrationMetrics {
+  const accumulator: ScoreAccumulator = { count: 0, logLoss: 0, brier: 0 };
+  for (const prediction of predictions) {
+    addScore(accumulator, prediction.probability, prediction.actual);
+  }
+  return finalizeMetrics(accumulator);
 }
 
 function evaluatePreparedGroups(

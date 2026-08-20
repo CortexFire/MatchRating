@@ -84,6 +84,23 @@ describe("consistency backfill", () => {
     })).resolves.toEqual({ groupCount: 2, enqueuedCount: 2, dispatchedCount: 0 });
   });
 
+  test("rejects a full no-progress dispatch batch without retrying or leaking identifiers", async () => {
+    const dispatchRecoverableRatingJobs = vi.fn()
+      .mockResolvedValueOnce(Array<string | null>(25).fill(null))
+      .mockResolvedValueOnce(Array<string | null>(25).fill(null))
+      .mockRejectedValueOnce(new Error("sentinel-job-id-must-not-escape"));
+
+    const result = runConsistencyBackfill({
+      listGroups: async () => groups(1),
+      enqueueRatingRebuild: async () => "job",
+      dispatchRecoverableRatingJobs,
+    });
+
+    await expect(result).rejects.toThrow("Consistency backfill dispatch made no progress");
+    await expect(result).rejects.not.toThrow("sentinel-job-id-must-not-escape");
+    expect(dispatchRecoverableRatingJobs).toHaveBeenCalledTimes(1);
+  });
+
   test.each(["list", "enqueue", "dispatch"] as const)("propagates %s errors", async (stage) => {
     const failure = new Error(`${stage} failed`);
     await expect(runConsistencyBackfill({

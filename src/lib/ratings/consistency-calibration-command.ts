@@ -43,7 +43,15 @@ export type CalibrationHistorySource = {
 
 type ServiceClient = ReturnType<typeof createSupabaseServiceClient>;
 const PAGE_SIZE = 1_000;
-const REVISION_BATCH_SIZE = 500;
+const REVISION_BATCH_SIZE = 100;
+
+type AtomicFileOperations = {
+  writeFile: typeof writeFile;
+  rename: typeof rename;
+  rm: typeof rm;
+};
+
+const atomicFileOperations: AtomicFileOperations = { writeFile, rename, rm };
 
 async function collectPages<T>(
   loadPage: (from: number, to: number) => Promise<{ data: T[] | null; error: unknown }>,
@@ -240,6 +248,7 @@ function aggregateArtifact(artifact: ConsistencyCalibrationArtifact): Consistenc
 export async function writeCalibrationArtifactAtomically(
   outputPath: string,
   artifact: ConsistencyCalibrationArtifact,
+  fileOperations: AtomicFileOperations = atomicFileOperations,
 ) {
   const serialized = `${JSON.stringify(aggregateArtifact(artifact), null, 2)}\n`;
   const temporaryPath = join(
@@ -248,11 +257,11 @@ export async function writeCalibrationArtifactAtomically(
   );
   let replaced = false;
   try {
-    await writeFile(temporaryPath, serialized, { encoding: "utf8", flag: "wx" });
-    await rename(temporaryPath, outputPath);
+    await fileOperations.writeFile(temporaryPath, serialized, { encoding: "utf8", flag: "wx" });
+    await fileOperations.rename(temporaryPath, outputPath);
     replaced = true;
   } finally {
-    if (!replaced) await rm(temporaryPath, { force: true });
+    if (!replaced) await fileOperations.rm(temporaryPath, { force: true });
   }
 }
 

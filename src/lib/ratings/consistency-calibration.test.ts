@@ -6,6 +6,7 @@ import {
   createCalibrationArtifact,
   evaluateConsistencyConfiguration,
   getCalibrationSplitSummary,
+  scoreCalibrationPredictions,
   selectBestIndividualizedCandidate,
   type CalibrationCandidateEvaluation,
 } from "./consistency-calibration";
@@ -108,6 +109,80 @@ describe("consistency calibration", () => {
     expect(fixedNarrow).toEqual(fixedWide);
     expect(individualizedNarrow).not.toEqual(individualizedWide);
     expect(individualizedNarrow).not.toEqual(fixedNarrow);
+  });
+
+  test("continues ratings and individualized consistency from training into held-out", () => {
+    const groups = new Map([[
+      "sentinel-group",
+      [match(0, "A"), match(1, "A"), match(2, "A")],
+    ]]);
+    const config = { populationKappa: 200, priorLogSd: 0.35, driftLogSd: 0.02 };
+
+    const fixed = evaluateConsistencyConfiguration(groups, config, "fixed-null");
+    const individualized = evaluateConsistencyConfiguration(groups, config, "individualized");
+
+    expect(fixed.heldOut.brier).toBeLessThan(0.25);
+    expect(individualized.heldOut.brier).toBeLessThan(fixed.heldOut.brier!);
+    expect(individualized.heldOut.logLoss).toBeLessThan(fixed.heldOut.logLoss!);
+  });
+
+  test("isolates ratings and consistency when player identities repeat across groups", () => {
+    const groups = new Map([
+      ["sentinel-group-a", [match(0, "A")]],
+      ["sentinel-group-b", [match(0, "A")]],
+    ]);
+
+    const result = evaluateConsistencyConfiguration(
+      groups,
+      { populationKappa: 200, priorLogSd: 0.35, driftLogSd: 0.02 },
+      "individualized",
+    );
+
+    expect(result.training).toEqual({ logLoss: null, brier: null });
+    expect(result.heldOut.logLoss).toBeCloseTo(Math.log(2), 15);
+    expect(result.heldOut.brier).toBe(0.25);
+  });
+
+  test("keeps fixed-null kappa fixed while advancing Glicko between predictions", () => {
+    const groups = new Map([[
+      "sentinel-group",
+      [match(0, "A"), match(1, "A"), match(2, "A")],
+    ]]);
+    const narrow = evaluateConsistencyConfiguration(
+      groups,
+      { populationKappa: 200, priorLogSd: 0.2, driftLogSd: 0 },
+      "fixed-null",
+    );
+    const wide = evaluateConsistencyConfiguration(
+      groups,
+      { populationKappa: 200, priorLogSd: 0.5, driftLogSd: 0.04 },
+      "fixed-null",
+    );
+
+    expect(narrow).toEqual(wide);
+    expect(narrow.training.brier).toBeLessThan(0.25);
+    expect(narrow.training.logLoss).toBeLessThan(Math.log(2));
+    expect(narrow.heldOut.brier).toBeLessThan(narrow.training.brier!);
+  });
+
+  test("uses unclamped endpoint Brier to break equal clamped log-loss ties", () => {
+    const exact = scoreCalibrationPredictions([{ probability: 0, actual: 0 }]);
+    const extreme = scoreCalibrationPredictions([{ probability: 1e-13, actual: 0 }]);
+
+    expect(exact.brier).toBe(0);
+    expect(extreme.brier).toBe(1e-26);
+    expect(exact.logLoss).toBe(extreme.logLoss);
+    expect(scoreCalibrationPredictions([{ probability: 0, actual: 1 }])).toEqual({
+      logLoss: -Math.log(1e-12),
+      brier: 1,
+    });
+
+    const exactCandidate = candidate(120, 0.2, 0, exact.logLoss!, exact.brier!);
+    const extremeCandidate = candidate(200, 0.2, 0, extreme.logLoss!, extreme.brier!);
+    expect(selectBestIndividualizedCandidate([
+      extremeCandidate,
+      exactCandidate,
+    ])).toBe(exactCandidate);
   });
 
   test("requires 100 held-out matches and strictly better individualized log loss", () => {
