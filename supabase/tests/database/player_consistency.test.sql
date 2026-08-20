@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(31);
+select plan(53);
 
 select is(
   (
@@ -59,6 +59,60 @@ select is(
   ),
   18::bigint,
   'consistency events persist the complete required canonical fact'
+);
+
+select ok(
+  exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'consistency_events'
+      and column_name = 'expected_score' and data_type = 'numeric'
+      and numeric_precision = 10 and numeric_scale = 9
+  )
+    and (select count(*) from information_schema.columns
+      where table_schema = 'public' and table_name = 'consistency_events'
+        and column_name in (
+          'before_log_mean', 'before_log_variance',
+          'after_log_mean', 'after_log_variance'
+        )
+        and data_type = 'numeric' and numeric_precision = 18 and numeric_scale = 12) = 4
+    and exists (
+      select 1 from information_schema.columns
+      where table_schema = 'public' and table_name = 'consistency_events'
+        and column_name = 'actual_score' and data_type = 'smallint'
+    )
+    and (select count(*) from information_schema.columns
+      where table_schema = 'public' and table_name = 'consistency_events'
+        and column_name in ('sequence', 'before_matches_played', 'after_matches_played')
+        and data_type = 'integer') = 3
+    and (select count(*) from information_schema.columns
+      where table_schema = 'public' and table_name = 'consistency_events'
+        and column_name in ('id', 'group_id', 'match_id', 'revision_id', 'user_id')
+        and data_type = 'uuid') = 5
+    and (select count(*) from information_schema.columns
+      where table_schema = 'public' and table_name = 'consistency_events'
+        and column_name in ('occurred_at', 'created_at')
+        and data_type = 'timestamp with time zone') = 2
+    and exists (
+      select 1 from information_schema.columns
+      where table_schema = 'public' and table_name = 'consistency_events'
+        and column_name = 'format' and data_type = 'USER-DEFINED' and udt_name = 'match_format'
+    )
+    and exists (
+      select 1 from information_schema.columns
+      where table_schema = 'public' and table_name = 'consistency_events'
+        and column_name = 'team' and data_type = 'USER-DEFINED' and udt_name = 'team_code'
+    ),
+  'consistency event probability, state, result, sequence, and count types are exact'
+);
+
+select ok(
+  (select column_default like '%gen_random_uuid%'
+    from information_schema.columns
+    where table_schema = 'public' and table_name = 'consistency_events' and column_name = 'id')
+    and (select column_default = 'now()'
+      from information_schema.columns
+      where table_schema = 'public' and table_name = 'consistency_events' and column_name = 'created_at'),
+  'consistency event identity and creation time have database defaults'
 );
 
 select ok(
@@ -136,15 +190,21 @@ insert into public.profiles (id, display_name, first_name, last_name)
 values
   ('e1111111-1111-4111-8111-111111111111', 'Consistency One', 'Consistency', 'One'),
   ('e2222222-2222-4222-8222-222222222222', 'Consistency Two', 'Consistency', 'Two'),
-  ('e3333333-3333-4333-8333-333333333333', 'Consistency Outsider', 'Consistency', 'Outsider');
+  ('e3333333-3333-4333-8333-333333333333', 'Consistency Outsider', 'Consistency', 'Outsider'),
+  ('e4444444-4444-4444-8444-444444444444', 'Consistency Former', 'Consistency', 'Former'),
+  ('e5555555-5555-4555-8555-555555555555', 'Other Group Member', 'Other', 'Member');
 
 insert into public.groups (id, owner_user_id, name, rating_input_version)
-values ('eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'e1111111-1111-4111-8111-111111111111', 'Consistency Ladder', 1);
-
-insert into public.group_memberships (group_id, user_id, role, status)
 values
-  ('eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'e1111111-1111-4111-8111-111111111111', 'owner', 'active'),
-  ('eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'e2222222-2222-4222-8222-222222222222', 'member', 'active');
+  ('eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'e1111111-1111-4111-8111-111111111111', 'Consistency Ladder', 1),
+  ('e6666666-6666-4666-8666-666666666666', 'e5555555-5555-4555-8555-555555555555', 'Other Ladder', 0);
+
+insert into public.group_memberships (group_id, user_id, role, status, left_at)
+values
+  ('eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'e1111111-1111-4111-8111-111111111111', 'owner', 'active', null),
+  ('eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'e2222222-2222-4222-8222-222222222222', 'member', 'active', null),
+  ('eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'e4444444-4444-4444-8444-444444444444', 'member', 'left', now()),
+  ('e6666666-6666-4666-8666-666666666666', 'e5555555-5555-4555-8555-555555555555', 'owner', 'active', null);
 
 insert into public.matches (id, group_id, created_by_user_id, submitted_at)
 values ('ebbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'e1111111-1111-4111-8111-111111111111', '2026-08-20T18:00:00Z');
@@ -211,6 +271,41 @@ insert into consistency_payloads values (
   ]'::jsonb
 );
 
+create function pg_temp.consistency_persistence_snapshot(p_group_id uuid, p_job_id uuid)
+returns jsonb
+language sql
+stable
+set search_path = ''
+as $$
+  select jsonb_build_object(
+    'ratingEvents', coalesce((
+      select jsonb_agg(to_jsonb(event) order by event.sequence)
+      from public.rating_events event
+      where event.group_id = p_group_id
+    ), '[]'::jsonb),
+    'consistencyEvents', coalesce((
+      select jsonb_agg(to_jsonb(event) order by event.sequence)
+      from public.consistency_events event
+      where event.group_id = p_group_id
+    ), '[]'::jsonb),
+    'ratingStates', coalesce((
+      select jsonb_agg(to_jsonb(state) order by state.user_id)
+      from public.group_rating_states state
+      where state.group_id = p_group_id
+    ), '[]'::jsonb),
+    'group', (
+      select to_jsonb(group_row)
+      from public.groups group_row
+      where group_row.id = p_group_id
+    ),
+    'job', (
+      select to_jsonb(job)
+      from public.rating_rebuild_jobs job
+      where job.id = p_job_id
+    )
+  );
+$$;
+
 select is(
   (
     select public.apply_incremental_rating_rebuild_v2(
@@ -253,6 +348,62 @@ select ok(
   'freshness and job completion advance with the dual projection'
 );
 
+select throws_ok(
+  $$update public.group_rating_states set consistency_log_mean = 'NaN'::numeric where group_id = 'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$,
+  '23514',
+  'new row for relation "group_rating_states" violates check constraint "group_rating_states_consistency_log_mean_check"',
+  'current state behavior rejects a non-finite consistency mean'
+);
+
+select throws_ok(
+  $$update public.group_rating_states set consistency_log_variance = 0 where group_id = 'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$,
+  '23514',
+  'new row for relation "group_rating_states" violates check constraint "group_rating_states_consistency_log_variance_check"',
+  'current state behavior rejects a non-positive consistency variance'
+);
+
+select throws_ok(
+  $$update public.group_rating_states set consistency_matches_played = -1 where group_id = 'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'$$,
+  '23514',
+  'new row for relation "group_rating_states" violates check constraint "group_rating_states_consistency_matches_played_check"',
+  'current state behavior rejects a negative consistency match count'
+);
+
+select throws_ok(
+  $$update public.consistency_events set expected_score = 1.1 where group_id = 'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' and sequence = 1$$,
+  '23514',
+  'new row for relation "consistency_events" violates check constraint "consistency_events_expected_score_check"',
+  'event behavior rejects an out-of-range expected score'
+);
+
+select throws_ok(
+  $$update public.consistency_events set actual_score = 2 where group_id = 'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' and sequence = 1$$,
+  '23514',
+  'new row for relation "consistency_events" violates check constraint "consistency_events_actual_score_check"',
+  'event behavior rejects a non-binary actual score'
+);
+
+select throws_ok(
+  $$update public.consistency_events set before_log_variance = 0 where group_id = 'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' and sequence = 1$$,
+  '23514',
+  'new row for relation "consistency_events" violates check constraint "consistency_events_before_state_check"',
+  'event behavior rejects an invalid before state'
+);
+
+select throws_ok(
+  $$update public.consistency_events set after_log_variance = 0 where group_id = 'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' and sequence = 1$$,
+  '23514',
+  'new row for relation "consistency_events" violates check constraint "consistency_events_after_state_check"',
+  'event behavior rejects an invalid after state'
+);
+
+select throws_ok(
+  $$update public.consistency_events set after_matches_played = 9 where group_id = 'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' and sequence = 1$$,
+  '23514',
+  'new row for relation "consistency_events" violates check constraint "consistency_events_matches_played_step_check"',
+  'event behavior rejects a non-unit match-count transition'
+);
+
 insert into public.rating_rebuild_jobs (
   id, group_id, from_match_id, status, created_by_user_id, target_version,
   dispatch_token, dispatch_lease_expires_at
@@ -268,6 +419,128 @@ values (
 select public.begin_incremental_rating_rebuild_v2(
   'f0111111-1111-4111-8111-111111111111',
   'f0222222-2222-4222-8222-222222222222'
+);
+
+create temporary table invalid_apply_snapshot (value jsonb not null) on commit drop;
+insert into invalid_apply_snapshot
+select pg_temp.consistency_persistence_snapshot(
+  'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  'f0111111-1111-4111-8111-111111111111'
+);
+
+select throws_ok(
+  $$
+    select public.apply_incremental_rating_rebuild_v2(
+      'f0111111-1111-4111-8111-111111111111', 1, 0, 0,
+      ratings,
+      rating_events,
+      jsonb_set(consistency_events, '{0,after,matchesPlayed}', 'null'::jsonb)
+    ) from consistency_payloads
+  $$,
+  'MRVAL',
+  'Invalid canonical consistency events',
+  'a complete event with a null after match count is rejected before legacy apply'
+);
+
+select is(
+  pg_temp.consistency_persistence_snapshot(
+    'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'f0111111-1111-4111-8111-111111111111'
+  ),
+  (select value from invalid_apply_snapshot),
+  'null after match count leaves exact rating events, consistency events, states, freshness, and job contents unchanged'
+);
+
+select throws_ok(
+  $$
+    select public.apply_incremental_rating_rebuild_v2(
+      'f0111111-1111-4111-8111-111111111111', 1, 0, 0,
+      jsonb_set(ratings, '{0,logKappaMean}', '5.25'::jsonb),
+      rating_events,
+      consistency_events
+    ) from consistency_payloads
+  $$,
+  'MRVAL',
+  'Invalid canonical consistency states',
+  'a final consistency state that differs from the latest event is rejected'
+);
+
+select is(
+  pg_temp.consistency_persistence_snapshot(
+    'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'f0111111-1111-4111-8111-111111111111'
+  ),
+  (select value from invalid_apply_snapshot),
+  'final consistency mismatch leaves exact persisted contents unchanged'
+);
+
+select throws_ok(
+  $$
+    select public.apply_incremental_rating_rebuild_v2(
+      'f0111111-1111-4111-8111-111111111111', 1, 0, 0,
+      ratings, rating_events,
+      jsonb_set(consistency_events, '{0,sequence}', '9'::jsonb)
+    ) from consistency_payloads
+  $$,
+  'MRVAL', 'Invalid canonical consistency events',
+  'a wrong consistency sequence is rejected before apply'
+);
+
+select throws_ok(
+  $$
+    select public.apply_incremental_rating_rebuild_v2(
+      'f0111111-1111-4111-8111-111111111111', 1, 0, 0,
+      ratings, rating_events,
+      jsonb_set(consistency_events, '{0,userId}', '"e2222222-2222-4222-8222-222222222222"'::jsonb)
+    ) from consistency_payloads
+  $$,
+  'MRVAL', 'Invalid canonical consistency events',
+  'a wrong consistency player identity is rejected before apply'
+);
+
+select throws_ok(
+  $$
+    select public.apply_incremental_rating_rebuild_v2(
+      'f0111111-1111-4111-8111-111111111111', 1, 0, 0,
+      ratings, rating_events,
+      jsonb_set(consistency_events, '{0,expectedScore}', '0.6'::jsonb)
+    ) from consistency_payloads
+  $$,
+  'MRVAL', 'Invalid canonical consistency events',
+  'non-complementary consistency probabilities are rejected before apply'
+);
+
+select throws_ok(
+  $$
+    select public.apply_incremental_rating_rebuild_v2(
+      'f0111111-1111-4111-8111-111111111111', 1, 0, 0,
+      ratings, rating_events,
+      jsonb_set(consistency_events, '{0,actualScore}', '0'::jsonb)
+    ) from consistency_payloads
+  $$,
+  'MRVAL', 'Invalid canonical consistency events',
+  'a consistency result that disagrees with active history is rejected before apply'
+);
+
+select throws_ok(
+  $$
+    select public.apply_incremental_rating_rebuild_v2(
+      'f0111111-1111-4111-8111-111111111111', 1, 0, 0,
+      ratings, rating_events,
+      jsonb_set(consistency_events, '{0,before,logKappaMean}', '5.1'::jsonb)
+    ) from consistency_payloads
+  $$,
+  'MRVAL', 'Invalid canonical consistency events',
+  'a discontinuous consistency transition is rejected before apply'
+);
+
+select is(
+  pg_temp.consistency_persistence_snapshot(
+    'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'f0111111-1111-4111-8111-111111111111'
+  ),
+  (select value from invalid_apply_snapshot),
+  'sequence, identity, probability, result, and transition rejections occur before any persisted change'
 );
 
 select throws_ok(
@@ -306,6 +579,18 @@ select is(
   (select count(*) from public.consistency_events where group_id = 'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
   0::bigint,
   'an outsider cannot read consistency events'
+);
+select set_config('request.jwt.claims', '{"sub":"e4444444-4444-4444-8444-444444444444","role":"authenticated"}', true);
+select is(
+  (select count(*) from public.consistency_events where group_id = 'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
+  0::bigint,
+  'an inactive former member cannot read consistency events'
+);
+select set_config('request.jwt.claims', '{"sub":"e5555555-5555-4555-8555-555555555555","role":"authenticated"}', true);
+select is(
+  (select count(*) from public.consistency_events where group_id = 'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
+  0::bigint,
+  'an active member of a different group cannot read consistency events'
 );
 reset role;
 
@@ -401,6 +686,13 @@ select ok(
   'an active-revision correction invalidates the dual prefix and replays active history'
 );
 
+create temporary table stale_apply_snapshot (value jsonb not null) on commit drop;
+insert into stale_apply_snapshot
+select pg_temp.consistency_persistence_snapshot(
+  'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+);
+
 select is(
   (
     select public.apply_incremental_rating_rebuild_v2(
@@ -413,12 +705,13 @@ select is(
   'stale versioned projections retain the legacy stale result'
 );
 
-select ok(
-  (select count(*) from public.rating_events where group_id = 'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa') = 2
-    and (select count(*) from public.consistency_events where group_id = 'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa') = 2
-    and (select rating_applied_version from public.groups where id = 'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa') = 1
-    and (select status from public.rating_rebuild_jobs where id = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee') = 'completed',
-  'stale apply leaves rating events, consistency events, state freshness, and job status unchanged'
+select is(
+  pg_temp.consistency_persistence_snapshot(
+    'eaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+  ),
+  (select value from stale_apply_snapshot),
+  'stale apply leaves exact rating events, consistency events, states, freshness, and job contents unchanged'
 );
 
 select * from finish();

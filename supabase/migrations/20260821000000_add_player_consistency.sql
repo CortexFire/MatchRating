@@ -691,7 +691,7 @@ begin
         or event.expected_score is null
         or event.expected_score::text in ('NaN', 'Infinity', '-Infinity')
         or event.expected_score < 0 or event.expected_score > 1
-        or event.actual_score not in (0, 1)
+        or event.actual_score is null or event.actual_score not in (0, 1)
         or event.before_log_mean is null
         or event.before_log_mean::text in ('NaN', 'Infinity', '-Infinity')
         or event.before_log_variance is null
@@ -703,7 +703,8 @@ begin
         or event.after_log_variance is null
         or event.after_log_variance::text in ('NaN', 'Infinity', '-Infinity')
         or event.after_log_variance <= 0
-        or event.after_matches_played <> event.before_matches_played + 1
+        or event.after_matches_played is null
+        or event.after_matches_played is distinct from event.before_matches_played + 1
     )
     or exists (
       with combined_events as (
@@ -760,16 +761,16 @@ begin
         (
           event.previous_matches_played is null
           and (
-            round(event.before_log_mean, 12) <> 5.298317366548
-            or round(event.before_log_variance, 12) <> 0.122500000000
-            or event.before_matches_played <> 0
+            round(event.before_log_mean, 12) is distinct from 5.298317366548
+            or round(event.before_log_variance, 12) is distinct from 0.122500000000
+            or event.before_matches_played is distinct from 0
           )
         ) or (
           event.previous_matches_played is not null
           and (
-            round(event.before_log_mean, 12) <> round(event.previous_log_mean, 12)
-            or round(event.before_log_variance, 12) <> round(event.previous_log_variance, 12)
-            or event.before_matches_played <> event.previous_matches_played
+            round(event.before_log_mean, 12) is distinct from round(event.previous_log_mean, 12)
+            or round(event.before_log_variance, 12) is distinct from round(event.previous_log_variance, 12)
+            or event.before_matches_played is distinct from event.previous_matches_played
           )
         )
       )
@@ -847,9 +848,9 @@ begin
       from latest_events latest
       left join pg_temp.v2_consistency_ratings rating on rating.user_id = latest.user_id
       where rating.user_id is null
-        or round(rating.log_mean, 12) <> round(latest.after_log_mean, 12)
-        or round(rating.log_variance, 12) <> round(latest.after_log_variance, 12)
-        or rating.matches_played <> latest.after_matches_played
+        or round(rating.log_mean, 12) is distinct from round(latest.after_log_mean, 12)
+        or round(rating.log_variance, 12) is distinct from round(latest.after_log_variance, 12)
+        or rating.matches_played is distinct from latest.after_matches_played
     ) then
     raise exception using errcode = 'MRVAL', message = 'Invalid canonical consistency states';
   end if;
