@@ -21,8 +21,11 @@ import {
   type AnalyticsPeriodSnapshot,
   type PlayerAnalyticsViewModel,
 } from "@/lib/analytics/analytics-policy";
-import { formatRating } from "@/lib/ratings/rating-display";
-import { buildRatingHistoryChartData } from "./rating-history-chart-data";
+import {
+  buildRatingHistoryChartData,
+  formatRatingPointDetails,
+  formatRatingTooltipEntry,
+} from "./rating-history-chart-data";
 import styles from "./player-analytics-view.module.css";
 
 const PERIODS: Array<{ key: AnalyticsPeriod; label: string }> = [
@@ -196,7 +199,7 @@ function RatingHistoryChart({ snapshot }: { snapshot: AnalyticsPeriodSnapshot })
             <YAxis domain={chart.yDomain} tick={{ fill: "var(--muted)", fontSize: 10 }} width={48} />
             <Tooltip
               labelFormatter={(value) => longDate(String(value))}
-              formatter={(_value, _name, item) => [describeRatingPoint(item.payload), "Rating"]}
+              formatter={(_value, _name, item) => formatRatingTooltipEntry(item.payload)}
               contentStyle={{ background: "var(--surface)", border: "1px solid var(--stroke)", borderRadius: 8, fontSize: 12 }}
             />
             <Area
@@ -232,22 +235,11 @@ function RatingHistoryChart({ snapshot }: { snapshot: AnalyticsPeriodSnapshot })
           </select>
         </label>
         <p role="status" aria-label="Selected rating point" aria-live="polite">
-          {selected ? `${longDate(selected.occurredAt)}: ${describeRatingPoint(selected)}` : ""}
+          {selected ? `${longDate(selected.occurredAt)}: rating ${formatRatingPointDetails(selected)}` : ""}
         </p>
       </div>
     </div>
   );
-}
-
-function describeRatingPoint(point: {
-  rating: number;
-  rd: number;
-  performanceSd: number;
-  ratingDelta: number;
-}) {
-  const lower = point.rating - point.performanceSd;
-  const upper = point.rating + point.performanceSd;
-  return `rating ${formatRating(point.rating, point.rd)}, typical performance range ${lower}–${upper} (±${point.performanceSd}), change ${formatSigned(point.ratingDelta)}`;
 }
 
 function SummaryCard({ primary, secondary, label }: { primary: ReactNode; secondary: string; label: string }) {

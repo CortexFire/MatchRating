@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { buildRatingHistoryChartData } from "./rating-history-chart-data";
+import { buildRatingHistoryChartData, formatRatingTooltipEntry } from "./rating-history-chart-data";
 
 describe("rating history chart data", () => {
   test("builds historical range tuples and a padded domain from consistency", () => {
@@ -29,5 +29,12 @@ describe("rating history chart data", () => {
       ],
       yDomain: [1346, 1786],
     });
+  });
+
+  test("formats the visible tooltip with one rating label and a concise performance range", () => {
+    expect(formatRatingTooltipEntry({ rating: 1578, rd: 110.01, performanceSd: 85 })).toEqual([
+      "1578?, performance range 1493–1663 (±85)",
+      "Rating",
+    ]);
   });
 });
