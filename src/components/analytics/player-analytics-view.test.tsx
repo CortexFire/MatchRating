@@ -96,13 +96,18 @@ describe("PlayerAnalyticsView", () => {
     render(<PlayerAnalyticsView model={readyModel} />);
 
     const selector = screen.getByLabelText("Inspect rating point");
-    expect(screen.getByRole("status", { name: "Selected rating point" }).textContent)
-      .toContain("Aug 1, 2026: rating 1578?, typical performance range 1493–1663 (±85), change +12");
+    const selectedPoint = screen.getByRole("status", { name: "Selected rating point" });
+    expect(selectedPoint.textContent)
+      .toContain("Aug 1, 2026: rating 1578?, performance range 1493–1663 (±85)");
+    expect(selectedPoint.textContent).not.toContain("change");
+    expect(selectedPoint.textContent).not.toContain("typical");
 
     fireEvent.change(selector, { target: { value: "m1" } });
 
-    expect(screen.getByRole("status", { name: "Selected rating point" }).textContent)
-      .toContain("Jul 20, 2026: rating 1566, typical performance range 1366–1766 (±200), change +8");
+    expect(selectedPoint.textContent)
+      .toContain("Jul 20, 2026: rating 1566, performance range 1366–1766 (±200)");
+    expect(selectedPoint.textContent).not.toContain("change");
+    expect(selectedPoint.textContent).not.toContain("typical");
   });
 
   test("renders the projection updating state without partial summary cards", () => {
