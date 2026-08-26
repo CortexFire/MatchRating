@@ -37,11 +37,12 @@ const match = {
 };
 
 describe("MatchResultConfirmation", () => {
-  test("renders an accepted result with one correction action and no confirmation", () => {
+  test("renders a confirmed result with one correction action and no status badge", () => {
     const html = renderToStaticMarkup(
       <MatchResultConfirmation
         groupId="demo"
         groupName="Downtown Rec"
+        hasOtherGroups={false}
         canCorrect={true}
         canRevise={false}
         match={{ ...match, status: "confirmed" }}
@@ -58,7 +59,8 @@ describe("MatchResultConfirmation", () => {
     expect(html).toContain("Set 1");
     expect(html).toContain("Set 2");
     expect(html).toContain("Set 3");
-    expect(html).toContain("Accepted");
+    expect(html).not.toContain("Accepted");
+    expect(html).not.toContain("Disputed");
     expect(html).toContain("Correct result");
     expect(html).toContain("Correct until Sep 1, 2026");
     expect(html).not.toContain(">Confirm<");
@@ -71,6 +73,7 @@ describe("MatchResultConfirmation", () => {
       <MatchResultConfirmation
         groupId="demo"
         groupName="Downtown Rec"
+        hasOtherGroups={false}
         canCorrect={true}
         canRevise={false}
         match={match}
@@ -87,29 +90,33 @@ describe("MatchResultConfirmation", () => {
       <MatchResultConfirmation
         groupId="demo"
         groupName="Downtown Rec"
+        hasOtherGroups={false}
         canCorrect={false}
         canRevise={false}
         match={{ ...match, status: "confirmed" }}
       />,
     );
 
-    expect(html).toContain("Accepted");
+    expect(html).not.toContain("Accepted");
+    expect(html).not.toContain("Disputed");
     expect(html).not.toContain("Correct until Sep 1, 2026");
     expect(html).not.toContain("Correct result");
   });
 
-  test("shows disputed status and revise link without unavailable review actions", () => {
+  test("shows a disputed revision link without a status badge or unavailable review actions", () => {
     const html = renderToStaticMarkup(
       <MatchResultConfirmation
         groupId="demo"
         groupName="Downtown Rec"
+        hasOtherGroups={false}
         canCorrect={false}
         canRevise={true}
         match={{ ...match, status: "disputed" }}
       />,
     );
 
-    expect(html).toContain("Disputed");
+    expect(html).not.toContain("Accepted");
+    expect(html).not.toContain("Disputed");
     expect(html).toContain('href="/groups/demo/matches/match-1/revise"');
     expect(html).toContain(">Correct result<");
     expect(html).not.toContain(">Confirm<");
@@ -120,6 +127,7 @@ describe("MatchResultConfirmation", () => {
       <MatchResultConfirmation
         groupId="demo"
         groupName="Downtown Rec"
+        hasOtherGroups={false}
         canCorrect={false}
         canRevise={false}
         match={{
@@ -141,5 +149,31 @@ describe("MatchResultConfirmation", () => {
     expect(html).not.toContain("179");
     expect(html).not.toContain("222");
     expect(html).not.toContain("Updating…");
+  });
+
+  test("shows the group dropdown indicator only when another group is available", () => {
+    const singleGroupHtml = renderToStaticMarkup(
+      <MatchResultConfirmation
+        groupId="demo"
+        groupName="Downtown Rec"
+        hasOtherGroups={false}
+        canCorrect={true}
+        canRevise={false}
+        match={match}
+      />,
+    );
+    const multipleGroupHtml = renderToStaticMarkup(
+      <MatchResultConfirmation
+        groupId="demo"
+        groupName="Downtown Rec"
+        hasOtherGroups
+        canCorrect={true}
+        canRevise={false}
+        match={match}
+      />,
+    );
+
+    expect(singleGroupHtml).not.toContain("lucide-chevron-down");
+    expect(multipleGroupHtml).toContain("lucide-chevron-down");
   });
 });
