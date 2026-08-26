@@ -117,6 +117,7 @@ function makeQuery(table: string) {
       return query;
     }),
     eq: vi.fn((column: string, value: unknown) => {
+      if (column.includes(".")) return query;
       rows = rows.filter((row) => (row as Record<string, unknown>)[column] === value);
       return query;
     }),
@@ -124,7 +125,12 @@ function makeQuery(table: string) {
       rows = rows.filter((row) => values.includes((row as Record<string, unknown>)[column]));
       return query;
     }),
+    neq: vi.fn((column: string, value: unknown) => {
+      rows = rows.filter((row) => (row as Record<string, unknown>)[column] !== value);
+      return query;
+    }),
     is: vi.fn((column: string, value: unknown) => {
+      if (column.includes(".")) return query;
       rows = rows.filter((row) => ((row as Record<string, unknown>)[column] ?? null) === value);
       return query;
     }),
@@ -453,6 +459,35 @@ describe("stored match reads", () => {
 
     expect(groups.find(({ id }) => id === GROUP_ONE)?.memberCount).toBe(1);
     expect(group?.memberCount).toBe(1);
+  });
+
+  test("checks for one other selectable group without hydrating group data", async () => {
+    rowsByTable.group_memberships.push({
+      id: "membership-2",
+      group_id: GROUP_TWO,
+      user_id: OPPONENT,
+      role: "member",
+      status: "active",
+      left_at: null,
+    });
+    const appData = await import("./app-data") as typeof import("./app-data") & {
+      hasOtherCurrentUserGroup?: (currentGroupId: string) => Promise<boolean>;
+    };
+    expect(appData.hasOtherCurrentUserGroup).toBeTypeOf("function");
+    if (!appData.hasOtherCurrentUserGroup) return;
+
+    const hasOtherGroup = await appData.hasOtherCurrentUserGroup(GROUP_ONE.toUpperCase());
+
+    expect(hasOtherGroup).toBe(true);
+    expect(from).toHaveBeenCalledTimes(1);
+    const query = queriesByTable.groups[0];
+    expect(query.select).toHaveBeenCalledWith("id, group_memberships!inner(user_id)");
+    expect(query.neq).toHaveBeenCalledWith("id", GROUP_ONE);
+    expect(query.eq).toHaveBeenCalledWith("group_memberships.user_id", OPPONENT);
+    expect(query.eq).toHaveBeenCalledWith("group_memberships.status", "active");
+    expect(query.is).toHaveBeenCalledWith("group_memberships.left_at", null);
+    expect(query.is).toHaveBeenCalledWith("archived_at", null);
+    expect(query.limit).toHaveBeenCalledWith(1);
   });
 
   test("ranks every member by displayed rating regardless of membership row order", async () => {

@@ -3,6 +3,7 @@ import { expect, test, vi } from "vitest";
 import { MatchContent } from "./page";
 
 const appDataMocks = vi.hoisted(() => ({
+  hasOtherCurrentUserGroup: vi.fn(async () => false),
   listCurrentUserGroups: vi.fn(async () => [{ id: "group-1", name: "Wednesday Club" }]),
   getGroupMatchDetail: vi.fn(async () => ({
     id: "match-1", groupId: "group-1", groupName: "Wednesday Club", revisionId: "revision-1", submittedByUserId: "alice",
@@ -14,6 +15,7 @@ const appDataMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/app-data", () => ({
+  hasOtherCurrentUserGroup: appDataMocks.hasOtherCurrentUserGroup,
   listCurrentUserGroups: appDataMocks.listCurrentUserGroups,
   getGroupMatchDetail: appDataMocks.getGroupMatchDetail,
 }));
@@ -35,13 +37,12 @@ test("renders the stored active revision in the rich detail view", async () => {
   expect(html).not.toContain(">Confirm<");
   expect(html).not.toContain("No match details are available yet");
   expect(appDataMocks.getGroupMatchDetail).toHaveBeenCalledWith("group-1", "match-1");
+  expect(appDataMocks.hasOtherCurrentUserGroup).toHaveBeenCalledWith("group-1");
+  expect(appDataMocks.listCurrentUserGroups).not.toHaveBeenCalled();
 });
 
 test("shows the group dropdown indicator when another group is available", async () => {
-  appDataMocks.listCurrentUserGroups.mockResolvedValueOnce([
-    { id: "group-1", name: "Wednesday Club" },
-    { id: "group-2", name: "Weekend Club" },
-  ]);
+  appDataMocks.hasOtherCurrentUserGroup.mockResolvedValueOnce(true);
 
   const html = renderToStaticMarkup(await MatchContent({
     params: Promise.resolve({ groupId: "group-1", matchId: "match-1" }),

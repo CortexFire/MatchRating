@@ -39,14 +39,33 @@ test("an owner submits off-team and an admin corrects the accepted result", asyn
 
   await signInAsDemoPlayer(bea, "bea@demo.matchrating.app");
   await bea.goto(matchPath!);
-  await expect(bea.getByText("Accepted")).toBeVisible();
+  await expect(bea.getByText("Accepted")).toHaveCount(0);
+  await expect(bea.getByText("Disputed")).toHaveCount(0);
   await expect(bea.getByRole("button", { name: "Confirm" })).toHaveCount(0);
-  await bea.getByRole("link", { name: "Correct result" }).click();
+  const correctResultLink = bea.getByRole("link", { name: "Correct result" });
+  const correctionLayout = await correctResultLink.evaluate((link) => {
+    const card = link.closest("article");
+    if (!card) throw new Error("Match detail card not found");
+    const cardStyle = getComputedStyle(card);
+    const cardRect = card.getBoundingClientRect();
+    const linkRect = link.getBoundingClientRect();
+    return {
+      contentWidth: cardRect.width
+        - Number.parseFloat(cardStyle.borderLeftWidth)
+        - Number.parseFloat(cardStyle.borderRightWidth)
+        - Number.parseFloat(cardStyle.paddingLeft)
+        - Number.parseFloat(cardStyle.paddingRight),
+      linkWidth: linkRect.width,
+    };
+  });
+  expect(Math.abs(correctionLayout.linkWidth - correctionLayout.contentWidth)).toBeLessThanOrEqual(1);
+  await correctResultLink.click();
   await bea.getByLabel("Set 1 Team A score").fill("20");
   await bea.getByLabel("Set 1 Team B score").fill("22");
   await bea.getByRole("button", { name: "Submit" }).click();
   await expect(bea).toHaveURL(matchPath!);
-  await expect(bea.getByText("Accepted")).toBeVisible();
+  await expect(bea.getByText("Accepted")).toHaveCount(0);
+  await expect(bea.getByText("Disputed")).toHaveCount(0);
   await expect(bea.getByRole("button", { name: "Confirm" })).toHaveCount(0);
 
   await alice.goto(`/groups/${DEMO_GROUP_ID}/history`);

@@ -14,7 +14,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { MatchResultConfirmation } from "@/components/match/match-result-confirmation";
-import { getGroupMatchDetail, listCurrentUserGroups } from "@/lib/app-data";
+import { getGroupMatchDetail, hasOtherCurrentUserGroup } from "@/lib/app-data";
 import GroupMatchLoading from "../loading";
 
 type MatchPageProps = {
@@ -31,9 +31,9 @@ export default function MatchPage(props: MatchPageProps) {
 
 export async function MatchContent({ params }: MatchPageProps) {
   const { groupId, matchId } = await params;
-  const [match, groups] = await Promise.all([
+  const [match, hasOtherGroups] = await Promise.all([
     getGroupMatchDetail(groupId, matchId),
-    listCurrentUserGroups(),
+    hasOtherCurrentUserGroup(groupId),
   ]);
   if (!match) notFound();
 
@@ -42,7 +42,7 @@ export async function MatchContent({ params }: MatchPageProps) {
       <MatchResultConfirmation
         groupId={groupId}
         groupName={match.groupName}
-        hasOtherGroups={groups.some((group) => group.id !== groupId)}
+        hasOtherGroups={hasOtherGroups}
         canCorrect={match.canCorrect}
         canRevise={match.canRevise}
         match={{
