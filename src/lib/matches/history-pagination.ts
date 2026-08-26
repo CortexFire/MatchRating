@@ -9,6 +9,7 @@ export type MatchHistoryCursor = {
 
 export type MatchHistoryRequestInput = {
   groupId?: string | null;
+  playerId?: string | null;
   status?: string | null;
   search?: string | null;
   cursor?: string | null;
@@ -16,6 +17,7 @@ export type MatchHistoryRequestInput = {
 
 export type NormalizedMatchHistoryRequest = {
   groupId: string | null;
+  playerId: string | null;
   status: MatchHistoryStatusFilter | null;
   search: string | null;
   cursor: MatchHistoryCursor | null;
@@ -66,6 +68,14 @@ export function normalizeMatchHistoryRequest(input: MatchHistoryRequestInput): N
     throw new MatchHistoryInputError("Invalid group ID");
   }
 
+  const playerId = input.playerId?.trim() || null;
+  if (playerId && !UUID_PATTERN.test(playerId)) {
+    throw new MatchHistoryInputError("Invalid player ID");
+  }
+  if (playerId && !groupId) {
+    throw new MatchHistoryInputError("Player history requires a group ID");
+  }
+
   const rawStatus = input.status?.trim() || null;
   const status = rawStatus === "all" ? null : rawStatus;
   if (status && !MATCH_STATUSES.has(status as MatchHistoryStatusFilter)) {
@@ -79,6 +89,7 @@ export function normalizeMatchHistoryRequest(input: MatchHistoryRequestInput): N
 
   return {
     groupId,
+    playerId,
     status: status as MatchHistoryStatusFilter | null,
     search,
     cursor: input.cursor ? decodeMatchHistoryCursor(input.cursor) : null,

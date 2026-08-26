@@ -122,12 +122,26 @@ describe("navigation read models", () => {
   });
 
   test("hydrates group players, drafts, status, and matches from one RPC", async () => {
+    const unplayedId = "77777777-7777-4777-8777-777777777778";
     mocks.rpc.mockResolvedValue({
       data: {
         actorUserId: actorId,
         group: { id: groupId, name: "Wednesday Club", description: "Weekly ladder" },
-        memberships,
-        ratings,
+        memberships: [
+          ...memberships,
+          {
+            group_id: groupId,
+            user_id: unplayedId,
+            role: "member",
+            display_name: "Aaron Unplayed",
+            is_guest: false,
+            active_until: null,
+          },
+        ],
+        ratings: [
+          ...ratings,
+          { group_id: groupId, user_id: unplayedId, rating: "1800.2", rd: "350", games_played: 0 },
+        ],
         drafts: [draft],
         profiles: [
           { id: actorId, display_name: "Alice Tan" },
@@ -141,19 +155,80 @@ describe("navigation read models", () => {
 
     const result = await getGroupPageData(groupId);
 
-    expect(result?.group.memberCount).toBe(2);
+    expect(result?.group.memberCount).toBe(3);
     expect(result?.players.map(({ name, rank, role }) => ({ name, rank, role }))).toEqual([
       { name: "Alice Tan", rank: 1, role: "Owner" },
       { name: "Bea Rivera", rank: 2, role: "Member" },
+      { name: "Aaron Unplayed", rank: 0, role: "Member" },
     ]);
     expect(result?.players.map(({ name, rd }) => ({ name, rd }))).toEqual([
       { name: "Alice Tan", rd: 71.6 },
       { name: "Bea Rivera", rd: 88.1 },
+      { name: "Aaron Unplayed", rd: 350 },
     ]);
     expect(result?.ratingStatus).toEqual({ id: "77777777-7777-4777-8777-777777777777", status: "failed", canRetry: true });
     expect(result?.activeDrafts).toHaveLength(1);
     expect(result?.recentMatches).toHaveLength(1);
     expect(mocks.rpc.mock.calls).toEqual([["get_group_page_data", { p_group_id: groupId, p_match_limit: 5 }]]);
+  });
+
+  test("omits a zero-game actor from home current rankings", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: {
+        actorUserId: actorId,
+        profile: { id: actorId, display_name: "Alice Tan" },
+        groups: [{ id: groupId, name: "Wednesday Club", description: "Weekly ladder" }],
+        memberships,
+        ratings: [
+          { ...ratings[0], games_played: 0 },
+          ratings[1],
+        ],
+        drafts: [],
+        profiles: [],
+        matchBundle: { groups: [], matches: [], revisions: [], participants: [], games: [], ratingEvents: [], profiles: [] },
+      },
+      error: null,
+    });
+
+    const result = await getHomePageData();
+
+    expect(result.currentRankings).toEqual([]);
+  });
+
+  test("does not let a high-rated zero-game member shift played home rankings", async () => {
+    const unplayedId = "33333333-3333-4333-8333-333333333334";
+    mocks.rpc.mockResolvedValue({
+      data: {
+        actorUserId: actorId,
+        profile: { id: actorId, display_name: "Alice Tan" },
+        groups: [{ id: groupId, name: "Wednesday Club", description: "Weekly ladder" }],
+        memberships: [
+          ...memberships,
+          {
+            group_id: groupId,
+            user_id: unplayedId,
+            role: "member",
+            display_name: "Aaron Unplayed",
+            is_guest: false,
+            active_until: null,
+          },
+        ],
+        ratings: [
+          ...ratings,
+          { group_id: groupId, user_id: unplayedId, rating: "1800.2", rd: "350", games_played: 0 },
+        ],
+        drafts: [],
+        profiles: [],
+        matchBundle: { groups: [], matches: [], revisions: [], participants: [], games: [], ratingEvents: [], profiles: [] },
+      },
+      error: null,
+    });
+
+    const result = await getHomePageData();
+
+    expect(result.currentRankings).toEqual([
+      { groupId, playerId: actorId, groupName: "Wednesday Club", rating: 1642, rd: 71.6, rank: 1, memberCount: 2 },
+    ]);
   });
 
   test("hydrates numeric and string log means while safely defaulting null, legacy, and non-finite values", async () => {

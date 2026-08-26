@@ -1,5 +1,7 @@
-.history, .matchList, .errorState { display: flex; flex-direction: column; }
+.history, .results, .matchList, .errorState { display: flex; flex-direction: column; }
 .history { gap: 1rem; }
+.results { gap: 1rem; }
+.embeddedResults { max-height: 425px; overflow-y: auto; border-radius: 0.5rem; padding-right: 0.25rem; }
 .filters { display: flex; gap: 0.5rem; }
 .filterButton { display: inline-flex; align-items: center; min-height: 2.75rem; padding: 0 0.625rem; border: 1px solid var(--stroke); border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
 .filterButtonActive { border-color: var(--selection-stroke); background: var(--selection); color: var(--ink); }
@@ -14,6 +16,6 @@
 .errorMessage { color: var(--ink); }
 .retryButton { display: inline-flex; align-items: center; min-height: 2.75rem; padding: 0; border: 0; background: transparent; color: var(--action); font-size: 0.875rem; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
 .retryButton:hover { color: var(--selection-stroke); }
-.retryButton:focus-visible, .filterButton:focus-visible, .loadMoreButton:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+.retryButton:focus-visible, .filterButton:focus-visible, .loadMoreButton:focus-visible, .embeddedResults:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
 .loadMoreButton { display: inline-flex; align-items: center; justify-content: center; min-height: 2.75rem; padding: 0 1rem; border: 1px solid var(--stroke); border-radius: 0.5rem; background: var(--surface); color: var(--ink); font-size: 0.875rem; font-weight: 600; }
 .loadMoreButton:disabled { opacity: 0.6; }

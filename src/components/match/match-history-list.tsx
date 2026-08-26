@@ -15,11 +15,17 @@ type HistoryQuery = { filter: Filter; search: string };
 export function MatchHistoryList({
   initialPage,
   groupId,
+  playerId,
   showGroupName = false,
+  variant = "full",
+  regionLabel,
 }: {
   initialPage: MatchHistoryPage;
   groupId?: string;
+  playerId?: string;
   showGroupName?: boolean;
+  variant?: "full" | "embedded";
+  regionLabel?: string;
 }) {
   const [matches, setMatches] = useState(initialPage.matches);
   const [nextCursor, setNextCursor] = useState(initialPage.nextCursor);
@@ -60,6 +66,7 @@ export function MatchHistoryList({
 
     const parameters = new URLSearchParams();
     if (groupId) parameters.set("groupId", groupId);
+    if (playerId) parameters.set("playerId", playerId);
     if (status !== "all") parameters.set("status", status);
     if (query) parameters.set("q", query);
     if (append && cursor) parameters.set("cursor", cursor);
@@ -82,7 +89,7 @@ export function MatchHistoryList({
     } finally {
       if (requestRef.current?.id === requestId) setPendingRequest(null);
     }
-  }, [groupId]);
+  }, [groupId, playerId]);
 
   useEffect(() => {
     if (lastQuery.current.filter === filter && lastQuery.current.search === debouncedSearch) return;
@@ -95,63 +102,75 @@ export function MatchHistoryList({
   const activeQuery = { filter, search: debouncedSearch } satisfies HistoryQuery;
   const hasDisplayedQuery = displayedQuery.filter !== "all" || Boolean(displayedQuery.search);
   const canLoadMore = nextCursor && queriesMatch(displayedQuery, activeQuery);
+  const embedded = variant === "embedded";
 
   return (
     <div className={styles.history}>
-      <div className={styles.filters}>
-        <FilterButton active={filter === "all"} onClick={() => setFilter("all")}>All</FilterButton>
-        <FilterButton active={filter === "disputed"} onClick={() => setFilter("disputed")}>Disputed</FilterButton>
-      </div>
-      <div className={styles.searchField}>
-        <Search aria-hidden="true" className={styles.searchIcon} />
-        <Input value={search} onChange={(event) => setSearch(event.target.value)} maxLength={80} className={styles.searchInput} placeholder="Search matches" />
-      </div>
-      {pendingRequest === "replace" ? <p role="status" aria-live="polite" className={styles.loading}>Loading history…</p> : null}
-      {matches.length ? (
-        <div className={styles.matchList}>
-          {matches.map((match) => (
-            <MatchRow key={match.id} match={match} showGroupName={showGroupName} heading="participants" showRatingSummary={false} />
-          ))}
-        </div>
-      ) : (
-        <p className={styles.emptyState}>
-          {hasDisplayedQuery ? "No matches match these filters." : "No matches recorded yet."}
-        </p>
-      )}
-      {error ? (
-        <div className={styles.errorState}>
-          <p role="alert" className={styles.errorMessage}>{error}</p>
-          {failedReplacement ? (
-            <button
-              type="button"
-              onClick={() => void fetchPage({
-                append: false,
-                status: failedReplacement.filter,
-                query: failedReplacement.search,
-                cursor: null,
-              })}
-              className={styles.retryButton}
-            >
-              Retry loading history
-            </button>
-          ) : null}
-        </div>
+      {!embedded ? (
+        <>
+          <div className={styles.filters}>
+            <FilterButton active={filter === "all"} onClick={() => setFilter("all")}>All</FilterButton>
+            <FilterButton active={filter === "disputed"} onClick={() => setFilter("disputed")}>Disputed</FilterButton>
+          </div>
+          <div className={styles.searchField}>
+            <Search aria-hidden="true" className={styles.searchIcon} />
+            <Input value={search} onChange={(event) => setSearch(event.target.value)} maxLength={80} className={styles.searchInput} placeholder="Search matches" />
+          </div>
+        </>
       ) : null}
-      {canLoadMore ? (
-        <button
-          type="button"
-          disabled={pendingRequest !== null}
-          onClick={() => void fetchPage({
-            append: true,
-            status: filter,
-            query: debouncedSearch,
-            cursor: nextCursor,
-          })}
-          className={styles.loadMoreButton}
-        >
-          {pendingRequest === "append" ? "Loading…" : "Load older matches"}
-        </button>
-      ) : null}
+      <div
+        role={embedded ? "region" : undefined}
+        aria-label={embedded ? regionLabel ?? "Match history" : undefined}
+        tabIndex={embedded ? 0 : undefined}
+        className={clsx(styles.results, embedded && styles.embeddedResults)}
+      >
+        {pendingRequest === "replace" ? <p role="status" aria-live="polite" className={styles.loading}>Loading history…</p> : null}
+        {matches.length ? (
+          <div className={styles.matchList}>
+            {matches.map((match) => (
+              <MatchRow key={match.id} match={match} showGroupName={showGroupName} heading="participants" showRatingSummary={false} />
+            ))}
+          </div>
+        ) : (
+          <p className={styles.emptyState}>
+            {hasDisplayedQuery ? "No matches match these filters." : "No matches recorded yet."}
+          </p>
+        )}
+        {error ? (
+          <div className={styles.errorState}>
+            <p role="alert" className={styles.errorMessage}>{error}</p>
+            {failedReplacement ? (
+              <button
+                type="button"
+                onClick={() => void fetchPage({
+                  append: false,
+                  status: failedReplacement.filter,
+                  query: failedReplacement.search,
+                  cursor: null,
+                })}
+                className={styles.retryButton}
+              >
+                Retry loading history
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        {canLoadMore ? (
+          <button
+            type="button"
+            disabled={pendingRequest !== null}
+            onClick={() => void fetchPage({
+              append: true,
+              status: filter,
+              query: debouncedSearch,
+              cursor: nextCursor,
+            })}
+            className={styles.loadMoreButton}
+          >
+            {pendingRequest === "append" ? "Loading…" : "Load older matches"}
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }

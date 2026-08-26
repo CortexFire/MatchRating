@@ -30,6 +30,7 @@ export default function RankingsPage(props: RankingsPageProps) {
 export async function RankingsContent({ params }: RankingsPageProps) {
   const { groupId } = await params;
   const [players, ratingStatus] = await Promise.all([listGroupPlayers(groupId), getGroupRatingRebuildStatus(groupId)]);
+  const rankedPlayers = players.filter((player) => player.gamesPlayed > 0);
   const recordHref = `/groups/${groupId}/matches/new`;
 
   return (
@@ -52,9 +53,9 @@ export async function RankingsContent({ params }: RankingsPageProps) {
         canRetry={ratingStatus.canRetry}
         refreshOnComplete
       />
-      {players.length ? (
+      {rankedPlayers.length ? (
         <section className={styles.rankingList}>
-          {players.map((player) => (
+          {rankedPlayers.map((player) => (
             <PlayerRow key={player.id} player={player} analyticsHref={`/groups/${groupId}/players/${player.id}/analytics`} />
           ))}
         </section>

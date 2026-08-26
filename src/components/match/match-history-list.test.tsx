@@ -103,6 +103,30 @@ describe("MatchHistoryList", () => {
     expect(screen.getByText(/Alice Tan vs Bea Rivera/)).toBeTruthy();
   });
 
+  test("embeds player history as a labeled scroll region without full-page controls", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ matches: [matches[1]], nextCursor: null })));
+    render(
+      <MatchHistoryList
+        initialPage={{ matches: [matches[0]], nextCursor: "older" }}
+        groupId="group-1"
+        playerId="alice"
+        variant="embedded"
+        regionLabel="Alice Tan match history"
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "All" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Disputed" })).toBeNull();
+    expect(screen.queryByPlaceholderText("Search matches")).toBeNull();
+    expect(screen.getByRole("region", { name: "Alice Tan match history" }).getAttribute("tabindex")).toBe("0");
+
+    fireEvent.click(screen.getByRole("button", { name: "Load older matches" }));
+    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "/api/matches/history?groupId=group-1&playerId=alice&cursor=older",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    ));
+  });
+
   test("retains matches after load-more failure and retries", async () => {
     vi.mocked(fetch)
       .mockRejectedValueOnce(new Error("offline"))

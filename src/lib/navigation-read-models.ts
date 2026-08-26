@@ -13,6 +13,7 @@ import { buildMatchViews, type MatchReadRows } from "@/lib/matches/read-model";
 import { type ActiveMatchDraftGameInput } from "@/lib/matches/drafts";
 import { type MatchFormat } from "@/lib/matches/validation";
 import { performanceSdFromLogMean } from "@/lib/player-performance";
+import { rankGroupListPlayers } from "@/lib/player-rankings";
 
 export type HomePageData = {
   profile: AppProfile;
@@ -210,7 +211,7 @@ function toPlayers(groupId: string, memberships: RawMembership[], ratings: RawRa
   const ratingsByUserId = new Map(
     ratings.filter((rating) => rating.group_id === groupId).map((rating) => [rating.user_id, rating]),
   );
-  return rankPlayers(
+  return rankGroupListPlayers(
     memberships
       .filter((membership) => membership.group_id === groupId)
       .map((membership) => {
@@ -243,7 +244,8 @@ function toCurrentRankings(
   return groups
     .flatMap((group) => {
       const ranked = toPlayers(group.id, memberships, ratings);
-      const current = ranked.find((player) => player.id === actorUserId);
+      const rankedPlayers = ranked.filter((player) => player.rank > 0);
+      const current = rankedPlayers.find((player) => player.id === actorUserId);
       return current ? [{
         groupId: group.id,
         playerId: actorUserId,
@@ -251,7 +253,7 @@ function toCurrentRankings(
         rating: current.rating,
         rd: current.rd,
         rank: current.rank,
-        memberCount: ranked.length,
+        memberCount: rankedPlayers.length,
       }] : [];
     })
     .sort((left, right) => left.groupName.localeCompare(right.groupName) || left.groupId.localeCompare(right.groupId));
@@ -367,12 +369,6 @@ function parseDraftGames(value: unknown): ActiveMatchDraftGameInput[] {
         : teamAScore !== null && teamBScore !== null && teamBScore > teamAScore ? "B" : "A",
     }];
   });
-}
-
-function rankPlayers<T extends { id: string; name: string; rating: number }>(players: T[]): Array<T & { rank: number }> {
-  return players
-    .sort((left, right) => right.rating - left.rating || left.name.localeCompare(right.name) || left.id.localeCompare(right.id))
-    .map((player, index) => ({ ...player, rank: index + 1 }));
 }
 
 function displayRole(role: RawMembership["role"]): AppPlayer["role"] {

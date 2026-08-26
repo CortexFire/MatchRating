@@ -262,6 +262,7 @@ describe("stored match reads", () => {
     expect(page.nextCursor).not.toContain(pageRows[19].submitted_at);
     expect(rpc).toHaveBeenCalledWith("list_match_history_page", {
       p_group_id: null,
+      p_player_id: null,
       p_status: "confirmed",
       p_search: "Alice",
       p_before_submitted_at: null,
@@ -272,6 +273,16 @@ describe("stored match reads", () => {
       "id",
       pageRows.slice(0, 20).map((match) => match.active_revision_id),
     );
+  });
+
+  test("forwards selected-group player scope to match history pagination", async () => {
+    await listMatchHistoryPage({ groupId: GROUP_ONE, playerId: OPPONENT });
+
+    expect(rpc).toHaveBeenCalledWith("list_match_history_page", expect.objectContaining({
+      p_group_id: GROUP_ONE,
+      p_player_id: OPPONENT,
+      p_limit: 21,
+    }));
   });
 
   test("keeps the recent current-user reader bounded without loading every participant revision", async () => {
@@ -366,7 +377,7 @@ describe("stored match reads", () => {
     }
   });
 
-  test("shows only group-associated guests with Guest roles and contiguous ranks", async () => {
+  test("shows only group-associated guests and leaves zero-game guests unranked", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-12T12:00:00.000Z"));
     rowsByTable.group_memberships = [
@@ -421,8 +432,8 @@ describe("stored match reads", () => {
       expect(players.map(({ id, role, rank }) => ({ id, role, rank }))).toEqual([
         { id: SUBMITTER, role: "Owner", rank: 1 },
         { id: MATCH_GUEST, role: "Guest", rank: 2 },
-        { id: DRAFT_GUEST, role: "Guest", rank: 3 },
-        { id: OPPONENT, role: "Admin", rank: 4 },
+        { id: OPPONENT, role: "Admin", rank: 3 },
+        { id: DRAFT_GUEST, role: "Guest", rank: 0 },
       ]);
     } finally {
       vi.useRealTimers();
@@ -490,34 +501,43 @@ describe("stored match reads", () => {
     expect(query.limit).toHaveBeenCalledWith(1);
   });
 
-  test("ranks every member by displayed rating regardless of membership row order", async () => {
-    const unplayedId = "33333333-3333-4333-8333-333333333333";
+  test("ranks played members before alphabetized unranked members", async () => {
+    const unplayedHighId = "33333333-3333-4333-8333-333333333333";
     const ratedAtDefaultId = "44444444-4444-4444-8444-444444444444";
+    const unplayedTieFirstId = "55555555-5555-4555-8555-555555555551";
+    const unplayedTieSecondId = "55555555-5555-4555-8555-555555555552";
     rowsByTable.group_memberships = [
-      { id: "membership-1", group_id: GROUP_ONE, user_id: unplayedId, role: "member", status: "active", left_at: null },
+      { id: "membership-1", group_id: GROUP_ONE, user_id: unplayedHighId, role: "member", status: "active", left_at: null },
       { id: "membership-2", group_id: GROUP_ONE, user_id: OPPONENT, role: "member", status: "active", left_at: null },
       { id: "membership-3", group_id: GROUP_ONE, user_id: SUBMITTER, role: "owner", status: "active", left_at: null },
       { id: "membership-4", group_id: GROUP_ONE, user_id: ratedAtDefaultId, role: "member", status: "active", left_at: null },
+      { id: "membership-5", group_id: GROUP_ONE, user_id: unplayedTieSecondId, role: "member", status: "active", left_at: null },
+      { id: "membership-6", group_id: GROUP_ONE, user_id: unplayedTieFirstId, role: "member", status: "active", left_at: null },
     ];
     rowsByTable.profiles = [
-      { id: unplayedId, display_name: "Charlie Unplayed", is_guest: false, active_until: null },
+      { id: unplayedHighId, display_name: "Aaron Unplayed", is_guest: false, active_until: null },
       { id: OPPONENT, display_name: "Zoe Low", is_guest: false, active_until: null },
       { id: SUBMITTER, display_name: "Alice High", is_guest: false, active_until: null },
       { id: ratedAtDefaultId, display_name: "Bea Rated", is_guest: false, active_until: null },
+      { id: unplayedTieSecondId, display_name: "Taylor Unplayed", is_guest: false, active_until: null },
+      { id: unplayedTieFirstId, display_name: "Taylor Unplayed", is_guest: false, active_until: null },
     ];
     rowsByTable.group_rating_states = [
       { group_id: GROUP_ONE, user_id: SUBMITTER, rating: "1600.4", rd: "110.01", rank: 1, games_played: 3 },
       { group_id: GROUP_ONE, user_id: ratedAtDefaultId, rating: "1500.2", rd: "140", rank: 2, games_played: 1 },
       { group_id: GROUP_ONE, user_id: OPPONENT, rating: "1400.4", rd: "160", rank: 3, games_played: 2 },
+      { group_id: GROUP_ONE, user_id: unplayedHighId, rating: "1800.4", rd: "350", rank: 4, games_played: 0 },
     ];
 
     const players = await listGroupPlayers(GROUP_ONE);
 
-    expect(players.map(({ id, rating, rd, rank }) => ({ id, rating, rd, rank }))).toEqual([
-      { id: SUBMITTER, rating: 1600, rd: 110.01, rank: 1 },
-      { id: ratedAtDefaultId, rating: 1500, rd: 140, rank: 2 },
-      { id: unplayedId, rating: 1500, rd: 350, rank: 3 },
-      { id: OPPONENT, rating: 1400, rd: 160, rank: 4 },
+    expect(players.map(({ id, rank }) => ({ id, rank }))).toEqual([
+      { id: SUBMITTER, rank: 1 },
+      { id: ratedAtDefaultId, rank: 2 },
+      { id: OPPONENT, rank: 3 },
+      { id: unplayedHighId, rank: 0 },
+      { id: unplayedTieFirstId, rank: 0 },
+      { id: unplayedTieSecondId, rank: 0 },
     ]);
   });
 

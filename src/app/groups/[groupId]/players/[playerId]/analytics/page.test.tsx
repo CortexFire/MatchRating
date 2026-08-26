@@ -4,11 +4,15 @@ import { AnalyticsPageContent } from "./page";
 
 const mocks = vi.hoisted(() => ({
   getPlayerAnalyticsData: vi.fn(),
+  listMatchHistoryPage: vi.fn(),
   notFound: vi.fn(() => { throw new Error("NEXT_NOT_FOUND"); }),
 }));
 
 vi.mock("@/lib/analytics/analytics-read-model", () => ({
   getPlayerAnalyticsData: mocks.getPlayerAnalyticsData,
+}));
+vi.mock("@/lib/app-data", () => ({
+  listMatchHistoryPage: mocks.listMatchHistoryPage,
 }));
 vi.mock("next/navigation", () => ({
   notFound: mocks.notFound,
@@ -36,6 +40,7 @@ const model = {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.getPlayerAnalyticsData.mockResolvedValue(model);
+  mocks.listMatchHistoryPage.mockResolvedValue({ matches: [], nextCursor: null });
 });
 
 test("loads and renders one authorized player analytics model", async () => {
@@ -44,8 +49,10 @@ test("loads and renders one authorized player analytics model", async () => {
   }));
 
   expect(mocks.getPlayerAnalyticsData).toHaveBeenCalledWith(groupId, playerId);
+  expect(mocks.listMatchHistoryPage).toHaveBeenCalledWith({ groupId, playerId });
   expect(html).toContain("Analytics");
   expect(html).toContain("Charlie Duong");
+  expect(html).toContain("Match history");
 });
 
 test("treats an inaccessible player-group combination as not found", async () => {
@@ -56,4 +63,5 @@ test("treats an inaccessible player-group combination as not found", async () =>
   })).rejects.toThrow("NEXT_NOT_FOUND");
 
   expect(mocks.notFound).toHaveBeenCalledOnce();
+  expect(mocks.listMatchHistoryPage).not.toHaveBeenCalled();
 });

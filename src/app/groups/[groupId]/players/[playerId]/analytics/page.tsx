@@ -12,6 +12,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { PlayerAnalyticsView } from "@/components/analytics/player-analytics-view";
 import { getPlayerAnalyticsData } from "@/lib/analytics/analytics-read-model";
+import { listMatchHistoryPage } from "@/lib/app-data";
 import AnalyticsLoading from "./loading";
 
 type AnalyticsPageProps = {
@@ -30,5 +31,6 @@ export async function AnalyticsPageContent({ params }: AnalyticsPageProps) {
   const { groupId, playerId } = await params;
   const model = await getPlayerAnalyticsData(groupId, playerId);
   if (!model) notFound();
-  return <PlayerAnalyticsView model={model} />;
+  const initialHistoryPage = await listMatchHistoryPage({ groupId, playerId });
+  return <PlayerAnalyticsView model={model} initialHistoryPage={initialHistoryPage} />;
 }

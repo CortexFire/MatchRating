@@ -8,6 +8,30 @@ import { PlayerAnalyticsView } from "./player-analytics-view";
 const navigation = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => navigation }));
 
+const emptyHistoryPage = { matches: [], nextCursor: null };
+const coryHistoryPage = {
+  matches: [{
+    id: "match-2",
+    groupId: "group-2",
+    groupName: "Wednesday Club",
+    revisionId: "revision-2",
+    submittedByUserId: "alice",
+    status: "confirmed" as const,
+    submittedAt: "2026-08-20T12:00:00.000Z",
+    correctionStartedAt: "2026-08-20T12:00:00.000Z",
+    correctionUntil: "2026-09-19T12:00:00.000Z",
+    format: "singles" as const,
+    teamA: [{ id: "alice", name: "Alice Tan", initials: "AT" }],
+    teamB: [{ id: "cory", name: "Cory Shah", initials: "CS" }],
+    games: [{ gameNumber: 1, teamAScore: 21, teamBScore: 16, winnerTeam: "A" as const }],
+    winnerTeam: "A" as const,
+    ratingSummary: "2 rating changes",
+    canCorrect: false,
+    canRevise: false,
+  }],
+  nextCursor: null,
+};
+
 const readyModel: PlayerAnalyticsViewModel = {
   status: "ready",
   asOf: "2026-08-19T12:00:00.000Z",
@@ -54,7 +78,7 @@ describe("PlayerAnalyticsView", () => {
   beforeEach(() => navigation.push.mockReset());
 
   test("renders the all-period summary and reveals a selected flag explanation", () => {
-    render(<PlayerAnalyticsView model={readyModel} />);
+    render(<PlayerAnalyticsView model={readyModel} initialHistoryPage={emptyHistoryPage} />);
 
     expect(screen.getByRole("heading", { level: 1, name: "Analytics" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Go back" })).toBeNull();
@@ -74,7 +98,7 @@ describe("PlayerAnalyticsView", () => {
   });
 
   test("switches period snapshots locally and exposes empty states", () => {
-    render(<PlayerAnalyticsView model={readyModel} />);
+    render(<PlayerAnalyticsView model={readyModel} initialHistoryPage={emptyHistoryPage} />);
 
     fireEvent.click(screen.getByRole("button", { name: "30 days" }));
     expect(screen.getByRole("article", { name: "Win Rate" }).textContent).toBe("50%1–1Win Rate");
@@ -86,14 +110,14 @@ describe("PlayerAnalyticsView", () => {
   });
 
   test("switches groups by preserving the selected player route", () => {
-    render(<PlayerAnalyticsView model={readyModel} />);
+    render(<PlayerAnalyticsView model={readyModel} initialHistoryPage={emptyHistoryPage} />);
 
     fireEvent.change(screen.getByLabelText("Current group Downtown Rec"), { target: { value: "group-2" } });
     expect(navigation.push).toHaveBeenCalledWith("/groups/group-2/players/alice/analytics");
   });
 
   test("lets touch and keyboard users select a chart point", () => {
-    render(<PlayerAnalyticsView model={readyModel} />);
+    render(<PlayerAnalyticsView model={readyModel} initialHistoryPage={emptyHistoryPage} />);
 
     const selector = screen.getByLabelText("Inspect rating point");
     const selectedPoint = screen.getByRole("status", { name: "Selected rating point" });
@@ -111,16 +135,52 @@ describe("PlayerAnalyticsView", () => {
   });
 
   test("renders the projection updating state without partial summary cards", () => {
-    render(<PlayerAnalyticsView model={{
-      status: "updating",
-      asOf: readyModel.asOf,
-      viewerUserId: readyModel.viewerUserId,
-      subject: readyModel.subject,
-      group: readyModel.group,
-      availableGroups: readyModel.availableGroups,
-    }} />);
+    render(
+      <PlayerAnalyticsView
+        model={{
+          status: "updating",
+          asOf: readyModel.asOf,
+          viewerUserId: readyModel.viewerUserId,
+          subject: readyModel.subject,
+          group: readyModel.group,
+          availableGroups: readyModel.availableGroups,
+        }}
+        initialHistoryPage={emptyHistoryPage}
+      />,
+    );
 
     expect(screen.getByRole("status").textContent).toContain("Analytics are updating");
     expect(screen.queryByText("Group Rank")).toBeNull();
+    expect(screen.getByText("Match history")).toBeTruthy();
+  });
+
+  test("renders player history as a collapsed embedded disclosure independent of period filters", () => {
+    const { container } = render(
+      <PlayerAnalyticsView model={readyModel} initialHistoryPage={emptyHistoryPage} />,
+    );
+
+    const details = container.querySelector("details");
+    expect(details?.open).toBe(false);
+    expect(screen.getByText("Match history")).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Alice Tan match history" })).toBeTruthy();
+    expect(screen.queryByPlaceholderText("Search matches")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "30 days" }));
+    expect(screen.getByRole("region", { name: "Alice Tan match history" })).toBeTruthy();
+  });
+
+  test("resets embedded history when the selected group changes", () => {
+    const { rerender } = render(
+      <PlayerAnalyticsView model={readyModel} initialHistoryPage={emptyHistoryPage} />,
+    );
+
+    rerender(
+      <PlayerAnalyticsView
+        model={{ ...readyModel, group: readyModel.availableGroups[1] }}
+        initialHistoryPage={coryHistoryPage}
+      />,
+    );
+
+    expect(screen.getByText("Alice Tan vs Cory Shah")).toBeTruthy();
   });
 });

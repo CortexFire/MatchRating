@@ -4,7 +4,8 @@
   flex-shrink: 0;
 }
 
-.link {
+.link,
+.unrankedContent {
   display: flex;
   min-height: 70px;
   width: 100%;
@@ -15,6 +16,9 @@
   border-radius: 0.5rem;
   background: var(--surface);
   color: var(--ink);
+}
+
+.link {
   transition: border-color 150ms ease, background-color 150ms ease;
 }
 
@@ -26,6 +30,21 @@
 .link:focus-visible {
   outline: 2px solid var(--action);
   outline-offset: 2px;
+}
+
+.unrankedContent {
+  background: var(--app-bg);
+  color: var(--muted);
+}
+
+.unrankedRow .rankBadge,
+.unrankedRow .avatar {
+  background: var(--stroke);
+  color: var(--muted);
+}
+
+.unrankedRow .nameRow h3 {
+  color: var(--muted);
 }
 
 .rankBadge,
