@@ -259,6 +259,7 @@
 
 .statusRow {
   align-items: center;
+  justify-content: flex-end;
 }
 
 .disputeUntil {
@@ -268,8 +269,9 @@
 }
 
 .reviseLink {
-  display: inline-flex;
+  display: flex;
   min-height: 2.75rem;
+  width: 100%;
   align-items: center;
   justify-content: center;
   margin-top: 1rem;

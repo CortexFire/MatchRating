@@ -110,7 +110,7 @@ export function MatchHistoryList({
       {matches.length ? (
         <div className={styles.matchList}>
           {matches.map((match) => (
-            <MatchRow key={match.id} match={match} showGroupName={showGroupName} heading="participants" />
+            <MatchRow key={match.id} match={match} showGroupName={showGroupName} heading="participants" showRatingSummary={false} />
           ))}
         </div>
       ) : (

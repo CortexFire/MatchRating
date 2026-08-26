@@ -187,6 +187,25 @@ export async function listCurrentUserGroups(): Promise<AppGroup[]> {
   }));
 }
 
+export async function hasOtherCurrentUserGroup(currentGroupId: string): Promise<boolean> {
+  if (!isUuid(currentGroupId)) return false;
+  const userId = await getCurrentUserId();
+  const service = createSupabaseServiceClient();
+  const { data, error } = await service
+    .from("groups")
+    .select("id, group_memberships!inner(user_id)")
+    .neq("id", currentGroupId.toLowerCase())
+    .is("archived_at", null)
+    .eq("group_memberships.user_id", userId)
+    .eq("group_memberships.status", "active")
+    .is("group_memberships.left_at", null)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return Boolean(data);
+}
+
 export async function getGroup(groupId: string): Promise<AppGroup | null> {
   await ensureCurrentUserCanReadGroup(groupId);
   const service = createSupabaseServiceClient();

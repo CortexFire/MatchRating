@@ -41,6 +41,15 @@ describe("MatchHistoryList", () => {
     expect(screen.getByRole("link", { name: /Disputed/ })).toBeTruthy();
   });
 
+  test("omits rating summaries from history cards while retaining submission dates", () => {
+    render(<MatchHistoryList initialPage={{ matches, nextCursor: null }} />);
+
+    expect(screen.queryByText("2 rating changes")).toBeNull();
+    expect(screen.queryByText("Ratings updating…")).toBeNull();
+    expect(screen.getByText(/Aug 7, 2026/)).toBeTruthy();
+    expect(screen.getByText(/Aug 6, 2026/)).toBeTruthy();
+  });
+
   test("does not refetch the server-rendered first page during Strict Mode mounting", async () => {
     render(<StrictMode><MatchHistoryList initialPage={{ matches, nextCursor: null }} /></StrictMode>);
 

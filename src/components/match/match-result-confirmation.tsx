@@ -2,7 +2,6 @@ import { ArrowLeft, ArrowRight, ChevronDown, Medal } from "lucide-react";
 import clsx from "clsx";
 import Link from "next/link";
 import { RatingValue } from "@/components/ratings/rating-value";
-import { Badge } from "@/components/ui/badge";
 import { DEFAULT_RATING } from "@/lib/ratings/glicko2";
 import styles from "./match-result-confirmation.module.css";
 
@@ -46,12 +45,14 @@ export type MatchResultConfirmationData = {
 export function MatchResultConfirmation({
   groupId,
   groupName,
+  hasOtherGroups,
   canCorrect,
   canRevise,
   match,
 }: {
   groupId: string;
   groupName: string;
+  hasOtherGroups: boolean;
   canCorrect: boolean;
   canRevise: boolean;
   match: MatchResultConfirmationData;
@@ -68,7 +69,7 @@ export function MatchResultConfirmation({
           aria-label={`Current group ${groupName}`}
         >
           {groupName}
-          <ChevronDown aria-hidden="true" className={styles.groupIcon} />
+          {hasOtherGroups ? <ChevronDown aria-hidden="true" className={styles.groupIcon} /> : null}
         </button>
       </div>
 
@@ -89,29 +90,22 @@ export function MatchResultConfirmation({
           ))}
         </div>
 
-        <div className={styles.reviewSection}>
-          <div className={styles.statusRow}>
-            {match.status !== "pending_confirmation" ? <Badge tone={match.status === "confirmed" ? "victory" : "neutral"}>{displayStatus(match.status)}</Badge> : null}
-            {canCorrect || canRevise ? <p className={styles.disputeUntil}>Correct until {match.correctionUntil}</p> : null}
-          </div>
-          {canCorrect || (match.status === "disputed" && canRevise) ? (
+        {canCorrect || (match.status === "disputed" && canRevise) ? (
+          <div className={styles.reviewSection}>
+            <div className={styles.statusRow}>
+              <p className={styles.disputeUntil}>Correct until {match.correctionUntil}</p>
+            </div>
             <Link
               href={`/groups/${groupId}/matches/${match.id}/revise`}
               className={styles.reviseLink}
             >
               Correct result
             </Link>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </article>
     </section>
   );
-}
-
-function displayStatus(status: MatchResultConfirmationData["status"]) {
-  if (status === "confirmed") return "Accepted";
-  if (status === "disputed") return "Disputed";
-  return null;
 }
 
 function TeamSummary({ team, winner }: { team: Team; winner: boolean }) {

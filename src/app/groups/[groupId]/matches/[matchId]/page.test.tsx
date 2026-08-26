@@ -3,6 +3,8 @@ import { expect, test, vi } from "vitest";
 import { MatchContent } from "./page";
 
 const appDataMocks = vi.hoisted(() => ({
+  hasOtherCurrentUserGroup: vi.fn(async () => false),
+  listCurrentUserGroups: vi.fn(async () => [{ id: "group-1", name: "Wednesday Club" }]),
   getGroupMatchDetail: vi.fn(async () => ({
     id: "match-1", groupId: "group-1", groupName: "Wednesday Club", revisionId: "revision-1", submittedByUserId: "alice",
     status: "confirmed", submittedAt: "2026-08-07T20:00:00.000Z", correctionStartedAt: "2026-08-07T20:00:00.000Z", correctionUntil: "2026-09-06T20:00:00.000Z", format: "singles",
@@ -13,6 +15,8 @@ const appDataMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/app-data", () => ({
+  hasOtherCurrentUserGroup: appDataMocks.hasOtherCurrentUserGroup,
+  listCurrentUserGroups: appDataMocks.listCurrentUserGroups,
   getGroupMatchDetail: appDataMocks.getGroupMatchDetail,
 }));
 vi.mock("next/navigation", () => ({ notFound: vi.fn(), useRouter: () => ({ refresh: vi.fn() }) }));
@@ -25,10 +29,24 @@ test("renders the stored active revision in the rich detail view", async () => {
   expect(html).toContain("Match Result");
   expect(html).toContain("Alice Tan");
   expect(html).toContain("Bea Rivera");
-  expect(html).toContain("Accepted");
+  expect(html).not.toContain("Accepted");
+  expect(html).not.toContain("Disputed");
+  expect(html).not.toContain("lucide-chevron-down");
   expect(html).toContain("Correct until Sep 6, 2026");
   expect(html).toContain("Correct result");
   expect(html).not.toContain(">Confirm<");
   expect(html).not.toContain("No match details are available yet");
   expect(appDataMocks.getGroupMatchDetail).toHaveBeenCalledWith("group-1", "match-1");
+  expect(appDataMocks.hasOtherCurrentUserGroup).toHaveBeenCalledWith("group-1");
+  expect(appDataMocks.listCurrentUserGroups).not.toHaveBeenCalled();
+});
+
+test("shows the group dropdown indicator when another group is available", async () => {
+  appDataMocks.hasOtherCurrentUserGroup.mockResolvedValueOnce(true);
+
+  const html = renderToStaticMarkup(await MatchContent({
+    params: Promise.resolve({ groupId: "group-1", matchId: "match-1" }),
+  }));
+
+  expect(html).toContain("lucide-chevron-down");
 });
