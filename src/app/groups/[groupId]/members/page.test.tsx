@@ -47,6 +47,22 @@ test("reports recency-active players separately from the full membership count",
   expect(html).toContain("± 85");
 });
 
+test("shows an unranked member as a muted non-clickable row", async () => {
+  mocks.getGroup.mockResolvedValue({ id: groupId, name: "Wednesday Club", description: "", memberCount: 4 });
+  mocks.listGroupPlayers.mockResolvedValue([
+    ...players,
+    { id: "dana", name: "Dana Wu", initials: "DW", role: "Member", rating: 1500, rd: 350, performanceSd: 200, rank: 0, gamesPlayed: 0, status: "Inactive" },
+  ]);
+
+  const html = renderToStaticMarkup(await MembersContent({ params: Promise.resolve({ groupId }) }));
+
+  expect(html).toContain("1 active of 4 members");
+  expect(html).toContain('aria-label="Dana Wu, unranked, 0 games"');
+  expect(html).toContain("Unranked");
+  expect(html).not.toContain(`href="/groups/${groupId}/players/dana/analytics"`);
+  expect(html).not.toContain("1500, provisional rating");
+});
+
 test("uses membership language when the roster is empty", async () => {
   mocks.getGroup.mockResolvedValue({ id: groupId, name: "Wednesday Club", description: "", memberCount: 0 });
   mocks.listGroupPlayers.mockResolvedValue([]);

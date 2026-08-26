@@ -163,7 +163,7 @@ describe("HomePage", () => {
     const html = renderToStaticMarkup(await HomeContent());
 
     expect(html).toContain("No matches recorded yet.");
-    expect(html).toContain("Join a group to see your rankings.");
+    expect(html).toContain("Play a match to earn a ranking.");
     expect(html).not.toContain('href="/matches/history"');
   });
 });

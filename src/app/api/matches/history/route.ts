@@ -9,6 +9,7 @@ export async function GET(request: Request) {
   try {
     const page = await listMatchHistoryPage({
       groupId: searchParams.get("groupId"),
+      playerId: searchParams.get("playerId"),
       status: searchParams.get("status"),
       search: searchParams.get("q"),
       cursor: searchParams.get("cursor"),

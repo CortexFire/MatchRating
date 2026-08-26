@@ -3,7 +3,13 @@ import { RatingValue } from "@/components/ratings/rating-value";
 import { type AppCurrentRanking } from "@/lib/app-data";
 import styles from "./current-ranking-list.module.css";
 
-export function CurrentRankingList({ rankings }: { rankings: AppCurrentRanking[] }) {
+export function CurrentRankingList({
+  rankings,
+  hasGroups,
+}: {
+  rankings: AppCurrentRanking[];
+  hasGroups: boolean;
+}) {
   return (
     <section className={styles.section}>
       <h2>Current rankings</h2>
@@ -26,7 +32,7 @@ export function CurrentRankingList({ rankings }: { rankings: AppCurrentRanking[]
         </div>
       ) : (
         <p className={styles.empty}>
-          Join a group to see your rankings.
+          {hasGroups ? "Play a match to earn a ranking." : "Join a group to see your rankings."}
         </p>
       )}
     </section>

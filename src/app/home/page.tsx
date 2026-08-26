@@ -131,7 +131,7 @@ export async function HomeContent() {
         )}
       </section>
 
-      <CurrentRankingList rankings={currentRankings} />
+      <CurrentRankingList rankings={currentRankings} hasGroups={groups.length > 0} />
     </MobileShell>
   );
 }

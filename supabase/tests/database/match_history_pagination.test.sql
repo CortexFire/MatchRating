@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(16);
+select plan(17);
 
 select ok(
   (
@@ -23,11 +23,11 @@ select ok(
 select ok(
   has_function_privilege(
     'authenticated',
-    'public.list_match_history_page(uuid,public.match_status,text,timestamptz,uuid,integer)',
+    'public.list_match_history_page(uuid,public.match_status,text,timestamptz,uuid,integer,uuid)',
     'EXECUTE'
   ) and not has_function_privilege(
     'anon',
-    'public.list_match_history_page(uuid,public.match_status,text,timestamptz,uuid,integer)',
+    'public.list_match_history_page(uuid,public.match_status,text,timestamptz,uuid,integer,uuid)',
     'EXECUTE'
   ),
   'history RPC is authenticated-only'
@@ -62,12 +62,13 @@ values
 insert into public.match_revisions (id, match_id, version, submitted_by_user_id, format)
 values
   ('c1000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000001', 1, '11111111-1111-4111-8111-111111111111', 'singles'),
+  ('c2000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000001', 2, '11111111-1111-4111-8111-111111111111', 'singles'),
   ('c1000000-0000-4000-8000-000000000002', 'a1000000-0000-4000-8000-000000000002', 1, '33333333-3333-4333-8333-333333333333', 'doubles'),
   ('c1000000-0000-4000-8000-000000000003', 'a1000000-0000-4000-8000-000000000003', 1, '11111111-1111-4111-8111-111111111111', 'singles'),
   ('d1000000-0000-4000-8000-000000000001', 'b1000000-0000-4000-8000-000000000001', 1, '33333333-3333-4333-8333-333333333333', 'singles');
 
 update public.matches set active_revision_id = case id
-  when 'a1000000-0000-4000-8000-000000000001'::uuid then 'c1000000-0000-4000-8000-000000000001'::uuid
+  when 'a1000000-0000-4000-8000-000000000001'::uuid then 'c2000000-0000-4000-8000-000000000001'::uuid
   when 'a1000000-0000-4000-8000-000000000002'::uuid then 'c1000000-0000-4000-8000-000000000002'::uuid
   when 'a1000000-0000-4000-8000-000000000003'::uuid then 'c1000000-0000-4000-8000-000000000003'::uuid
   else 'd1000000-0000-4000-8000-000000000001'::uuid
@@ -76,7 +77,9 @@ end;
 insert into public.match_participants (revision_id, user_id, team, slot)
 values
   ('c1000000-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', 'A', 1),
-  ('c1000000-0000-4000-8000-000000000001', '22222222-2222-4222-8222-222222222222', 'B', 1),
+  ('c1000000-0000-4000-8000-000000000001', '33333333-3333-4333-8333-333333333333', 'B', 1),
+  ('c2000000-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', 'A', 1),
+  ('c2000000-0000-4000-8000-000000000001', '22222222-2222-4222-8222-222222222222', 'B', 1),
   ('c1000000-0000-4000-8000-000000000002', '33333333-3333-4333-8333-333333333333', 'A', 1),
   ('c1000000-0000-4000-8000-000000000002', '22222222-2222-4222-8222-222222222222', 'B', 1),
   ('c1000000-0000-4000-8000-000000000003', '11111111-1111-4111-8111-111111111111', 'A', 1),
@@ -110,6 +113,17 @@ select results_eq(
     ('a1000000-0000-4000-8000-000000000001'::uuid),
     ('a1000000-0000-4000-8000-000000000003'::uuid) $$,
   'group history contains all group matches regardless of participation'
+);
+
+select results_eq(
+  $$ select id from public.list_match_history_page(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', null, null, null, null, 21,
+    '33333333-3333-4333-8333-333333333333'
+  ) $$,
+  $$ values
+    ('a1000000-0000-4000-8000-000000000002'::uuid),
+    ('a1000000-0000-4000-8000-000000000003'::uuid) $$,
+  'player history contains only selected-group matches from the active revision that include the subject'
 );
 
 select results_eq(

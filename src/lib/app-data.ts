@@ -9,6 +9,7 @@ import {
   type MatchView,
 } from "@/lib/matches/read-model";
 import { listVisibleGroupMemberships } from "@/lib/group-membership-visibility";
+import { rankGroupListPlayers } from "@/lib/player-rankings";
 import {
   encodeMatchHistoryCursor,
   normalizeMatchHistoryRequest,
@@ -267,6 +268,7 @@ export async function listMatchHistoryPage(input: MatchHistoryRequestInput = {})
 
 async function queryMatchHistoryRows({
   groupId = null,
+  playerId = null,
   status = null,
   search = null,
   cursor = null,
@@ -278,6 +280,7 @@ async function queryMatchHistoryRows({
   const client = await createSupabaseServerClient();
   const { data, error } = await client.rpc("list_match_history_page", {
     p_group_id: groupId,
+    p_player_id: playerId,
     p_status: status,
     p_search: search,
     p_before_submitted_at: cursor?.submittedAt ?? null,
@@ -421,13 +424,7 @@ export async function listGroupPlayers(groupId: string): Promise<AppPlayer[]> {
     } satisfies Omit<AppPlayer, "rank">;
   });
 
-  return rankPlayers(players);
-}
-
-function rankPlayers<T extends { id: string; name: string; rating: number }>(players: T[]): Array<T & { rank: number }> {
-  return players
-    .sort((a, b) => b.rating - a.rating || a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
-    .map((player, index) => ({ ...player, rank: index + 1 }));
+  return rankGroupListPlayers(players);
 }
 
 async function ensureCurrentUserCanReadGroup(groupId: string) {

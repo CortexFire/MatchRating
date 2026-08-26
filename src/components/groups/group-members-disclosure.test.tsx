@@ -10,6 +10,19 @@ const players: AppPlayer[] = [
   { id: "bea", name: "Bea Rivera", initials: "BR", role: "Guest", rating: 1580, rd: 81, performanceSd: 91, rank: 2, gamesPlayed: 14, status: "Active", isGuest: true },
 ];
 
+const unrankedPlayer: AppPlayer = {
+  id: "cory",
+  name: "Cory Shah",
+  initials: "CS",
+  role: "Member",
+  rating: 1500,
+  rd: 350,
+  performanceSd: 200,
+  rank: 0,
+  gamesPlayed: 0,
+  status: "Inactive",
+};
+
 const longRoster: AppPlayer[] = Array.from({ length: 6 }, (_, index) => ({
   id: `player-${index + 1}`,
   name: `Player ${index + 1}`,
@@ -58,6 +71,22 @@ describe("GroupMembersDisclosure", () => {
     const region = screen.getByRole("region", { name: "Group members" });
     expect(region.getAttribute("tabindex")).toBe("0");
     expect(region).toBeTruthy();
+  });
+
+  test("keeps an unranked member visible without an analytics link", () => {
+    render(
+      <GroupMembersDisclosure
+        groupId="group-1"
+        players={[...players, unrankedPlayer]}
+        inviteHref="/groups/group-1/invite"
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Members (3)"));
+
+    expect(screen.getByRole("article", { name: "Cory Shah, unranked, 0 games" })).toBeTruthy();
+    expect(screen.getByText("Unranked")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "View analytics for Cory Shah" })).toBeNull();
   });
 
   test("keeps short rosters unfocusable and omits the roster wrapper for an empty group", () => {

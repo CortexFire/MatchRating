@@ -15,12 +15,14 @@ import {
 } from "recharts";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { ScreenHeader } from "@/components/app/screen-header";
+import { MatchHistoryList } from "@/components/match/match-history-list";
 import { RatingValue } from "@/components/ratings/rating-value";
 import {
   type AnalyticsPeriod,
   type AnalyticsPeriodSnapshot,
   type PlayerAnalyticsViewModel,
 } from "@/lib/analytics/analytics-policy";
+import { type MatchHistoryPage } from "@/lib/matches/history-pagination";
 import {
   buildRatingHistoryChartData,
   formatRatingPointDetails,
@@ -35,7 +37,13 @@ const PERIODS: Array<{ key: AnalyticsPeriod; label: string }> = [
   { key: "1y", label: "1 year" },
 ];
 
-export function PlayerAnalyticsView({ model }: { model: PlayerAnalyticsViewModel }) {
+export function PlayerAnalyticsView({
+  model,
+  initialHistoryPage,
+}: {
+  model: PlayerAnalyticsViewModel;
+  initialHistoryPage: MatchHistoryPage;
+}) {
   const router = useRouter();
   const [period, setPeriod] = useState<AnalyticsPeriod>("all");
   const [expandedFlag, setExpandedFlag] = useState<string | null>(null);
@@ -82,7 +90,37 @@ export function PlayerAnalyticsView({ model }: { model: PlayerAnalyticsViewModel
           onFlagToggle={(key) => setExpandedFlag((current) => current === key ? null : key)}
         />
       )}
+      <PlayerHistoryDisclosure model={model} initialPage={initialHistoryPage} />
     </MobileShell>
+  );
+}
+
+function PlayerHistoryDisclosure({
+  model,
+  initialPage,
+}: {
+  model: PlayerAnalyticsViewModel;
+  initialPage: MatchHistoryPage;
+}) {
+  return (
+    <section className={styles.playerHistorySection}>
+      <details className={styles.playerHistoryDetails}>
+        <summary className={styles.playerHistorySummary}>
+          <span>Match history</span>
+          <ChevronDown className={styles.playerHistoryChevron} aria-hidden="true" />
+        </summary>
+        <div className={styles.playerHistoryContent}>
+          <MatchHistoryList
+            key={`${model.group.id}:${model.subject.id}`}
+            initialPage={initialPage}
+            groupId={model.group.id}
+            playerId={model.subject.id}
+            variant="embedded"
+            regionLabel={`${model.subject.name} match history`}
+          />
+        </div>
+      </details>
+    </section>
   );
 }
 

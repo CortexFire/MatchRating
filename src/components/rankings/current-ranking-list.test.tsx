@@ -5,7 +5,7 @@ import { CurrentRankingList } from "./current-ranking-list";
 describe("CurrentRankingList", () => {
   test("links each group ranking with position, member count, and rating", () => {
     const html = renderToStaticMarkup(
-      <CurrentRankingList rankings={[
+      <CurrentRankingList hasGroups rankings={[
         {
           groupId: "group-1",
           playerId: "alice",
@@ -28,8 +28,15 @@ describe("CurrentRankingList", () => {
   });
 
   test("shows the rankings empty state", () => {
-    const html = renderToStaticMarkup(<CurrentRankingList rankings={[]} />);
+    const html = renderToStaticMarkup(<CurrentRankingList hasGroups={false} rankings={[]} />);
 
     expect(html).toContain("Join a group to see your rankings.");
+  });
+
+  test("prompts an unranked group member to play a match", () => {
+    const html = renderToStaticMarkup(<CurrentRankingList hasGroups rankings={[]} />);
+
+    expect(html).toContain("Play a match to earn a ranking.");
+    expect(html).not.toContain("Join a group");
   });
 });

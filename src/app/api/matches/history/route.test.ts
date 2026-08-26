@@ -18,13 +18,14 @@ beforeEach(() => {
 describe("match history route", () => {
   test("returns a private uncached page for normalized query parameters", async () => {
     const response = await GET(new Request(
-      "https://matches.example.com/api/matches/history?groupId=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa&status=disputed&q=Bea&cursor=opaque",
+      "https://matches.example.com/api/matches/history?groupId=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa&playerId=bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb&status=disputed&q=Bea&cursor=opaque",
     ));
 
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(mocks.listMatchHistoryPage).toHaveBeenCalledWith({
       groupId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      playerId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
       status: "disputed",
       search: "Bea",
       cursor: "opaque",

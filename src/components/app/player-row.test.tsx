@@ -35,4 +35,21 @@ describe("PlayerRow", () => {
     expect(variation.getAttribute("aria-label")).toBe(description);
     expect(screen.queryByText(/RD/i)).toBeNull();
   });
+
+  test("renders an unranked member as muted non-interactive profile information", () => {
+    render(
+      <PlayerRow
+        player={{ ...player, rating: 1500, rd: 350, performanceSd: 200, rank: 0, gamesPlayed: 0 }}
+        analyticsHref="/groups/group-1/players/alice/analytics"
+      />,
+    );
+
+    const row = screen.getByRole("article", { name: "Alice Tan, unranked, 0 games" });
+    expect(row.className).toContain("unrankedRow");
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByText("Unranked")).toBeTruthy();
+    expect(screen.getByText("0 games")).toBeTruthy();
+    expect(screen.queryByText("1500, provisional rating")).toBeNull();
+    expect(screen.queryByText("± 200")).toBeNull();
+  });
 });
