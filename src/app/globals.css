@@ -11,6 +11,16 @@
   --victory: #DDEFE4;
   --victory-stroke: #2F7D57;
   --action: #02542D;
+  --chart-series-1: #355CDE;
+  --chart-series-2: #C45100;
+  --chart-series-3: #7B3FB2;
+  --chart-series-4: #B7334D;
+  --chart-series-5: #8A5A2B;
+  --chart-series-6: #B23A8A;
+  --chart-series-7: #3F6E8C;
+  --chart-series-8: #8A6D00;
+  --chart-series-9: #5D4E9C;
+  --chart-series-10: #A13C2F;
 }
 
 @theme inline {
