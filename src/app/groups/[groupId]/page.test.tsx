@@ -48,6 +48,20 @@ describe("GroupPage", () => {
       group,
       activeDrafts: [draft],
       ratingStatus: { id: "job-1", status: "running", canRetry: false },
+      ratingHistory: {
+        windowStart: "2025-08-26T12:00:00.000Z",
+        windowEnd: "2026-08-26T12:00:00.000Z",
+        series: [{
+          playerId: "alice",
+          name: "Alice Tan",
+          rank: 1,
+          currentRating: 1640,
+          points: [
+            { matchId: null, occurredAt: "2025-08-26T12:00:00.000Z", rating: 1500 },
+            { matchId: null, occurredAt: "2026-08-26T12:00:00.000Z", rating: 1640 },
+          ],
+        }],
+      },
       recentMatches,
       players,
     });
@@ -80,11 +94,15 @@ describe("GroupPage", () => {
     expect(html).not.toContain("2 rating changes");
     expect(html).toContain("Members (1)");
     const ratingStatusPosition = html.indexOf("Match saved. Ratings updating");
+    const invitePosition = html.indexOf("Invite members");
+    const chartPosition = html.indexOf("Rating history");
     const membersPosition = html.indexOf("Members (1)");
     const activeMatchesPosition = html.indexOf("Active matches");
     const recentMatchesPosition = html.indexOf("Recent Matches");
 
-    expect(ratingStatusPosition).toBeLessThan(membersPosition);
+    expect(ratingStatusPosition).toBeLessThan(invitePosition);
+    expect(invitePosition).toBeLessThan(chartPosition);
+    expect(chartPosition).toBeLessThan(membersPosition);
     expect(membersPosition).toBeLessThan(activeMatchesPosition);
     expect(activeMatchesPosition).toBeLessThan(recentMatchesPosition);
     expect(html).toContain('href="/groups/11111111-1111-4111-8111-111111111111/invite"');

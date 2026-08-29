@@ -148,6 +148,33 @@ describe("navigation read models", () => {
           { id: opponentId, display_name: "Bea Rivera" },
         ],
         ratingStatus: { id: "77777777-7777-4777-8777-777777777777", status: "failed", canRetry: true },
+        ratingHistory: {
+          windowStart: "2025-08-26T12:00:00.000Z",
+          windowEnd: "2026-08-26T12:00:00.000Z",
+          events: [
+            {
+              user_id: actorId,
+              match_id: "88888888-8888-4888-8888-888888888881",
+              occurred_at: "2025-08-01T12:00:00.000Z",
+              before_rating: "1500",
+              after_rating: "1600",
+            },
+            {
+              user_id: actorId,
+              match_id: "88888888-8888-4888-8888-888888888882",
+              occurred_at: "2026-01-10T12:00:00.000Z",
+              before_rating: "1600",
+              after_rating: "1620.4",
+            },
+            {
+              user_id: opponentId,
+              match_id: "88888888-8888-4888-8888-888888888883",
+              occurred_at: "2026-02-10T12:00:00.000Z",
+              before_rating: "1500",
+              after_rating: "1510.2",
+            },
+          ],
+        },
         matchBundle,
       },
       error: null,
@@ -169,7 +196,63 @@ describe("navigation read models", () => {
     expect(result?.ratingStatus).toEqual({ id: "77777777-7777-4777-8777-777777777777", status: "failed", canRetry: true });
     expect(result?.activeDrafts).toHaveLength(1);
     expect(result?.recentMatches).toHaveLength(1);
+    expect(result?.ratingHistory).toEqual({
+      windowStart: "2025-08-26T12:00:00.000Z",
+      windowEnd: "2026-08-26T12:00:00.000Z",
+      series: [
+        {
+          playerId: actorId,
+          name: "Alice Tan",
+          rank: 1,
+          currentRating: 1642,
+          points: [
+            { matchId: null, occurredAt: "2025-08-26T12:00:00.000Z", rating: 1600 },
+            { matchId: "88888888-8888-4888-8888-888888888882", occurredAt: "2026-01-10T12:00:00.000Z", rating: 1620 },
+            { matchId: null, occurredAt: "2026-08-26T12:00:00.000Z", rating: 1642 },
+          ],
+        },
+        {
+          playerId: opponentId,
+          name: "Bea Rivera",
+          rank: 2,
+          currentRating: 1510,
+          points: [
+            { matchId: null, occurredAt: "2025-08-26T12:00:00.000Z", rating: 1500 },
+            { matchId: "88888888-8888-4888-8888-888888888883", occurredAt: "2026-02-10T12:00:00.000Z", rating: 1510 },
+            { matchId: null, occurredAt: "2026-08-26T12:00:00.000Z", rating: 1510 },
+          ],
+        },
+      ],
+    });
     expect(mocks.rpc.mock.calls).toEqual([["get_group_page_data", { p_group_id: groupId, p_match_limit: 5 }]]);
+  });
+
+  test("uses the current rating across the window when a ranked player has no history events", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: {
+        actorUserId: actorId,
+        group: { id: groupId, name: "Wednesday Club", description: "Weekly ladder" },
+        memberships,
+        ratings,
+        drafts: [],
+        profiles: [],
+        ratingStatus: null,
+        ratingHistory: {
+          windowStart: "2025-08-26T12:00:00.000Z",
+          windowEnd: "2026-08-26T12:00:00.000Z",
+          events: [],
+        },
+        matchBundle: { groups: [], matches: [], revisions: [], participants: [], games: [], ratingEvents: [], profiles: [] },
+      },
+      error: null,
+    });
+
+    const result = await getGroupPageData(groupId);
+
+    expect(result?.ratingHistory.series[0].points).toEqual([
+      { matchId: null, occurredAt: "2025-08-26T12:00:00.000Z", rating: 1642 },
+      { matchId: null, occurredAt: "2026-08-26T12:00:00.000Z", rating: 1642 },
+    ]);
   });
 
   test("omits a zero-game actor from home current rankings", async () => {

@@ -27,8 +27,29 @@ export type GroupPageData = {
   group: AppGroup;
   activeDrafts: AppActiveMatchDraft[];
   ratingStatus: AppRatingRebuildStatus;
+  ratingHistory: GroupRatingHistoryData;
   recentMatches: AppMatchSummary[];
   players: AppPlayer[];
+};
+
+export type GroupRatingHistoryPoint = {
+  matchId: string | null;
+  occurredAt: string;
+  rating: number;
+};
+
+export type GroupRatingHistorySeries = {
+  playerId: string;
+  name: string;
+  rank: number;
+  currentRating: number;
+  points: GroupRatingHistoryPoint[];
+};
+
+export type GroupRatingHistoryData = {
+  windowStart: string;
+  windowEnd: string;
+  series: GroupRatingHistorySeries[];
 };
 
 export type MatchRecorderPageData = {
@@ -107,7 +128,22 @@ type RawGroupPayload = RawBasePayload & {
   group: RawGroup;
   drafts: RawDraft[];
   ratingStatus: Partial<AppRatingRebuildStatus> | null;
+  ratingHistory?: RawGroupRatingHistory;
   matchBundle: RawMatchBundle;
+};
+
+type RawGroupRatingHistory = {
+  windowStart: string;
+  windowEnd: string;
+  events: RawGroupRatingHistoryEvent[];
+};
+
+type RawGroupRatingHistoryEvent = {
+  user_id: string;
+  match_id: string;
+  occurred_at: string;
+  before_rating: number | string;
+  after_rating: number | string;
 };
 
 type RawRecorderPayload = RawBasePayload & {
@@ -144,13 +180,15 @@ export async function getGroupPageData(groupId: string): Promise<GroupPageData |
   if (!raw.group) return null;
   const [group] = toGroups([raw.group], raw.memberships);
   if (!group) return null;
+  const players = toPlayers(groupId, raw.memberships, raw.ratings);
 
   return {
     group,
     activeDrafts: toDraftSummaries(raw.drafts, raw.actorUserId, [group], raw.profiles),
     ratingStatus: toRatingStatus(raw.ratingStatus),
+    ratingHistory: toGroupRatingHistory(raw.ratingHistory, players),
     recentMatches: toMatches(raw.matchBundle, raw.actorUserId, raw.memberships).slice(0, 5),
-    players: toPlayers(groupId, raw.memberships, raw.ratings),
+    players,
   };
 }
 
@@ -339,6 +377,52 @@ function toRatingStatus(status: Partial<AppRatingRebuildStatus> | null): AppRati
     id: status?.id ?? null,
     status: status?.status ?? null,
     canRetry: status?.canRetry === true,
+  };
+}
+
+function toGroupRatingHistory(
+  history: RawGroupRatingHistory | undefined,
+  players: AppPlayer[],
+): GroupRatingHistoryData {
+  if (!history) return { windowStart: "", windowEnd: "", series: [] };
+
+  const windowStartMs = Date.parse(history.windowStart);
+  const windowEndMs = Date.parse(history.windowEnd);
+  const rankedPlayers = players.filter((player) => player.rank > 0).slice(0, 10);
+
+  return {
+    windowStart: history.windowStart,
+    windowEnd: history.windowEnd,
+    series: rankedPlayers.map((player) => {
+      const events = history.events
+        .filter((event) => event.user_id === player.id)
+        .sort((left, right) => Date.parse(left.occurred_at) - Date.parse(right.occurred_at)
+          || left.match_id.localeCompare(right.match_id));
+      const priorEvent = events.filter((event) => Date.parse(event.occurred_at) < windowStartMs).at(-1);
+      const inWindowEvents = events.filter((event) => {
+        const occurredAt = Date.parse(event.occurred_at);
+        return occurredAt >= windowStartMs && occurredAt <= windowEndMs;
+      });
+      const boundaryRating = Math.round(Number(
+        priorEvent?.after_rating ?? inWindowEvents[0]?.before_rating ?? player.rating,
+      ));
+
+      return {
+        playerId: player.id,
+        name: player.name,
+        rank: player.rank,
+        currentRating: player.rating,
+        points: [
+          { matchId: null, occurredAt: history.windowStart, rating: boundaryRating },
+          ...inWindowEvents.map((event) => ({
+            matchId: event.match_id,
+            occurredAt: event.occurred_at,
+            rating: Math.round(Number(event.after_rating)),
+          })),
+          { matchId: null, occurredAt: history.windowEnd, rating: player.rating },
+        ],
+      };
+    }),
   };
 }
 

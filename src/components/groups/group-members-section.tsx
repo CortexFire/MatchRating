@@ -3,11 +3,27 @@ import { ChevronDown } from "lucide-react";
 import { PlayerRow } from "@/components/app/player-row";
 import { Button } from "@/components/ui/button";
 import { type AppPlayer } from "@/lib/app-data";
-import styles from "./group-members-disclosure.module.css";
+import { type GroupRatingHistoryData } from "@/lib/navigation-read-models";
+import { GroupRatingHistoryChart } from "./group-rating-history-chart";
+import styles from "./group-members-section.module.css";
 
-export function GroupMembersDisclosure({ groupId, players, inviteHref }: { groupId: string; players: AppPlayer[]; inviteHref: string }) {
+export function GroupMembersSection({
+  groupId,
+  players,
+  inviteHref,
+  ratingHistory,
+}: {
+  groupId: string;
+  players: AppPlayer[];
+  inviteHref: string;
+  ratingHistory: GroupRatingHistoryData;
+}) {
   return (
     <section className={styles.section}>
+      <Button asChild variant="secondary" className={styles.inviteButton}>
+        <Link href={inviteHref}>Invite members</Link>
+      </Button>
+      <GroupRatingHistoryChart history={ratingHistory} />
       <details className={styles.details}>
         <summary className={styles.summary}>
           <span>Members ({players.length})</span>
@@ -30,9 +46,6 @@ export function GroupMembersDisclosure({ groupId, players, inviteHref }: { group
           )}
         </div>
       </details>
-      <Button asChild variant="secondary" className={styles.inviteButton}>
-        <Link href={inviteHref}>Invite members</Link>
-      </Button>
     </section>
   );
 }
