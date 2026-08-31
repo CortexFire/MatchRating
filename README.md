@@ -2,7 +2,7 @@
 
 MatchRating is a lightweight match tracking and rating system for you and your friends.
 
-Record matches, keep a shared history, and see how everyone ranks within each group.
+Record matches, keep a shared history, and see how everyone ranks within each group for any sport with singles and doubles play.
 
 ## Get started
 
