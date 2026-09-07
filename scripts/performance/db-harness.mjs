@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 
 export async function createTestDatabase(root = process.cwd(), beforeMigration = null) {
-  const require = createRequire(resolve(root, 'output/performance-tools/package.json'));
+  const require = createRequire(resolve(process.cwd(), 'output/performance-tools/package.json'));
   const { PGlite } = require('@electric-sql/pglite');
   const { pgcrypto } = require('@electric-sql/pglite/contrib/pgcrypto');
   const { pg_trgm } = require('@electric-sql/pglite/contrib/pg_trgm');
@@ -66,6 +66,6 @@ export async function runDatabaseTests(root = process.cwd()) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  runDatabaseTests().then(failures => { process.exitCode = failures ? 1 : 0; })
+  runDatabaseTests(resolve(process.argv[2] ?? '.')).then(failures => { process.exitCode = failures ? 1 : 0; })
     .catch(error => { console.error(error.message); process.exitCode = 1; });
 }

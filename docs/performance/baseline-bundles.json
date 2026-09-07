@@ -1,0 +1,179 @@
+{
+  "methodology": "Unique client-reference JavaScript chunks per route; excludes framework runtime, CSS, RSC payload and deferred chunks not referenced by this manifest. Markers are indicative, not exact dependency attribution.",
+  "reports": [
+    {
+      "route": "home",
+      "bytes": 45170,
+      "gzipBytes": 11800,
+      "chunks": [
+        {
+          "url": "/_next/static/chunks/39nj_sjbntgrn.js",
+          "bytes": 283,
+          "gzipBytes": 225,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/3-kg_y4w_3dq5.js",
+          "bytes": 36724,
+          "gzipBytes": 8116,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/17_s6q136veb0.js",
+          "bytes": 8163,
+          "gzipBytes": 3459,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "route": "groups/[groupId]",
+      "bytes": 46951,
+      "gzipBytes": 12534,
+      "chunks": [
+        {
+          "url": "/_next/static/chunks/39nj_sjbntgrn.js",
+          "bytes": 283,
+          "gzipBytes": 225,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/3-kg_y4w_3dq5.js",
+          "bytes": 36724,
+          "gzipBytes": 8116,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/1_e4ppbwe6j83.js",
+          "bytes": 9944,
+          "gzipBytes": 4193,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "route": "groups/[groupId]/matches/new",
+      "bytes": 391037,
+      "gzipBytes": 95671,
+      "chunks": [
+        {
+          "url": "/_next/static/chunks/39nj_sjbntgrn.js",
+          "bytes": 283,
+          "gzipBytes": 225,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/3-kg_y4w_3dq5.js",
+          "bytes": 36724,
+          "gzipBytes": 8116,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/2517rhn-9c8eh.js",
+          "bytes": 15330,
+          "gzipBytes": 6205,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/2q8ha12n6z173.js",
+          "bytes": 311627,
+          "gzipBytes": 72625,
+          "markers": [
+            "Zod"
+          ]
+        },
+        {
+          "url": "/_next/static/chunks/12-g73dda_voa.js",
+          "bytes": 27073,
+          "gzipBytes": 8500,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "route": "groups/[groupId]/players/[playerId]/analytics",
+      "bytes": 476313,
+      "gzipBytes": 138162,
+      "chunks": [
+        {
+          "url": "/_next/static/chunks/39nj_sjbntgrn.js",
+          "bytes": 283,
+          "gzipBytes": 225,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/3-kg_y4w_3dq5.js",
+          "bytes": 36724,
+          "gzipBytes": 8116,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/0kfuh0iqs1ndc.js",
+          "bytes": 23265,
+          "gzipBytes": 8334,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/446ypwn17iun8.js",
+          "bytes": 376660,
+          "gzipBytes": 108130,
+          "markers": [
+            "ComposedChart"
+          ]
+        },
+        {
+          "url": "/_next/static/chunks/12-g73dda_voa.js",
+          "bytes": 27073,
+          "gzipBytes": 8500,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/3k2hwsl464pdc.js",
+          "bytes": 12308,
+          "gzipBytes": 4857,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "route": "login",
+      "bytes": 328337,
+      "gzipBytes": 88589,
+      "chunks": [
+        {
+          "url": "/_next/static/chunks/39nj_sjbntgrn.js",
+          "bytes": 283,
+          "gzipBytes": 225,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/3-kg_y4w_3dq5.js",
+          "bytes": 36724,
+          "gzipBytes": 8116,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/142xh67-qvxs4.js",
+          "bytes": 12603,
+          "gzipBytes": 5119,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/3v7m6knibiylr.js",
+          "bytes": 251654,
+          "gzipBytes": 66629,
+          "markers": [
+            "RealtimeClient",
+            "GoTrueClient"
+          ]
+        },
+        {
+          "url": "/_next/static/chunks/12-g73dda_voa.js",
+          "bytes": 27073,
+          "gzipBytes": 8500,
+          "markers": []
+        }
+      ]
+    }
+  ]
+}
