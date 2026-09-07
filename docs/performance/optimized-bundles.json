@@ -1,0 +1,160 @@
+{
+  "methodology": "Unique client-reference JavaScript chunks per route; excludes framework runtime, CSS, RSC payload and deferred chunks not referenced by this manifest. Markers are indicative, not exact dependency attribution.",
+  "reports": [
+    {
+      "route": "home",
+      "bytes": 45170,
+      "gzipBytes": 11809,
+      "chunks": [
+        {
+          "url": "/_next/static/chunks/39nj_sjbntgrn.js",
+          "bytes": 283,
+          "gzipBytes": 225,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/3-kg_y4w_3dq5.js",
+          "bytes": 36724,
+          "gzipBytes": 8116,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/3cfvekk0-5r_3.js",
+          "bytes": 8163,
+          "gzipBytes": 3468,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "route": "groups/[groupId]",
+      "bytes": 47587,
+      "gzipBytes": 12719,
+      "chunks": [
+        {
+          "url": "/_next/static/chunks/39nj_sjbntgrn.js",
+          "bytes": 283,
+          "gzipBytes": 225,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/3-kg_y4w_3dq5.js",
+          "bytes": 36724,
+          "gzipBytes": 8116,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/0017egerh9h3l.js",
+          "bytes": 10580,
+          "gzipBytes": 4378,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "route": "groups/[groupId]/matches/new",
+      "bytes": 107163,
+      "gzipBytes": 31070,
+      "chunks": [
+        {
+          "url": "/_next/static/chunks/39nj_sjbntgrn.js",
+          "bytes": 283,
+          "gzipBytes": 225,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/3-kg_y4w_3dq5.js",
+          "bytes": 36724,
+          "gzipBytes": 8116,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/2ry5-ar_9y73v.js",
+          "bytes": 15723,
+          "gzipBytes": 6333,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/35qs_vocmnvk-.js",
+          "bytes": 27073,
+          "gzipBytes": 8500,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/14lx7toqdppmx.js",
+          "bytes": 27360,
+          "gzipBytes": 7896,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "route": "groups/[groupId]/players/[playerId]/analytics",
+      "bytes": 112389,
+      "gzipBytes": 33327,
+      "chunks": [
+        {
+          "url": "/_next/static/chunks/39nj_sjbntgrn.js",
+          "bytes": 283,
+          "gzipBytes": 225,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/3-kg_y4w_3dq5.js",
+          "bytes": 36724,
+          "gzipBytes": 8116,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/35qs_vocmnvk-.js",
+          "bytes": 27073,
+          "gzipBytes": 8500,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/0n19r91o9qwzb.js",
+          "bytes": 36001,
+          "gzipBytes": 11637,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/1db159lghrd27.js",
+          "bytes": 12308,
+          "gzipBytes": 4849,
+          "markers": []
+        }
+      ]
+    },
+    {
+      "route": "login",
+      "bytes": 85829,
+      "gzipBytes": 25104,
+      "chunks": [
+        {
+          "url": "/_next/static/chunks/39nj_sjbntgrn.js",
+          "bytes": 283,
+          "gzipBytes": 225,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/3-kg_y4w_3dq5.js",
+          "bytes": 36724,
+          "gzipBytes": 8116,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/1vm8ake88j7o4.js",
+          "bytes": 21749,
+          "gzipBytes": 8263,
+          "markers": []
+        },
+        {
+          "url": "/_next/static/chunks/35qs_vocmnvk-.js",
+          "bytes": 27073,
+          "gzipBytes": 8500,
+          "markers": []
+        }
+      ]
+    }
+  ]
+}

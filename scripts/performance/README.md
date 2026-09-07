@@ -29,4 +29,6 @@ Optionally append one size (`100`, `1000`, or `10000`). Each size uses a new in-
 
 The reference policy is deliberately frozen at commit `f5cb6b9` and must never be imported by application code. Keep it independent of production changes so comparisons can detect semantic drift.
 
+The benchmark fixes `statement_timestamp()` only inside its disposable database transaction. New baselines use the fixture clock; comparisons replay the exact `asOf` saved with each baseline. This prevents a long run from moving a period boundary between measurements. Production migrations are not rewritten, and normal pgTAP runs use the real clock.
+
 After implementation, run `node scripts/performance/run-typescript.cjs scripts/performance/database-compare.ts .` (optionally append a size). This reuses the saved baseline facts, checks summaries/flags/matchups and sampled values against the frozen policy, verifies full-series bounds, walks every exact-history page in all four periods, enforces payload/sample/page budgets, and records optimized SQL plans. Passing another checkout instead of `.` lets the coordinator verify an isolated agent's migration before integrating it.

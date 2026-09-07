@@ -3,12 +3,13 @@
   "reports": [
     {
       "count": 100,
-      "elapsedMs": 34.29169999999999,
-      "policyMs": 0.7988000000000284,
+      "asOf": "2026-09-07T13:27:32.103-08:00",
+      "elapsedMs": 34.24559999999997,
+      "policyMs": 0.7854999999999563,
       "databasePayloadBytes": 55351,
       "browserPayloadBytes": 35259,
       "uniquePoints": 100,
-      "parity": "exact summaries/flags/matchups/sampled-points",
+      "parity": "exact summaries/flags/matchups/sampled-points/full-bounds/all-history-pages",
       "explain": [
         {
           "QUERY PLAN": [
@@ -21,8 +22,8 @@
                 "Total Cost": 0.26,
                 "Plan Rows": 1,
                 "Plan Width": 32,
-                "Actual Startup Time": 18.172,
-                "Actual Total Time": 18.192,
+                "Actual Startup Time": 18.881,
+                "Actual Total Time": 18.902,
                 "Actual Rows": 1,
                 "Actual Loops": 1,
                 "Disabled": false,
@@ -49,9 +50,9 @@
                 "Temp Read Blocks": 0,
                 "Temp Written Blocks": 0
               },
-              "Planning Time": 0.026,
+              "Planning Time": 0.027,
               "Triggers": [],
-              "Execution Time": 18.242
+              "Execution Time": 18.956
             }
           ]
         }
@@ -59,12 +60,13 @@
     },
     {
       "count": 1000,
-      "elapsedMs": 120.69630000000006,
-      "policyMs": 0.6617000000001099,
+      "asOf": "2026-09-07T13:27:33.902-08:00",
+      "elapsedMs": 119.8777,
+      "policyMs": 0.6484000000000378,
       "databasePayloadBytes": 96929,
       "browserPayloadBytes": 87053,
       "uniquePoints": 307,
-      "parity": "exact summaries/flags/matchups/sampled-points",
+      "parity": "exact summaries/flags/matchups/sampled-points/full-bounds/all-history-pages",
       "explain": [
         {
           "QUERY PLAN": [
@@ -77,8 +79,8 @@
                 "Total Cost": 0.26,
                 "Plan Rows": 1,
                 "Plan Width": 32,
-                "Actual Startup Time": 110.022,
-                "Actual Total Time": 110.024,
+                "Actual Startup Time": 108.117,
+                "Actual Total Time": 108.118,
                 "Actual Rows": 1,
                 "Actual Loops": 1,
                 "Disabled": false,
@@ -107,7 +109,7 @@
               },
               "Planning Time": 0.011,
               "Triggers": [],
-              "Execution Time": 110.038
+              "Execution Time": 108.132
             }
           ]
         }
@@ -115,12 +117,13 @@
     },
     {
       "count": 10000,
-      "elapsedMs": 1059.8855999999996,
-      "policyMs": 0.7458000000005995,
-      "databasePayloadBytes": 114187,
-      "browserPayloadBytes": 128441,
-      "uniquePoints": 495,
-      "parity": "exact summaries/flags/matchups/sampled-points",
+      "asOf": "2026-09-07T13:27:44.474-08:00",
+      "elapsedMs": 1045.1096000000016,
+      "policyMs": 0.9063999999998487,
+      "databasePayloadBytes": 114823,
+      "browserPayloadBytes": 129585,
+      "uniquePoints": 500,
+      "parity": "exact summaries/flags/matchups/sampled-points/full-bounds/all-history-pages",
       "explain": [
         {
           "QUERY PLAN": [
@@ -133,8 +136,8 @@
                 "Total Cost": 0.26,
                 "Plan Rows": 1,
                 "Plan Width": 32,
-                "Actual Startup Time": 1042.353,
-                "Actual Total Time": 1042.354,
+                "Actual Startup Time": 1017.072,
+                "Actual Total Time": 1017.073,
                 "Actual Rows": 1,
                 "Actual Loops": 1,
                 "Disabled": false,
@@ -161,9 +164,9 @@
                 "Temp Read Blocks": 0,
                 "Temp Written Blocks": 0
               },
-              "Planning Time": 0.019,
+              "Planning Time": 0.021,
               "Triggers": [],
-              "Execution Time": 1042.368
+              "Execution Time": 1017.088
             }
           ]
         }

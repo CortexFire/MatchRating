@@ -39,6 +39,17 @@ export async function createTestDatabase(root = process.cwd(), beforeMigration =
   return db;
 }
 
+// Only use on the disposable database returned above, inside the fixture transaction.
+// Keep production RPC definitions unchanged while fixing their request clock for comparisons.
+export async function freezeBenchmarkClock(db, asOf) {
+  if (typeof asOf !== 'string' || !Number.isFinite(Date.parse(asOf))) throw new Error('Invalid benchmark timestamp');
+  await db.query("select set_config('matchrating.benchmark_as_of', $1, true)", [asOf]);
+  await db.exec(`create or replace function pg_catalog.statement_timestamp()
+    returns timestamptz language sql stable as $$
+      select current_setting('matchrating.benchmark_as_of')::timestamptz
+    $$;`);
+}
+
 export async function runDatabaseTests(root = process.cwd()) {
   const db = await createTestDatabase(root);
   const version = await db.query('select version()');

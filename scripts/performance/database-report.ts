@@ -1,8 +1,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { createTestDatabase } from './db-harness.mjs';
-import { createPerformanceFixture, FIXTURE_ACTOR, FIXTURE_GROUP } from './fixtures';
+import { createTestDatabase, freezeBenchmarkClock } from './db-harness.mjs';
+import { createPerformanceFixture, FIXTURE_ACTOR, FIXTURE_GROUP, FIXTURE_AS_OF } from './fixtures';
 import { projectPlayerAnalytics, type AnalyticsFactsPayload } from './reference-analytics-policy';
 
 async function main() {
@@ -14,6 +14,7 @@ async function main() {
     const db = await createTestDatabase(process.cwd());
     try {
       await db.exec('begin');
+      await freezeBenchmarkClock(db,FIXTURE_AS_OF);
       await db.exec(createPerformanceFixture(count));
       const query = `select public.get_player_analytics_facts('${FIXTURE_GROUP}', '${FIXTURE_ACTOR}') as facts`;
       const start = performance.now();
@@ -24,7 +25,7 @@ async function main() {
       const model = projectPlayerAnalytics(facts);
       const policyMs = performance.now()-policyStart;
       const explain = await db.query(`explain (analyze,buffers,format json) ${query}`);
-      reports.push({ count, elapsedMs, policyMs, databasePayloadBytes:Buffer.byteLength(JSON.stringify(facts)), browserPayloadBytes:Buffer.byteLength(JSON.stringify(model)), explain:explain.rows });
+      reports.push({ count, asOf:facts.asOf, elapsedMs, policyMs, databasePayloadBytes:Buffer.byteLength(JSON.stringify(facts)), browserPayloadBytes:Buffer.byteLength(JSON.stringify(model)), explain:explain.rows });
       mkdirSync(resolve('output/performance'),{recursive:true});
       writeFileSync(resolve(`output/performance/${label}-${count}-reference.json`),JSON.stringify({facts,model}));
       console.log(JSON.stringify(reports.at(-1)));

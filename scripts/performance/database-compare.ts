@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { createTestDatabase } from './db-harness.mjs';
+import { createTestDatabase, freezeBenchmarkClock } from './db-harness.mjs';
 import { createPerformanceFixture, FIXTURE_ACTOR, FIXTURE_GROUP } from './fixtures';
 import { projectPlayerAnalytics, type AnalyticsFactsPayload, type AnalyticsPeriodSnapshot } from './reference-analytics-policy';
 
@@ -18,9 +18,11 @@ async function main() {
   const reports = [];
   const sizes = process.argv[3] ? [Number(process.argv[3])] : [100,1000,10000];
   for (const count of sizes) {
+    const saved = JSON.parse(readFileSync(resolve(`output/performance/baseline-${count}-reference.json`),'utf8'));
     const db = await createTestDatabase(codeRoot);
     try {
       await db.exec('begin');
+      await freezeBenchmarkClock(db,saved.facts.asOf);
       await db.exec(createPerformanceFixture(count));
       const query = `select public.get_player_analytics_v2('${FIXTURE_GROUP}', '${FIXTURE_ACTOR}') as facts`;
       const start = performance.now();
@@ -31,8 +33,8 @@ async function main() {
       const model = policy.projectAggregatedPlayerAnalytics(facts);
       const policyMs = performance.now()-policyStart;
       assert.equal(model.status,'ready');
-      const saved = JSON.parse(readFileSync(resolve(`output/performance/baseline-${count}-reference.json`),'utf8'));
-      const referenceFacts = { ...saved.facts, asOf:model.asOf } as AnalyticsFactsPayload;
+      assert.equal(Date.parse(model.asOf),Date.parse(saved.facts.asOf),'request clock matches saved baseline');
+      const referenceFacts = saved.facts as AnalyticsFactsPayload;
       const reference = projectPlayerAnalytics(referenceFacts);
       assert.equal(reference.status,'ready');
       if (reference.status !== 'ready') throw new Error('Reference not ready');
@@ -70,7 +72,7 @@ async function main() {
       const browserPayloadBytes = Buffer.byteLength(JSON.stringify(model));
       assert.ok(browserPayloadBytes<250000,'bounded initial payload for fixed fixture player count');
       const explain = await db.query(`explain (analyze,buffers,format json) ${query}`);
-      reports.push({count,elapsedMs,policyMs,databasePayloadBytes:Buffer.byteLength(JSON.stringify(facts)),browserPayloadBytes,uniquePoints:Object.keys(model.historyPoints).length,parity:'exact summaries/flags/matchups/sampled-points',explain:explain.rows});
+      reports.push({count,asOf:model.asOf,elapsedMs,policyMs,databasePayloadBytes:Buffer.byteLength(JSON.stringify(facts)),browserPayloadBytes,uniquePoints:Object.keys(model.historyPoints).length,parity:'exact summaries/flags/matchups/sampled-points/full-bounds/all-history-pages',explain:explain.rows});
       mkdirSync(resolve('output/performance'),{recursive:true});
       writeFileSync(resolve(`output/performance/optimized-${count}-model.json`),JSON.stringify(model));
       console.log(JSON.stringify(reports.at(-1)));
