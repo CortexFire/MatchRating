@@ -41,6 +41,26 @@ async function main() {
         assert.ok(ids.length<=200,`${period} sample is bounded`);
         const referencePoints = new Map(reference.periods[period].ratingHistory.map(p=>[p.matchId,p]));
         for(const id of ids) assert.deepEqual(model.historyPoints[id],referencePoints.get(id),`exact sampled point ${id}`);
+        const full = reference.periods[period].ratingHistory;
+        const bounds = full.length ? [Math.min(...full.map(p=>p.rating-p.performanceSd))-20, Math.max(...full.map(p=>p.rating+p.performanceSd))+20] : [0,1];
+        assert.deepEqual(model.periods[period].ratingHistoryBounds,bounds,`${period} full-series bounds`);
+        const expected = [...full].reverse();
+        const inspected = [];
+        let cursorAt: string|null = null;
+        let cursorId: string|null = null;
+        for (;;) {
+          const pageResult = await db.query('select public.get_player_analytics_history_v2($1::uuid,$2::uuid,$3::text,$4::timestamptz,$5::bigint,$6::timestamptz,$7::uuid,50) as page', [FIXTURE_GROUP,FIXTURE_ACTOR,period,model.asOf,model.ratingVersion,cursorAt,cursorId]);
+          const page = pageResult.rows[0].page;
+          assert.ok(page.points.length<=50,'exact page bounded to 50');
+          inspected.push(...page.points);
+          assert.ok(inspected.length<=expected.length,'pagination does not repeat points');
+          if (!page.hasMore) break;
+          assert.equal(page.points.length,50,'nonterminal page full');
+          const last = page.points.at(-1);
+          cursorAt = last.occurredAt;
+          cursorId = last.matchId;
+        }
+        assert.deepEqual(inspected,expected,`${count} ${period} every exact point reachable once`);
       }
       assert.ok(Object.keys(model.historyPoints).length<=800);
       const browserPayloadBytes = Buffer.byteLength(JSON.stringify(model));
