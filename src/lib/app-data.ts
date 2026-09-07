@@ -8,7 +8,6 @@ import {
   type MatchReadRows,
   type MatchView,
 } from "@/lib/matches/read-model";
-import { listVisibleGroupMemberships } from "@/lib/group-membership-visibility";
 import { rankGroupListPlayers } from "@/lib/player-rankings";
 import {
   encodeMatchHistoryCursor,
@@ -82,6 +81,10 @@ type GroupRow = {
   description: string;
 };
 
+type GroupListRow = GroupRow & {
+  member_count: number | string;
+};
+
 type MembershipRow = {
   group_id: string;
   role: "owner" | "admin" | "member";
@@ -103,11 +106,46 @@ type RatingRow = {
   consistency_log_mean?: number | string | null;
 };
 
+type GroupMemberSnapshotRow = MembershipRow & {
+  display_name: string | null;
+  is_guest: boolean;
+  active_until: string | null;
+  rating: RatingRow["rating"] | null;
+  rd: RatingRow["rd"] | null;
+  games_played: number | null;
+  consistency_log_mean: number | string | null;
+};
+
+type GroupMemberSnapshot = {
+  group: GroupRow;
+  memberships: GroupMemberSnapshotRow[];
+};
+
+type MatchHistoryBundle = Omit<MatchReadRows, "currentUserId" | "currentUserAdminGroupIds"> & {
+  actorUserId: string;
+  currentUserAdminGroupIds: string[];
+};
+
 const getCurrentUserId = cache(requireUserId);
 const canCurrentUserReadGroupCached = cache(async (groupId: string) => {
   if (!isUuid(groupId)) return false;
   const userId = await requireUserId();
   return canReadGroup(groupId, userId, createSupabaseServiceClient());
+});
+const getGroupMemberSnapshotCached = cache(async (groupId: string): Promise<GroupMemberSnapshot | null> => {
+  const client = await createSupabaseServerClient();
+  const { data, error } = await client.rpc("get_group_member_snapshot_v2", { p_group_id: groupId });
+  if (error) {
+    if ((error as { code?: string }).code === "MR403") {
+      throw new Error("You are not an active member of this group.");
+    }
+    throw error;
+  }
+  if (data === null) return null;
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("get_group_member_snapshot_v2 returned an invalid payload");
+  }
+  return data as GroupMemberSnapshot;
 });
 
 export type AppMatchSummary = MatchView;
@@ -149,42 +187,14 @@ export async function getCurrentProfile(): Promise<AppProfile> {
 }
 
 export async function listCurrentUserGroups(): Promise<AppGroup[]> {
-  const userId = await getCurrentUserId();
-  const service = createSupabaseServiceClient();
-  const { data: memberships, error } = await service
-    .from("group_memberships")
-    .select("group_id")
-    .eq("user_id", userId)
-    .eq("status", "active")
-    .is("left_at", null);
-
-  if (error) {
-    throw error;
-  }
-
-  const groupIds = [...new Set((memberships ?? []).map((row: { group_id: string }) => row.group_id))];
-  if (!groupIds.length) {
-    return [];
-  }
-
-  const [{ data: groups, error: groupsError }, visibleMemberships] = await Promise.all([
-    service.from("groups").select("id, name, description").in("id", groupIds).is("archived_at", null),
-    listVisibleGroupMemberships(groupIds, service),
-  ]);
-
-  if (groupsError) {
-    throw groupsError;
-  }
-
-  const memberCounts = countBy(
-    visibleMemberships.map((membership) => ({ group_id: membership.groupId })),
-    "group_id",
-  );
-  return (groups ?? []).map((group: GroupRow) => ({
+  const client = await createSupabaseServerClient();
+  const { data, error } = await client.rpc("list_current_user_groups_v2", {});
+  if (error) throw error;
+  return ((data ?? []) as GroupListRow[]).map((group) => ({
     id: group.id,
     name: group.name,
     description: group.description,
-    memberCount: memberCounts.get(group.id) ?? 0,
+    memberCount: Number(group.member_count),
   }));
 }
 
@@ -208,54 +218,36 @@ export async function hasOtherCurrentUserGroup(currentGroupId: string): Promise<
 }
 
 export async function getGroup(groupId: string): Promise<AppGroup | null> {
-  await ensureCurrentUserCanReadGroup(groupId);
-  const service = createSupabaseServiceClient();
-  const [{ data: group, error }, visibleMemberships] = await Promise.all([
-    service.from("groups").select("id, name, description").eq("id", groupId).is("archived_at", null).maybeSingle(),
-    listVisibleGroupMemberships([groupId], service),
-  ]);
-
-  if (error) {
-    throw error;
-  }
-
-  if (!group) {
-    return null;
-  }
+  const snapshot = await getAuthorizedGroupMemberSnapshot(groupId);
+  if (!snapshot) return null;
 
   return {
-    id: group.id,
-    name: group.name,
-    description: group.description,
-    memberCount: visibleMemberships.length,
+    id: snapshot.group.id,
+    name: snapshot.group.name,
+    description: snapshot.group.description,
+    memberCount: snapshot.memberships.length,
   };
 }
 
 export async function listGroupMatches(groupId: string, options: { limit: number }): Promise<AppMatchSummary[]> {
-  const userId = await requireUserId();
-  const service = createSupabaseServiceClient();
   if (!(await canCurrentUserReadGroupCached(groupId))) return [];
-  const rows = await queryMatchHistoryRows({ groupId, limit: options.limit });
-  return loadMatchViews(rows, userId, service);
+  const bundle = await queryMatchHistoryBundle({ groupId, limit: options.limit });
+  return buildHistoryMatchViews(bundle);
 }
 
 export async function listCurrentUserMatches(options: { limit: number }): Promise<AppMatchSummary[]> {
-  const userId = await requireUserId();
-  const service = createSupabaseServiceClient();
-  const rows = await queryMatchHistoryRows({ limit: options.limit });
-  return loadMatchViews(rows, userId, service);
+  const bundle = await queryMatchHistoryBundle({ limit: options.limit });
+  return buildHistoryMatchViews(bundle);
 }
 
 const MATCH_HISTORY_PAGE_SIZE = 20;
 
 export async function listMatchHistoryPage(input: MatchHistoryRequestInput = {}): Promise<MatchHistoryPage> {
   const request = normalizeMatchHistoryRequest(input);
-  const userId = await requireUserId();
-  const service = createSupabaseServiceClient();
-  const rows = await queryMatchHistoryRows({ ...request, limit: MATCH_HISTORY_PAGE_SIZE + 1 });
-  const hasNextPage = rows.length > MATCH_HISTORY_PAGE_SIZE;
-  const pageRows = rows.slice(0, MATCH_HISTORY_PAGE_SIZE);
-  const matches = await loadMatchViews(pageRows, userId, service);
+  const bundle = await queryMatchHistoryBundle({ ...request, limit: MATCH_HISTORY_PAGE_SIZE + 1 });
+  const hasNextPage = bundle.matches.length > MATCH_HISTORY_PAGE_SIZE;
+  const pageRows = bundle.matches.slice(0, MATCH_HISTORY_PAGE_SIZE);
+  const matches = buildHistoryMatchViews({ ...bundle, matches: pageRows });
   const lastRow = pageRows.at(-1);
 
   return {
@@ -266,19 +258,19 @@ export async function listMatchHistoryPage(input: MatchHistoryRequestInput = {})
   };
 }
 
-async function queryMatchHistoryRows({
+async function queryMatchHistoryBundle({
   groupId = null,
   playerId = null,
   status = null,
   search = null,
   cursor = null,
   limit,
-}: Partial<NormalizedMatchHistoryRequest> & { limit: number }): Promise<MatchReadRows["matches"]> {
+}: Partial<NormalizedMatchHistoryRequest> & { limit: number }): Promise<MatchHistoryBundle> {
   if (!Number.isInteger(limit) || limit < 1 || limit > 51) {
     throw new Error("Match history limit must be between 1 and 51");
   }
   const client = await createSupabaseServerClient();
-  const { data, error } = await client.rpc("list_match_history_page", {
+  const { data, error } = await client.rpc("list_match_history_bundle_v2", {
     p_group_id: groupId,
     p_player_id: playerId,
     p_status: status,
@@ -288,7 +280,24 @@ async function queryMatchHistoryRows({
     p_limit: limit,
   });
   if (error) throw error;
-  return (data ?? []) as MatchReadRows["matches"];
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("list_match_history_bundle_v2 returned an invalid payload");
+  }
+  return data as MatchHistoryBundle;
+}
+
+function buildHistoryMatchViews(bundle: MatchHistoryBundle) {
+  return buildMatchViews({
+    currentUserId: bundle.actorUserId,
+    currentUserAdminGroupIds: bundle.currentUserAdminGroupIds ?? [],
+    groups: bundle.groups ?? [],
+    matches: bundle.matches ?? [],
+    revisions: bundle.revisions ?? [],
+    participants: bundle.participants ?? [],
+    games: bundle.games ?? [],
+    ratingEvents: bundle.ratingEvents ?? [],
+    profiles: bundle.profiles ?? [],
+  });
 }
 
 export async function getGroupMatchDetail(groupId: string, matchId: string): Promise<AppMatchDetail | null> {
@@ -306,7 +315,7 @@ export async function getGroupMatchDetail(groupId: string, matchId: string): Pro
   if (error) throw error;
   const row = data as MatchReadRows["matches"][number] | null;
   if (!row || row.id !== matchId || row.group_id !== groupId) return null;
-  return (await loadMatchViews([row], userId, service))[0] ?? null;
+  return (await loadMatchViewsFromTables([row], userId, service))[0] ?? null;
 }
 
 export async function canCurrentUserReadGroup(groupId: string): Promise<boolean> {
@@ -334,7 +343,7 @@ function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-async function loadMatchViews(
+async function loadMatchViewsFromTables(
   matches: MatchReadRows["matches"],
   currentUserId: string,
   service: ReturnType<typeof createSupabaseServiceClient>,
@@ -382,55 +391,37 @@ async function loadMatchViews(
 
 
 export async function listGroupPlayers(groupId: string): Promise<AppPlayer[]> {
-  await ensureCurrentUserCanReadGroup(groupId);
-  const service = createSupabaseServiceClient();
-  const memberRows = await listVisibleGroupMemberships([groupId], service);
-  const userIds = memberRows.map((membership) => membership.userId);
-  if (!userIds.length) {
-    return [];
-  }
+  const snapshot = await getAuthorizedGroupMemberSnapshot(groupId);
+  if (!snapshot) return [];
 
-  const { data: ratings, error: ratingsError } = await service
-    .from("group_rating_states")
-    .select("user_id, rating, rd, games_played, consistency_log_mean")
-    .eq("group_id", groupId)
-    .in("user_id", userIds);
-
-  if (ratingsError) {
-    throw ratingsError;
-  }
-
-  const ratingsByUserId = new Map((ratings ?? []).map((rating: RatingRow) => [rating.user_id, rating]));
-
-  const players = memberRows.map((membership) => {
-    const profile = membership.profile;
-    const rating = ratingsByUserId.get(membership.userId);
-    const name = profile?.displayName ?? "Unknown player";
+  const players = snapshot.memberships.map((membership) => {
+    const name = membership.display_name ?? "Unknown player";
 
     return {
-      id: membership.userId,
+      id: membership.user_id,
       name,
       initials: initialsFor(name),
-      role: profile?.isGuest ? "Guest" : displayRole(membership.role),
-      rating: Math.round(Number(rating?.rating ?? 1500)),
-      rd: Number(rating?.rd ?? 350),
-      performanceSd: performanceSdFromLogMean(rating?.consistency_log_mean),
-      gamesPlayed: rating?.games_played ?? 0,
+      role: membership.is_guest ? "Guest" : displayRole(membership.role),
+      rating: Math.round(Number(membership.rating ?? 1500)),
+      rd: Number(membership.rd ?? 350),
+      performanceSd: performanceSdFromLogMean(membership.consistency_log_mean),
+      gamesPlayed: membership.games_played ?? 0,
       status:
-        profile?.activeUntil && new Date(profile.activeUntil).getTime() >= Date.now()
+        membership.active_until && new Date(membership.active_until).getTime() >= Date.now()
           ? "Active"
           : "Inactive",
-      isGuest: profile?.isGuest ?? false,
+      isGuest: membership.is_guest,
     } satisfies Omit<AppPlayer, "rank">;
   });
 
   return rankGroupListPlayers(players);
 }
 
-async function ensureCurrentUserCanReadGroup(groupId: string) {
-  if (!(await canCurrentUserReadGroupCached(groupId))) {
+async function getAuthorizedGroupMemberSnapshot(groupId: string) {
+  if (!isUuid(groupId)) {
     throw new Error("You are not an active member of this group.");
   }
+  return getGroupMemberSnapshotCached(groupId.toLowerCase());
 }
 
 function toProfile(row: ProfileRow): AppProfile {
@@ -461,12 +452,4 @@ function displayRole(role: MembershipRow["role"]): AppPlayer["role"] {
 
   return "Member";
 }
-
-function countBy<T extends Record<string, string>>(rows: T[], key: keyof T) {
-  const counts = new Map<string, number>();
-  rows.forEach((row) => counts.set(row[key], (counts.get(row[key]) ?? 0) + 1));
-  return counts;
-}
-
-
 

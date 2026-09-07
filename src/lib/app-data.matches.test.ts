@@ -107,6 +107,88 @@ let from: ReturnType<typeof vi.fn>;
 let rpc: ReturnType<typeof vi.fn>;
 let queriesByTable: Record<string, Array<ReturnType<typeof makeQuery>>>;
 
+function visibleMembershipRows(groupIds: string[]) {
+  const profiles = new Map(rowsByTable.profiles.map((row) => {
+    const profile = row as { id: string };
+    return [profile.id, row as Record<string, unknown>];
+  }));
+  const revisions = new Map(rowsByTable.match_revisions.map((row) => {
+    const revision = row as { id: string; match_id: string };
+    return [revision.id, revision.match_id];
+  }));
+  const matches = new Map(rowsByTable.matches.map((row) => {
+    const match = row as { id: string; group_id: string };
+    return [match.id, match.group_id];
+  }));
+
+  return rowsByTable.group_memberships.flatMap((row) => {
+    const membership = row as { group_id: string; user_id: string; role: string; status: string; left_at: string | null };
+    if (!groupIds.includes(membership.group_id) || membership.status !== "active" || membership.left_at !== null) return [];
+    const profile = profiles.get(membership.user_id);
+    if (!profile) return [{
+      group_id: membership.group_id,
+      user_id: membership.user_id,
+      role: membership.role,
+      display_name: null,
+      is_guest: false,
+      active_until: null,
+    }];
+    const isGuest = profile.is_guest === true;
+    const hasDraft = rowsByTable.active_match_drafts.some((draftRow) => {
+      const draft = draftRow as { group_id: string; team_a_user_ids: string[]; team_b_user_ids: string[]; expires_at: string; submitted_match_id: string | null };
+      return draft.group_id === membership.group_id
+        && draft.submitted_match_id === null
+        && new Date(draft.expires_at).getTime() > Date.now()
+        && [...draft.team_a_user_ids, ...draft.team_b_user_ids].includes(membership.user_id);
+    });
+    const hasHistory = rowsByTable.match_participants.some((participantRow) => {
+      const participant = participantRow as { revision_id: string; user_id: string };
+      const matchId = revisions.get(participant.revision_id);
+      return participant.user_id === membership.user_id
+        && matchId !== undefined
+        && matches.get(matchId) === membership.group_id;
+    });
+    if (isGuest && !hasDraft && !hasHistory) return [];
+    return [{
+      group_id: membership.group_id,
+      user_id: membership.user_id,
+      role: membership.role,
+      display_name: profile.display_name,
+      is_guest: isGuest,
+      active_until: profile.active_until ?? null,
+    }];
+  });
+}
+
+function historyBundle(matches: unknown[]) {
+  const matchRows = matches as Array<{ id: string; group_id: string; active_revision_id: string }>;
+  const revisionIds = new Set(matchRows.map((match) => match.active_revision_id));
+  const groupIds = new Set(matchRows.map((match) => match.group_id));
+  const revisions = rowsByTable.match_revisions.filter((row) => revisionIds.has((row as { id: string }).id));
+  const participants = rowsByTable.match_participants.filter((row) => revisionIds.has((row as { revision_id: string }).revision_id));
+  const playerIds = new Set(participants.map((row) => (row as { user_id: string }).user_id));
+  return {
+    actorUserId: OPPONENT,
+    currentUserAdminGroupIds: rowsByTable.group_memberships.flatMap((row) => {
+      const membership = row as { group_id: string; user_id: string; role: string; status: string; left_at: string | null };
+      return membership.user_id === OPPONENT
+        && membership.role !== "member"
+        && membership.status === "active"
+        && membership.left_at === null
+        && groupIds.has(membership.group_id)
+        ? [membership.group_id]
+        : [];
+    }),
+    groups: rowsByTable.groups.filter((row) => groupIds.has((row as { id: string }).id)),
+    matches: matchRows,
+    revisions,
+    participants,
+    games: rowsByTable.match_games.filter((row) => revisionIds.has((row as { revision_id: string }).revision_id)),
+    ratingEvents: rowsByTable.rating_events.filter((row) => revisionIds.has((row as { revision_id: string }).revision_id)),
+    profiles: rowsByTable.profiles.filter((row) => playerIds.has((row as { id: string }).id)),
+  };
+}
+
 function makeQuery(table: string) {
   let rows = rowsByTable[table] ?? [];
   const orders: Array<{ column: string; ascending: boolean }> = [];
@@ -187,9 +269,61 @@ describe("stored match reads", () => {
       (queriesByTable[table] ??= []).push(query);
       return query;
     });
-    rpc = vi.fn(async (_name: string, args: Record<string, unknown>) => {
+    rpc = vi.fn(async (name: string, args: Record<string, unknown>) => {
+      if (name === "list_current_user_groups_v2") {
+        const actorGroupIds = new Set(rowsByTable.group_memberships.flatMap((row) => {
+          const membership = row as { group_id: string; user_id: string; status: string; left_at: string | null };
+          return membership.user_id === OPPONENT && membership.status === "active" && membership.left_at === null
+            ? [membership.group_id]
+            : [];
+        }));
+        const visible = visibleMembershipRows([...actorGroupIds]);
+        return {
+          data: rowsByTable.groups
+            .filter((row) => actorGroupIds.has((row as { id: string }).id) && !(row as { archived_at?: string | null }).archived_at)
+            .map((row) => ({
+              ...row as Record<string, unknown>,
+              member_count: visible.filter((membership) => membership.group_id === (row as { id: string }).id).length,
+            })),
+          error: null,
+        };
+      }
+      if (name === "get_group_member_snapshot_v2") {
+        const groupId = args.p_group_id as string;
+        const membership = rowsByTable.group_memberships.find((row) => {
+          const candidate = row as { group_id: string; user_id: string; status: string; left_at: string | null };
+          return candidate.group_id === groupId && candidate.user_id === OPPONENT
+            && candidate.status === "active" && candidate.left_at === null;
+        });
+        if (!membership) {
+          return {
+            data: null,
+            error: Object.assign(new Error("Not an active group member"), { code: "MR403" }),
+          };
+        }
+        const group = rowsByTable.groups.find((row) => (row as { id: string }).id === groupId);
+        if (!group || (group as { archived_at?: string | null }).archived_at) return { data: null, error: null };
+        const ratings = new Map((rowsByTable.group_rating_states ?? []).map((row) => {
+          const rating = row as { user_id: string };
+          return [rating.user_id, row as Record<string, unknown>];
+        }));
+        return {
+          data: {
+            group,
+            memberships: visibleMembershipRows([groupId]).map((visible) => ({
+              ...visible,
+              rating: ratings.get(visible.user_id)?.rating ?? null,
+              rd: ratings.get(visible.user_id)?.rd ?? null,
+              games_played: ratings.get(visible.user_id)?.games_played ?? null,
+              consistency_log_mean: ratings.get(visible.user_id)?.consistency_log_mean ?? null,
+            })),
+          },
+          error: null,
+        };
+      }
       const groupId = args.p_group_id as string | null;
       const status = args.p_status as string | null;
+      const playerId = args.p_player_id as string | null;
       const participantRevisionIds = new Set(
         rowsByTable.match_participants
           .filter((row) => (row as { user_id: string }).user_id === OPPONENT)
@@ -207,9 +341,13 @@ describe("stored match reads", () => {
         .filter((row) => {
           const match = row as { group_id: string; active_revision_id: string | null; status: string };
           if (!match.active_revision_id || (status && match.status !== status)) return false;
-          return groupId
+          const inScope = groupId
             ? match.group_id === groupId
             : activeGroupIds.has(match.group_id) && participantRevisionIds.has(match.active_revision_id);
+          return inScope && (!playerId || rowsByTable.match_participants.some((participantRow) => {
+            const participant = participantRow as { revision_id: string; user_id: string };
+            return participant.revision_id === match.active_revision_id && participant.user_id === playerId;
+          }));
         })
         .sort((left, right) => {
           const leftMatch = left as { submitted_at: string; id: string };
@@ -217,7 +355,7 @@ describe("stored match reads", () => {
           return rightMatch.submitted_at.localeCompare(leftMatch.submitted_at) || rightMatch.id.localeCompare(leftMatch.id);
         })
         .slice(0, args.p_limit as number);
-      return { data, error: null };
+      return { data: historyBundle(data), error: null };
     });
     supabaseMocks.resolveUserId.mockResolvedValue(OPPONENT);
     supabaseMocks.createSupabaseServiceClient.mockReturnValue({ from });
@@ -253,14 +391,14 @@ describe("stored match reads", () => {
       team_b_score: 18,
       winner_team: "A",
     }));
-    rpc.mockResolvedValue({ data: pageRows, error: null });
+    rpc.mockResolvedValue({ data: historyBundle(pageRows), error: null });
 
     const page = await listMatchHistoryPage({ status: "confirmed", search: "  Alice  " });
 
     expect(page.matches).toHaveLength(20);
     expect(page.nextCursor).toEqual(expect.any(String));
     expect(page.nextCursor).not.toContain(pageRows[19].submitted_at);
-    expect(rpc).toHaveBeenCalledWith("list_match_history_page", {
+    expect(rpc).toHaveBeenCalledWith("list_match_history_bundle_v2", {
       p_group_id: null,
       p_player_id: null,
       p_status: "confirmed",
@@ -269,16 +407,13 @@ describe("stored match reads", () => {
       p_before_match_id: null,
       p_limit: 21,
     });
-    expect(queriesByTable.match_revisions[0].in).toHaveBeenCalledWith(
-      "id",
-      pageRows.slice(0, 20).map((match) => match.active_revision_id),
-    );
+    expect(from).not.toHaveBeenCalled();
   });
 
   test("forwards selected-group player scope to match history pagination", async () => {
     await listMatchHistoryPage({ groupId: GROUP_ONE, playerId: OPPONENT });
 
-    expect(rpc).toHaveBeenCalledWith("list_match_history_page", expect.objectContaining({
+    expect(rpc).toHaveBeenCalledWith("list_match_history_bundle_v2", expect.objectContaining({
       p_group_id: GROUP_ONE,
       p_player_id: OPPONENT,
       p_limit: 21,
@@ -288,13 +423,11 @@ describe("stored match reads", () => {
   test("keeps the recent current-user reader bounded without loading every participant revision", async () => {
     await listCurrentUserMatches({ limit: 3 });
 
-    expect(rpc).toHaveBeenCalledWith("list_match_history_page", expect.objectContaining({
+    expect(rpc).toHaveBeenCalledWith("list_match_history_bundle_v2", expect.objectContaining({
       p_group_id: null,
       p_limit: 3,
     }));
-    expect(queriesByTable.match_participants.every((query) =>
-      query.select.mock.calls.every(([columns]) => columns !== "revision_id"),
-    )).toBe(true);
+    expect(from).not.toHaveBeenCalled();
   });
 
   test("orders one group's hydrated matches newest first", async () => {
@@ -312,7 +445,7 @@ describe("stored match reads", () => {
 
     await listGroupMatches(GROUP_ONE, { limit: 5 });
 
-    expect(rpc).toHaveBeenCalledWith("list_match_history_page", expect.objectContaining({
+    expect(rpc).toHaveBeenCalledWith("list_match_history_bundle_v2", expect.objectContaining({
       p_group_id: GROUP_ONE,
       p_limit: 5,
     }));
@@ -345,6 +478,7 @@ describe("stored match reads", () => {
       query.maybeSingle.mock.calls.length > 0,
     );
     expect(membershipAuthorizationQueries).toHaveLength(1);
+    expect(rpc.mock.calls.filter(([name]) => name === "get_group_member_snapshot_v2")).toHaveLength(1);
   });
 
   test("maps an inclusive activity expiry without an extra history query", async () => {
@@ -366,12 +500,8 @@ describe("stored match reads", () => {
         { id: SUBMITTER, status: "Active" },
         { id: OPPONENT, status: "Inactive" },
       ]);
-      expect(queriesByTable.profiles[0].select).toHaveBeenCalledWith("id, display_name, is_guest, active_until");
-      expect(
-        from.mock.calls.filter(([table]) =>
-          ["matches", "match_participants", "match_revisions", "active_match_drafts"].includes(table),
-        ),
-      ).toHaveLength(0);
+      expect(rpc).toHaveBeenCalledWith("get_group_member_snapshot_v2", { p_group_id: GROUP_ONE });
+      expect(from).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
@@ -440,7 +570,7 @@ describe("stored match reads", () => {
     }
   });
 
-  test("propagates guest association query failures", async () => {
+  test("propagates group snapshot query failures", async () => {
     rowsByTable.group_memberships = [
       { group_id: GROUP_ONE, user_id: OPPONENT, role: "member", status: "active", left_at: null },
       { group_id: GROUP_ONE, user_id: ORPHAN_GUEST, role: "member", status: "active", left_at: null },
@@ -449,9 +579,9 @@ describe("stored match reads", () => {
       { id: OPPONENT, display_name: "Bea Rivera", is_guest: false, active_until: null },
       { id: ORPHAN_GUEST, display_name: "Orphan Guest", is_guest: true, active_until: null },
     ];
-    errorsByTable.active_match_drafts = new Error("draft lookup failed");
+    rpc.mockResolvedValueOnce({ data: null, error: new Error("snapshot lookup failed") });
 
-    await expect(listGroupPlayers(GROUP_ONE)).rejects.toThrow("draft lookup failed");
+    await expect(listGroupPlayers(GROUP_ONE)).rejects.toThrow("snapshot lookup failed");
   });
 
   test("uses visible memberships for current-user and individual group counts", async () => {
@@ -561,9 +691,7 @@ describe("stored match reads", () => {
 
     const players = await listGroupPlayers(GROUP_ONE);
 
-    expect(queriesByTable.group_rating_states[0].select).toHaveBeenCalledWith(
-      "user_id, rating, rd, games_played, consistency_log_mean",
-    );
+    expect(rpc).toHaveBeenCalledWith("get_group_member_snapshot_v2", { p_group_id: GROUP_ONE });
     expect(players[0]?.performanceSd).toBe(85);
   });
 

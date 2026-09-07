@@ -92,6 +92,47 @@ describe("buildMatchViews", () => {
     expect(match.teamB[1].ratingChange).toBeUndefined();
   });
 
+  test("indexes related rows by revision once for a multi-match page", () => {
+    let revisionReads = 0;
+    const withRevisionId = <T extends object>(value: string, row: T): T & { revision_id: string } =>
+      Object.defineProperty(row, "revision_id", {
+        enumerable: true,
+        get() {
+          revisionReads += 1;
+          return value;
+        },
+      }) as T & { revision_id: string };
+
+    buildMatchViews({
+      currentUserId: "viewer",
+      currentUserAdminGroupIds: [],
+      groups: [{ id: "group-1", name: "Club" }],
+      matches: [
+        { id: "match-1", group_id: "group-1", active_revision_id: "revision-1", status: "confirmed", submitted_at: "2026-08-08T00:00:00.000Z", review_started_at: "2026-08-08T00:00:00.000Z" },
+        { id: "match-2", group_id: "group-1", active_revision_id: "revision-2", status: "confirmed", submitted_at: "2026-08-07T00:00:00.000Z", review_started_at: "2026-08-07T00:00:00.000Z" },
+      ],
+      revisions: [
+        { id: "revision-1", match_id: "match-1", submitted_by_user_id: "viewer", format: "singles" },
+        { id: "revision-2", match_id: "match-2", submitted_by_user_id: "viewer", format: "singles" },
+      ],
+      participants: [
+        withRevisionId("revision-1", { user_id: "viewer", team: "A", slot: 1 }),
+        withRevisionId("revision-2", { user_id: "viewer", team: "A", slot: 1 }),
+      ],
+      games: [
+        withRevisionId("revision-1", { game_number: 1, team_a_score: 21, team_b_score: 18, winner_team: "A" }),
+        withRevisionId("revision-2", { game_number: 1, team_a_score: 21, team_b_score: 19, winner_team: "A" }),
+      ],
+      ratingEvents: [
+        withRevisionId("revision-1", { user_id: "viewer", sequence: 1, before_rating: 1500, before_rd: 350, after_rating: 1510, after_rd: 300 }),
+        withRevisionId("revision-2", { user_id: "viewer", sequence: 2, before_rating: 1510, before_rd: 300, after_rating: 1520, after_rd: 280 }),
+      ],
+      profiles: [{ id: "viewer", display_name: "Viewer" }],
+    });
+
+    expect(revisionReads).toBe(6);
+  });
+
   test("allows participants and group admins to correct but rejects neutral members", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-08T20:00:00.000Z"));

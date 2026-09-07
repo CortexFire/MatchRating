@@ -64,16 +64,38 @@ export function buildMatchViews(rows: MatchReadRows): MatchView[] {
   const adminGroupIds = new Set(rows.currentUserAdminGroupIds);
   const revisions = new Map(rows.revisions.map((revision) => [revision.id, revision]));
   const profiles = new Map(rows.profiles.map((profile) => [profile.id, profile.display_name]));
+  const participantsByRevision = groupByRevision(rows.participants);
+  const gamesByRevision = groupByRevision(rows.games);
+  const ratingEventsByRevision = new Map<string, {
+    count: number;
+    byUser: Map<string, { first: MatchReadRows["ratingEvents"][number]; last: MatchReadRows["ratingEvents"][number] }>;
+  }>();
+
+  for (const event of rows.ratingEvents) {
+    const revisionId = event.revision_id;
+    let revisionEvents = ratingEventsByRevision.get(revisionId);
+    if (!revisionEvents) {
+      revisionEvents = { count: 0, byUser: new Map() };
+      ratingEventsByRevision.set(revisionId, revisionEvents);
+    }
+    revisionEvents.count += 1;
+    const current = revisionEvents.byUser.get(event.user_id);
+    const sequence = Number(event.sequence);
+    if (!current) {
+      revisionEvents.byUser.set(event.user_id, { first: event, last: event });
+    } else {
+      if (sequence < Number(current.first.sequence)) current.first = event;
+      if (sequence > Number(current.last.sequence)) current.last = event;
+    }
+  }
 
   return rows.matches.flatMap((match) => {
     const revision = revisions.get(match.active_revision_id);
     if (!revision || revision.match_id !== match.id) return [];
 
-    const revisionParticipants = rows.participants
-      .filter((participant) => participant.revision_id === revision.id)
+    const revisionParticipants = (participantsByRevision.get(revision.id) ?? [])
       .sort((left, right) => left.slot - right.slot);
-    const revisionGames = rows.games
-      .filter((game) => game.revision_id === revision.id)
+    const revisionGames = (gamesByRevision.get(revision.id) ?? [])
       .sort((left, right) => left.game_number - right.game_number)
       .map((game) => ({
         gameNumber: game.game_number,
@@ -81,21 +103,10 @@ export function buildMatchViews(rows: MatchReadRows): MatchView[] {
         teamBScore: game.team_b_score,
         winnerTeam: game.winner_team,
       }));
-    const ratingEventsByUser = new Map<string, { first: MatchReadRows["ratingEvents"][number]; last: MatchReadRows["ratingEvents"][number] }>();
-    for (const event of rows.ratingEvents) {
-      if (event.revision_id !== revision.id) continue;
-      const current = ratingEventsByUser.get(event.user_id);
-      const sequence = Number(event.sequence);
-      if (!current) {
-        ratingEventsByUser.set(event.user_id, { first: event, last: event });
-      } else {
-        if (sequence < Number(current.first.sequence)) current.first = event;
-        if (sequence > Number(current.last.sequence)) current.last = event;
-      }
-    }
+    const revisionRatingEvents = ratingEventsByRevision.get(revision.id);
     const toPlayer = (participant: MatchReadRows["participants"][number]): MatchPlayer => {
       const name = profiles.get(participant.user_id) ?? "Unknown player";
-      const events = ratingEventsByUser.get(participant.user_id);
+      const events = revisionRatingEvents?.byUser.get(participant.user_id);
       return {
         id: participant.user_id,
         name,
@@ -110,7 +121,7 @@ export function buildMatchViews(rows: MatchReadRows): MatchView[] {
     };
     const currentParticipant = revisionParticipants.find((participant) => participant.user_id === rows.currentUserId);
     const canModerate = adminGroupIds.has(match.group_id);
-    const ratingCount = rows.ratingEvents.filter((event) => event.revision_id === revision.id).length;
+    const ratingCount = revisionRatingEvents?.count ?? 0;
     const teamAWins = revisionGames.filter((game) => game.winnerTeam === "A").length;
     const teamBWins = revisionGames.length - teamAWins;
     const correctionUntil = new Date(new Date(match.review_started_at).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -140,6 +151,17 @@ export function buildMatchViews(rows: MatchReadRows): MatchView[] {
         && match.status === "disputed",
     } satisfies MatchView];
   });
+}
+
+function groupByRevision<T extends { revision_id: string }>(rows: T[]) {
+  const grouped = new Map<string, T[]>();
+  for (const row of rows) {
+    const revisionId = row.revision_id;
+    const revisionRows = grouped.get(revisionId);
+    if (revisionRows) revisionRows.push(row);
+    else grouped.set(revisionId, [row]);
+  }
+  return grouped;
 }
 
 function initialsFor(name: string) {
