@@ -263,6 +263,10 @@ describe("transactional match actions", () => {
       activeMemberIds: [actor, creator, opponent],
     });
     supabaseMocks.createSupabaseServiceClient.mockReturnValue(service);
+    supabaseMocks.rpc.mockResolvedValueOnce({
+      data: { draftId: "33333333-3333-4333-8333-333333333333", outcome: "saved" },
+      error: null,
+    });
 
     const result = await actions.saveActiveMatchDraft({
       draftId: "33333333-3333-4333-8333-333333333333",
@@ -277,7 +281,7 @@ describe("transactional match actions", () => {
       ok: true,
       data: { draftId: "33333333-3333-4333-8333-333333333333" },
     });
-    expect(update).toHaveBeenCalledWith(expect.not.objectContaining({ created_by_user_id: expect.anything() }));
+    expect(update).not.toHaveBeenCalled();
   });
 
   test("does not create a draft when a fresh recorder has no players or scores", async () => {
@@ -296,6 +300,10 @@ describe("transactional match actions", () => {
       activeMemberIds: [actor],
     });
     supabaseMocks.createSupabaseServiceClient.mockReturnValue(service);
+    supabaseMocks.rpc.mockResolvedValueOnce({
+      data: { draftId: null, outcome: "unchanged" },
+      error: null,
+    });
 
     const result = await actions.syncActiveMatchDraft({
       groupId,
@@ -309,6 +317,51 @@ describe("transactional match actions", () => {
       ok: true,
       data: { draftId: null, outcome: "unchanged" },
     });
+  });
+
+  test("syncs a draft through one authenticated transactional RPC", async () => {
+    const groupId = "66666666-6666-4666-8666-666666666666";
+    const draftId = "33333333-3333-4333-8333-333333333333";
+    supabaseMocks.rpc.mockResolvedValueOnce({
+      data: { draftId, outcome: "saved" },
+      error: null,
+    });
+
+    const result = await actions.syncActiveMatchDraft({
+      draftId,
+      groupId,
+      format: "singles",
+      teamAUserIds: ["11111111-1111-4111-8111-111111111111"],
+      teamBUserIds: ["77777777-7777-4777-8777-777777777777"],
+      games: [{ teamAScore: 21, teamBScore: null, winnerTeam: "A" }],
+    });
+
+    expect(result).toEqual({ ok: true, data: { draftId, outcome: "saved" } });
+    expect(supabaseMocks.rpc).toHaveBeenCalledTimes(1);
+    expect(supabaseMocks.rpc).toHaveBeenCalledWith("sync_active_match_draft_v2", {
+      p_draft_id: draftId,
+      p_group_id: groupId,
+      p_format: "singles",
+      p_team_a: ["11111111-1111-4111-8111-111111111111"],
+      p_team_b: ["77777777-7777-4777-8777-777777777777"],
+      p_games: [{ teamAScore: 21, teamBScore: null, winnerTeam: "A" }],
+    });
+    expect(supabaseMocks.createSupabaseServiceClient).not.toHaveBeenCalled();
+  });
+
+  test("returns a generic failure when the draft RPC response is malformed", async () => {
+    supabaseMocks.rpc.mockResolvedValueOnce({ data: null, error: null });
+
+    const result = await actions.syncActiveMatchDraft({
+      groupId: "66666666-6666-4666-8666-666666666666",
+      format: "singles",
+      teamAUserIds: ["11111111-1111-4111-8111-111111111111"],
+      teamBUserIds: ["77777777-7777-4777-8777-777777777777"],
+      games: [{ teamAScore: 21, teamBScore: null, winnerTeam: "A" }],
+    });
+
+    expect(result).toEqual({ ok: false, message: "Could not save active match." });
+    expect(nextCacheMocks.revalidatePath).not.toHaveBeenCalled();
   });
 
   test("updates a partial draft with nullable scores", async () => {
@@ -328,6 +381,7 @@ describe("transactional match actions", () => {
       activeMemberIds: [actor],
     });
     supabaseMocks.createSupabaseServiceClient.mockReturnValue(service);
+    supabaseMocks.rpc.mockResolvedValueOnce({ data: { draftId, outcome: "saved" }, error: null });
 
     const result = await actions.syncActiveMatchDraft({
       draftId,
@@ -339,10 +393,11 @@ describe("transactional match actions", () => {
     });
 
     expect(result).toEqual({ ok: true, data: { draftId, outcome: "saved" } });
-    expect(update).toHaveBeenCalledWith(expect.objectContaining({
-      team_a_user_ids: [actor],
-      team_b_user_ids: [],
-      games: [{ teamAScore: 21, teamBScore: null, winnerTeam: "A" }],
+    expect(update).not.toHaveBeenCalled();
+    expect(supabaseMocks.rpc).toHaveBeenCalledWith("sync_active_match_draft_v2", expect.objectContaining({
+      p_team_a: [actor],
+      p_team_b: [],
+      p_games: [{ teamAScore: 21, teamBScore: null, winnerTeam: "A" }],
     }));
     expect(nextCacheMocks.revalidatePath).toHaveBeenCalledWith("/home");
     expect(nextCacheMocks.revalidatePath).toHaveBeenCalledWith(`/groups/${groupId}`);
@@ -376,6 +431,7 @@ describe("transactional match actions", () => {
       activeMemberIds: [actor],
     });
     supabaseMocks.createSupabaseServiceClient.mockReturnValue(service);
+    supabaseMocks.rpc.mockResolvedValueOnce({ data: { draftId, outcome: "saved" }, error: null });
 
     const result = await actions.syncActiveMatchDraft({
       draftId,
@@ -387,9 +443,10 @@ describe("transactional match actions", () => {
     });
 
     expect(result).toEqual({ ok: true, data: { draftId, outcome: "saved" } });
-    expect(update).toHaveBeenCalledWith(expect.objectContaining({
-      team_a_user_ids: teamAUserIds,
-      games,
+    expect(update).not.toHaveBeenCalled();
+    expect(supabaseMocks.rpc).toHaveBeenCalledWith("sync_active_match_draft_v2", expect.objectContaining({
+      p_team_a: teamAUserIds,
+      p_games: games,
     }));
   });
 
@@ -412,6 +469,7 @@ describe("transactional match actions", () => {
       activeMemberIds: [actor],
     });
     supabaseMocks.createSupabaseServiceClient.mockReturnValue(service);
+    supabaseMocks.rpc.mockResolvedValueOnce({ data: { draftId: null, outcome: "deleted" }, error: null });
 
     const result = await actions.syncActiveMatchDraft({
       draftId,
@@ -423,8 +481,8 @@ describe("transactional match actions", () => {
     });
 
     expect(result).toEqual({ ok: true, data: { draftId: null, outcome: "deleted" } });
-    expect(deleteDraft).toHaveBeenCalledOnce();
-    expect(draftEq).toHaveBeenCalledWith("updated_at", updatedAt);
+    expect(deleteDraft).not.toHaveBeenCalled();
+    expect(draftEq).not.toHaveBeenCalled();
     expect(nextCacheMocks.revalidatePath).toHaveBeenCalledWith("/home");
     expect(nextCacheMocks.revalidatePath).toHaveBeenCalledWith(`/groups/${groupId}`);
   });
@@ -448,6 +506,10 @@ describe("transactional match actions", () => {
       deletedDraftId: null,
     });
     supabaseMocks.createSupabaseServiceClient.mockReturnValue(service);
+    supabaseMocks.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: "MRVAL", message: "This active match changed before it could be deleted." },
+    });
 
     const result = await actions.syncActiveMatchDraft({
       draftId,
@@ -481,6 +543,10 @@ describe("transactional match actions", () => {
       activeMemberIds: [actor, opponent],
     });
     supabaseMocks.createSupabaseServiceClient.mockReturnValue(service);
+    supabaseMocks.rpc.mockResolvedValueOnce({
+      data: { draftId: "33333333-3333-4333-8333-333333333333", outcome: "saved" },
+      error: null,
+    });
 
     await actions.saveActiveMatchDraft({
       draftId: "33333333-3333-4333-8333-333333333333",
@@ -491,8 +557,9 @@ describe("transactional match actions", () => {
       games: [{ teamAScore: 21, teamBScore: 19, winnerTeam: "B" }],
     });
 
-    expect(update).toHaveBeenCalledWith(expect.objectContaining({
-      games: [{ teamAScore: 21, teamBScore: 19, winnerTeam: "B" }],
+    expect(update).not.toHaveBeenCalled();
+    expect(supabaseMocks.rpc).toHaveBeenCalledWith("sync_active_match_draft_v2", expect.objectContaining({
+      p_games: [{ teamAScore: 21, teamBScore: 19, winnerTeam: "B" }],
     }));
   });
 
@@ -514,6 +581,10 @@ describe("transactional match actions", () => {
       activeMemberIds: [actor, creator, opponent],
     });
     supabaseMocks.createSupabaseServiceClient.mockReturnValue(service);
+    supabaseMocks.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: "MRVAL", message: "This active match was already submitted." },
+    });
 
     const result = await actions.saveActiveMatchDraft({
       draftId: "33333333-3333-4333-8333-333333333333",
@@ -547,6 +618,10 @@ describe("transactional match actions", () => {
       activeMemberIds: [actor, opponent],
     });
     supabaseMocks.createSupabaseServiceClient.mockReturnValue(service);
+    supabaseMocks.rpc.mockResolvedValueOnce({
+      data: { draftId: null, outcome: "expired", message: "This active match expired. Start a new match." },
+      error: null,
+    });
 
     const result = await actions.saveActiveMatchDraft({
       draftId: "33333333-3333-4333-8333-333333333333",
@@ -558,9 +633,9 @@ describe("transactional match actions", () => {
     });
 
     expect(result).toEqual({ ok: false, message: "This active match expired. Start a new match." });
-    expect(deleteDraft).toHaveBeenCalledOnce();
-    expect(draftEq).toHaveBeenCalledWith("expires_at", expiresAt);
-    expect(draftIs).toHaveBeenCalledWith("submitted_match_id", null);
+    expect(deleteDraft).not.toHaveBeenCalled();
+    expect(draftEq).not.toHaveBeenCalled();
+    expect(draftIs).not.toHaveBeenCalled();
   });
 
   test("rejects an active group member who is not the creator or a stored participant", async () => {
@@ -582,6 +657,10 @@ describe("transactional match actions", () => {
       activeMemberIds: [actor, creator, teamAPlayer, teamBPlayer],
     });
     supabaseMocks.createSupabaseServiceClient.mockReturnValue(service);
+    supabaseMocks.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: "MRVAL", message: "Only the match creator or a participant can edit this active match." },
+    });
 
     const result = await actions.saveActiveMatchDraft({
       draftId: "33333333-3333-4333-8333-333333333333",
@@ -618,6 +697,10 @@ describe("transactional match actions", () => {
       updatedDraftId: null,
     });
     supabaseMocks.createSupabaseServiceClient.mockReturnValue(service);
+    supabaseMocks.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: "MRVAL", message: "This active match is unavailable or you no longer have access." },
+    });
 
     const result = await actions.saveActiveMatchDraft({
       draftId: "33333333-3333-4333-8333-333333333333",

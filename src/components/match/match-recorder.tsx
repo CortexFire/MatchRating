@@ -14,7 +14,6 @@ import {
 } from "@/components/match/player-select-view";
 import { GroupSwitcher, type GroupOption } from "@/components/match/group-switcher";
 import {
-  validateMatchSubmission,
   type MatchFormat,
   type MatchGameInput,
   type MatchScoreInput,
@@ -24,8 +23,12 @@ import {
 import {
   type ActiveMatchDraftGameInput,
   type ActiveMatchDraftInput,
-  isEmptyActiveMatchDraft,
 } from "@/lib/matches/drafts";
+import {
+  createLatestDraftSaveQueue,
+  type LatestDraftSaveQueue,
+} from "@/lib/matches/draft-save-queue";
+import { isEmptyActiveMatchDraft } from "@/lib/matches/draft-utils";
 import { type AppPlayer } from "@/lib/app-data";
 import styles from "./match-recorder.module.css";
 
@@ -120,7 +123,6 @@ export function MatchRecorder({
   const activeDraftId = useRef(draftId);
   const saveActiveMatchDraftRef = useRef(saveActiveMatchDraft);
   const autosaveTimeout = useRef<number | null>(null);
-  const autosaveQueue = useRef<Promise<void>>(Promise.resolve());
   const latestDraft = useRef<ActiveMatchDraftInput>({
     groupId,
     format,
@@ -128,13 +130,21 @@ export function MatchRecorder({
     teamBUserIds: compactTeam(teamB),
     games: toDraftGames(games),
   });
-  const lastQueuedDraft = useRef<string | null>(null);
+  const latestDraftKey = useRef(JSON.stringify({
+    groupId,
+    format,
+    teamAUserIds: compactTeam(teamA),
+    teamBUserIds: compactTeam(teamB),
+    games: toDraftGames(games),
+  }));
+  const hasDraftChanges = useRef(false);
   const submissionInProgress = useRef(false);
   const completionTimeout = useRef<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [guestPlayers, setGuestPlayers] = useState<AppPlayer[]>([]);
   const [draftGuestIds, setDraftGuestIds] = useState<string[]>([]);
   const submitCommandId = useRef<string | null>(null);
+  const draftSaveQueue = useRef<LatestDraftSaveQueue<ActiveMatchDraftInput> | null>(null);
   const selectablePlayers = [...players, ...guestPlayers];
   const activeMemberIds = selectablePlayers.map((player) => player.id);
 
@@ -157,6 +167,40 @@ export function MatchRecorder({
     games: toDraftGames(games),
   }), [format, games, groupId, teamA, teamB]);
 
+  useEffect(() => {
+    draftSaveQueue.current = createLatestDraftSaveQueue<ActiveMatchDraftInput>(async (payload) => {
+      const save = saveActiveMatchDraftRef.current;
+      if (!save) return true;
+
+      try {
+        const snapshotKey = JSON.stringify(payload);
+        const priorDraftId = activeDraftId.current;
+        const result = await save({ ...payload, draftId: priorDraftId });
+        if (!result.ok) {
+          if (!submissionInProgress.current) setMessage(result.message);
+          return false;
+        }
+
+        activeDraftId.current = result.data.draftId ?? undefined;
+        if (result.data.draftId !== priorDraftId) {
+          replaceDraftIdInUrl(result.data.draftId);
+        }
+        if (latestDraftKey.current === snapshotKey) {
+          hasDraftChanges.current = false;
+        }
+        if (!submissionInProgress.current) {
+          setMessage(result.data.outcome === "deleted" ? "Draft deleted." : "Draft saved.");
+        }
+        return true;
+      } catch (error) {
+        if (!submissionInProgress.current) {
+          setMessage(error instanceof Error ? error.message : "Draft could not be saved.");
+        }
+        return false;
+      }
+    });
+  }, []);
+
   useLayoutEffect(() => () => {
     setPlayerSelectOpen(false);
     setPlayerFilter("all");
@@ -173,6 +217,11 @@ export function MatchRecorder({
   }, [draftId]);
 
   useEffect(() => {
+    const nextKey = JSON.stringify(currentDraft);
+    if (nextKey !== latestDraftKey.current) {
+      hasDraftChanges.current = true;
+      latestDraftKey.current = nextKey;
+    }
     latestDraft.current = currentDraft;
   }, [currentDraft]);
 
@@ -187,38 +236,13 @@ export function MatchRecorder({
     const save = saveActiveMatchDraftRef.current;
     if (!canEdit || !save || submissionInProgress.current) return;
     if (!activeDraftId.current && isEmptyActiveMatchDraft(payload)) return;
+    await draftSaveQueue.current?.enqueue(payload);
+  }, [canEdit]);
 
-    const snapshotKey = JSON.stringify(payload);
-    if (lastQueuedDraft.current === snapshotKey) {
-      await autosaveQueue.current;
-      return;
-    }
-    lastQueuedDraft.current = snapshotKey;
-
-    autosaveQueue.current = autosaveQueue.current.then(async () => {
-      try {
-        const priorDraftId = activeDraftId.current;
-        const result = await save({ ...payload, draftId: priorDraftId });
-        if (result.ok) {
-          activeDraftId.current = result.data.draftId ?? undefined;
-          if (result.data.draftId !== priorDraftId) {
-            replaceDraftIdInUrl(result.data.draftId);
-          }
-          if (!submissionInProgress.current) {
-            setMessage(result.data.outcome === "deleted" ? "Draft deleted." : "Draft saved.");
-          }
-        } else {
-          if (lastQueuedDraft.current === snapshotKey) lastQueuedDraft.current = null;
-          if (!submissionInProgress.current) setMessage(result.message);
-        }
-      } catch (error) {
-        if (lastQueuedDraft.current === snapshotKey) lastQueuedDraft.current = null;
-        if (!submissionInProgress.current) {
-          setMessage(error instanceof Error ? error.message : "Draft could not be saved.");
-        }
-      }
-    });
-    await autosaveQueue.current;
+  const flushDraftSync = useCallback(async (payload?: ActiveMatchDraftInput) => {
+    if (!canEdit || !saveActiveMatchDraftRef.current) return;
+    if (payload && !activeDraftId.current && isEmptyActiveMatchDraft(payload)) return;
+    await draftSaveQueue.current?.flush(payload);
   }, [canEdit]);
 
   useNavigationSyncRegistration(async () => {
@@ -226,8 +250,7 @@ export function MatchRecorder({
       window.clearTimeout(autosaveTimeout.current);
       autosaveTimeout.current = null;
     }
-    await enqueueDraftSync(latestDraft.current);
-    await autosaveQueue.current;
+    await flushDraftSync(latestDraft.current);
   });
 
   useEffect(() => {
@@ -236,12 +259,12 @@ export function MatchRecorder({
         window.clearTimeout(autosaveTimeout.current);
         autosaveTimeout.current = null;
       }
-      void enqueueDraftSync(latestDraft.current);
+      void flushDraftSync(latestDraft.current);
     }
 
     window.addEventListener("pagehide", syncOnPageHide);
     return () => window.removeEventListener("pagehide", syncOnPageHide);
-  }, [enqueueDraftSync]);
+  }, [flushDraftSync]);
 
   useEffect(() => {
     if (!canEdit || !saveActiveMatchDraftRef.current || submissionInProgress.current) {
@@ -471,9 +494,13 @@ export function MatchRecorder({
       return;
     }
 
+    submissionInProgress.current = true;
+    setIsSubmitting(true);
     try {
       const completeGames = toCompleteGames(games);
       if (!completeGames) {
+        submissionInProgress.current = false;
+        setIsSubmitting(false);
         setMessage("Enter both scores for every set.");
         return;
       }
@@ -487,15 +514,26 @@ export function MatchRecorder({
         teamBUserIds: compactTeam(teamB),
         games: completeGames,
       };
+      const { validateMatchSubmission } = await import("@/lib/matches/validation");
       const validated = validateMatchSubmission(inputWithoutDraft, { activeMemberIds });
 
-      submissionInProgress.current = true;
-      setIsSubmitting(true);
+      const submissionDraft: ActiveMatchDraftInput = {
+        groupId,
+        format,
+        teamAUserIds: inputWithoutDraft.teamAUserIds,
+        teamBUserIds: inputWithoutDraft.teamBUserIds,
+        games: toDraftGames(games),
+      };
+      const flushNewestDraft = hasDraftChanges.current || Boolean(draftSaveQueue.current?.hasWork());
       if (autosaveTimeout.current !== null) {
         window.clearTimeout(autosaveTimeout.current);
         autosaveTimeout.current = null;
       }
-      await autosaveQueue.current;
+      if (flushNewestDraft) {
+        await flushDraftSync(submissionDraft);
+      } else {
+        await draftSaveQueue.current?.flush();
+      }
 
       const submittedDraftId = activeDraftId.current;
       const input = { ...inputWithoutDraft, draftId: submittedDraftId };

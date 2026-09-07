@@ -171,6 +171,7 @@ describe("MatchRecorder", () => {
     });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+      await vi.dynamicImportSettled();
     });
     expect(screen.getByText("Group A-only submission message")).toBeTruthy();
 
@@ -1561,6 +1562,110 @@ describe("MatchRecorder", () => {
 
     expect(submitMatchAction).toHaveBeenCalledWith(expect.objectContaining({ draftId: "draft-created" }));
     expect(screen.getByText("Match saved. Ratings updated immediately. Participants and group admins have 30 days to correct it.")).toBeTruthy();
+  });
+
+  test("starts only one submission while full validation is loading", async () => {
+    const submitMatchAction = vi.fn(async () => ({
+      ok: true as const,
+      data: {
+        matchId: "match-1",
+        revisionId: "revision-1",
+        ratingJobId: "job-1",
+        ratingStatus: "queued" as const,
+      },
+    }));
+
+    render(
+      <MatchRecorder
+        players={matchRecorderPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 18 }],
+        }}
+        submitMatchAction={submitMatchAction}
+      />,
+    );
+
+    const submit = screen.getByRole("button", { name: "Submit" });
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
+
+    expect(submitMatchAction).toHaveBeenCalledTimes(1);
+  });
+
+  test("flushes the newest edit after an in-flight autosave before submitting", async () => {
+    vi.useFakeTimers();
+    let resolveFirstSave!: (result: { ok: true; data: { draftId: string } }) => void;
+    let resolveLatestSave!: (result: { ok: true; data: { draftId: string } }) => void;
+    const saveActiveMatchDraft = vi.fn()
+      .mockImplementationOnce(() => new Promise<{ ok: true; data: { draftId: string } }>((resolve) => {
+        resolveFirstSave = resolve;
+      }))
+      .mockImplementationOnce(() => new Promise<{ ok: true; data: { draftId: string } }>((resolve) => {
+        resolveLatestSave = resolve;
+      }));
+    const submitMatchAction = vi.fn(async () => ({
+      ok: true as const,
+      data: {
+        matchId: "match-1",
+        revisionId: "revision-1",
+        ratingJobId: "job-1",
+        ratingStatus: "queued" as const,
+      },
+    }));
+
+    render(
+      <MatchRecorder
+        groupId="11111111-1111-4111-8111-111111111111"
+        players={matchRecorderPlayers}
+        initialMatch={{
+          format: "singles",
+          teamAUserIds: ["alice"],
+          teamBUserIds: ["bea"],
+          games: [{ teamAScore: 21, teamBScore: 18 }],
+        }}
+        saveActiveMatchDraft={saveActiveMatchDraft}
+        submitMatchAction={submitMatchAction}
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "19" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+      await vi.dynamicImportSettled();
+    });
+
+    await act(async () => {
+      resolveFirstSave({ ok: true, data: { draftId: "draft-created" } });
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(saveActiveMatchDraft).toHaveBeenCalledTimes(2);
+    expect(saveActiveMatchDraft).toHaveBeenLastCalledWith(expect.objectContaining({
+      draftId: "draft-created",
+      games: [{ teamAScore: 21, teamBScore: 19, winnerTeam: "A" }],
+    }));
+    expect(submitMatchAction).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveLatestSave({ ok: true, data: { draftId: "draft-created" } });
+      await Promise.resolve();
+    });
+
+    expect(submitMatchAction).toHaveBeenCalledWith(expect.objectContaining({
+      draftId: "draft-created",
+      games: [{ teamAScore: 21, teamBScore: 19, winnerTeam: "A" }],
+    }));
   });
 
   test("does not restart autosave when a server refresh replaces the action reference", async () => {

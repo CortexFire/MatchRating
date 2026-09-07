@@ -25,12 +25,7 @@ import {
   validateMatchSubmission,
   type MatchSubmissionInput,
 } from "@/lib/matches/validation";
-import {
-  draftExpiresAt,
-  isEmptyActiveMatchDraft,
-  validateActiveMatchDraft,
-  type ActiveMatchDraftInput,
-} from "@/lib/matches/drafts";
+import { type ActiveMatchDraftInput } from "@/lib/matches/drafts";
 import { listVisibleGroupMemberships } from "@/lib/group-membership-visibility";
 import { type CommandResult, toCommandError } from "@/lib/commands/result";
 import { dispatchRatingRebuild } from "@/lib/ratings/rebuild-dispatch";
@@ -239,21 +234,6 @@ async function ensureActiveMember(groupId: string, userId: string, service = cre
   return data as { id: string; role: "owner" | "admin" | "member" };
 }
 
-async function getActiveMemberIds(groupId: string) {
-  const service = createSupabaseServiceClient();
-  const { data, error } = await service
-    .from("group_memberships")
-    .select("user_id")
-    .eq("group_id", groupId)
-    .eq("status", "active")
-    .is("left_at", null);
-
-  if (error) {
-    throw error;
-  }
-
-  return (data ?? []).map((row: { user_id: string }) => row.user_id);
-}
 type SupabaseService = ReturnType<typeof createSupabaseServiceClient>;
 
 type InviteRow = {
@@ -678,6 +658,22 @@ type ActiveDraftSyncResult = {
   draftId: string | null;
   outcome: "saved" | "deleted" | "unchanged";
 };
+type ActiveDraftSyncRpcResult = ActiveDraftSyncResult | {
+  draftId: null;
+  outcome: "expired";
+  message: string;
+};
+
+function isActiveDraftSyncRpcResult(value: unknown): value is ActiveDraftSyncRpcResult {
+  if (!value || typeof value !== "object") return false;
+
+  const result = value as Record<string, unknown>;
+  if (result.draftId !== null && typeof result.draftId !== "string") return false;
+  if (!["saved", "deleted", "unchanged", "expired"].includes(String(result.outcome))) return false;
+
+  return result.outcome !== "expired" || typeof result.message === "string";
+}
+
 type EditableDraftRow = {
   id: string;
   group_id: string;
@@ -692,102 +688,49 @@ type EditableDraftRow = {
 export async function syncActiveMatchDraft(
   input: ActiveDraftSyncInput,
 ): Promise<ActionResult<ActiveDraftSyncResult>> {
+  const parsed = activeDraftSyncSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues[0]?.message ?? "Could not save active match." };
+  }
+
   try {
-    const userId = await requireUserId();
-    const parsed = activeDraftSyncSchema.parse(input);
-    const service = createSupabaseServiceClient();
-    await ensureActiveMember(parsed.groupId, userId, service);
-
-    if (isEmptyActiveMatchDraft(parsed)) {
-      if (!parsed.draftId) {
-        return { ok: true, data: { draftId: null, outcome: "unchanged" } };
-      }
-
-      const existing = await getEditableDraft(parsed.draftId, userId, service);
-      if (existing.group_id !== parsed.groupId) {
-        throw new Error("This active match belongs to another group.");
-      }
-
-      const { data, error } = await service
-        .from("active_match_drafts")
-        .delete()
-        .eq("id", parsed.draftId)
-        .eq("updated_at", existing.updated_at)
-        .is("submitted_match_id", null)
-        .gt("expires_at", new Date().toISOString())
-        .or(
-          `created_by_user_id.eq.${userId},team_a_user_ids.cs.{${userId}},team_b_user_ids.cs.{${userId}}`,
-        )
-        .select("id")
-        .maybeSingle();
-
-      if (error) {
-        throw error;
-      }
-      if (!data) {
-        throw new Error("This active match changed before it could be deleted.");
-      }
-
-      revalidateDraftPaths(parsed.groupId);
-      return { ok: true, data: { draftId: null, outcome: "deleted" } };
-    }
-
-    const activeMemberIds = await getActiveMemberIds(parsed.groupId);
-    const draft = validateActiveMatchDraft(parsed, { activeMemberIds });
-    const expires_at = draftExpiresAt();
-    const values = {
-      group_id: draft.groupId,
-      format: draft.format,
-      team_a_user_ids: draft.teamAUserIds,
-      team_b_user_ids: draft.teamBUserIds,
-      games: draft.games,
-      expires_at,
-      updated_at: new Date().toISOString(),
-    };
-
-    if (parsed.draftId) {
-      const existing = await getEditableDraft(parsed.draftId, userId, service);
-      if (existing.group_id !== parsed.groupId) {
-        throw new Error("This active match belongs to another group.");
-      }
-
-      const { data, error } = await service
-        .from("active_match_drafts")
-        .update(values)
-        .eq("id", parsed.draftId)
-        .is("submitted_match_id", null)
-        .gt("expires_at", new Date().toISOString())
-        .or(
-          `created_by_user_id.eq.${userId},team_a_user_ids.cs.{${userId}},team_b_user_ids.cs.{${userId}}`,
-        )
-        .select("id")
-        .maybeSingle();
-
-      if (error) {
-        throw error;
-      }
-
-      if (!data) {
-        throw new Error("This active match is unavailable or you no longer have access.");
-      }
-
-      revalidateDraftPaths(parsed.groupId);
-      return { ok: true, data: { draftId: data.id, outcome: "saved" } };
-    }
-
-    const { data, error } = await service
-      .from("active_match_drafts")
-      .insert({ ...values, created_by_user_id: userId })
-      .select("id")
-      .single();
+    const { client } = await requireAuthenticatedSupabaseClient();
+    const { data, error } = await client.rpc("sync_active_match_draft_v2", {
+      p_draft_id: parsed.data.draftId ?? null,
+      p_group_id: parsed.data.groupId,
+      p_format: parsed.data.format,
+      p_team_a: parsed.data.teamAUserIds,
+      p_team_b: parsed.data.teamBUserIds,
+      p_games: parsed.data.games,
+    });
     if (error) {
-      throw error;
+      const code = (error as { code?: string }).code;
+      return {
+        ok: false,
+        message: code && ["MR401", "MR403", "MRVAL"].includes(code)
+          ? error.message
+          : "Could not save active match.",
+      };
     }
 
-    revalidateDraftPaths(parsed.groupId);
-    return { ok: true, data: { draftId: data.id, outcome: "saved" } };
+    if (!isActiveDraftSyncRpcResult(data)) {
+      return { ok: false, message: "Could not save active match." };
+    }
+
+    const rpcResult = data;
+    if (rpcResult.outcome === "expired") {
+      revalidateDraftPaths(parsed.data.groupId);
+      return { ok: false, message: rpcResult.message };
+    }
+    if (rpcResult.outcome !== "unchanged") {
+      revalidateDraftPaths(parsed.data.groupId);
+    }
+    return { ok: true, data: rpcResult };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Could not save active match." };
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Could not save active match.",
+    };
   }
 }
 

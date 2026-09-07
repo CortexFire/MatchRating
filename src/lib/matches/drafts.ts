@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { type MatchFormat, type Team } from "./validation";
+export { isEmptyActiveMatchDraft } from "./draft-utils";
 
 export type ActiveMatchDraftGameInput = {
   teamAScore: number | null;
@@ -57,14 +58,6 @@ export function validateActiveMatchDraft(
   }
 
   return parsed;
-}
-
-export function isEmptyActiveMatchDraft(draft: ActiveMatchDraftInput) {
-  const hasPlayers = draft.teamAUserIds.length > 0 || draft.teamBUserIds.length > 0;
-  const hasScores = draft.games.some(
-    (game) => game.teamAScore !== null || game.teamBScore !== null,
-  );
-  return !hasPlayers && !hasScores;
 }
 
 export function draftExpiresAt(now = new Date()) {
