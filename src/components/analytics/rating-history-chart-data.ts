@@ -1,9 +1,7 @@
-import { type AnalyticsPeriodSnapshot } from "@/lib/analytics/analytics-policy";
+import { type AnalyticsRatingPoint } from "@/lib/analytics/analytics-policy";
 import { formatRating } from "@/lib/ratings/rating-display";
 
-const Y_DOMAIN_PADDING = 20;
-
-type RatingHistoryPoint = AnalyticsPeriodSnapshot["ratingHistory"][number];
+type RatingHistoryPoint = AnalyticsRatingPoint;
 type RatingTooltipPoint = Pick<RatingHistoryPoint, "rating" | "rd" | "performanceSd">;
 
 export type RatingHistoryChartPoint = RatingHistoryPoint & {
@@ -11,7 +9,7 @@ export type RatingHistoryChartPoint = RatingHistoryPoint & {
   latestRating: number | null;
 };
 
-export function buildRatingHistoryChartData(points: RatingHistoryPoint[]): {
+export function buildRatingHistoryChartData(points: RatingHistoryPoint[], yDomain: [number, number]): {
   points: RatingHistoryChartPoint[];
   yDomain: [number, number];
 } {
@@ -23,12 +21,9 @@ export function buildRatingHistoryChartData(points: RatingHistoryPoint[]): {
     ] as [number, number],
     latestRating: index === points.length - 1 ? point.rating : null,
   }));
-  const lowerBound = Math.min(...chartPoints.map((point) => point.performanceRange[0]));
-  const upperBound = Math.max(...chartPoints.map((point) => point.performanceRange[1]));
-
   return {
     points: chartPoints,
-    yDomain: [lowerBound - Y_DOMAIN_PADDING, upperBound + Y_DOMAIN_PADDING],
+    yDomain,
   };
 }
 

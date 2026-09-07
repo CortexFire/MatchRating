@@ -20,14 +20,14 @@ describe("rating history chart data", () => {
         performanceSd: 85,
         ratingDelta: 12,
       },
-    ]);
+    ], [1300, 1900]);
 
     expect(result).toEqual({
       points: [
         expect.objectContaining({ matchId: "m1", performanceRange: [1366, 1766], latestRating: null }),
         expect.objectContaining({ matchId: "m2", performanceRange: [1493, 1663], latestRating: 1578 }),
       ],
-      yDomain: [1346, 1786],
+      yDomain: [1300, 1900],
     });
   });
 

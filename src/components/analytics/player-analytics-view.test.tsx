@@ -1,40 +1,36 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { type PlayerAnalyticsViewModel } from "@/lib/analytics/analytics-policy";
 import { PlayerAnalyticsView } from "./player-analytics-view";
 
-const navigation = vi.hoisted(() => ({ push: vi.fn() }));
+const navigation = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => navigation }));
 
-const emptyHistoryPage = { matches: [], nextCursor: null };
-const coryHistoryPage = {
-  matches: [{
-    id: "match-2",
-    groupId: "group-2",
-    groupName: "Wednesday Club",
-    revisionId: "revision-2",
-    submittedByUserId: "alice",
-    status: "confirmed" as const,
-    submittedAt: "2026-08-20T12:00:00.000Z",
-    correctionStartedAt: "2026-08-20T12:00:00.000Z",
-    correctionUntil: "2026-09-19T12:00:00.000Z",
-    format: "singles" as const,
-    teamA: [{ id: "alice", name: "Alice Tan", initials: "AT" }],
-    teamB: [{ id: "cory", name: "Cory Shah", initials: "CS" }],
-    games: [{ gameNumber: 1, teamAScore: 21, teamBScore: 16, winnerTeam: "A" as const }],
-    winnerTeam: "A" as const,
-    ratingSummary: "2 rating changes",
-    canCorrect: false,
-    canRevise: false,
-  }],
-  nextCursor: null,
-};
+const fetchMock = vi.fn();
 
+const emptyHistoryPage = { matches: [], nextCursor: null };
+const newestExactPoint = {
+  matchId: "exact-2",
+  occurredAt: "2026-08-18T12:00:00.000Z",
+  rating: 1581,
+  rd: 94.25,
+  performanceSd: 72,
+  ratingDelta: 3,
+};
+const olderExactPoint = {
+  matchId: "exact-1",
+  occurredAt: "2026-07-01T12:00:00.000Z",
+  rating: 1554,
+  rd: 101.5,
+  performanceSd: 88,
+  ratingDelta: -4,
+};
 const readyModel: PlayerAnalyticsViewModel = {
   status: "ready",
   asOf: "2026-08-19T12:00:00.000Z",
+  ratingVersion: "rating-v2",
   viewerUserId: "alice",
   subject: { id: "alice", name: "Alice Tan" },
   group: { id: "group-1", name: "Downtown Rec" },
@@ -42,13 +38,15 @@ const readyModel: PlayerAnalyticsViewModel = {
     { id: "group-1", name: "Downtown Rec" },
     { id: "group-2", name: "Wednesday Club" },
   ],
+  historyPoints: {
+    m1: { matchId: "m1", occurredAt: "2026-07-20T12:00:00.000Z", rating: 1566, rd: 110, performanceSd: 200, ratingDelta: 8 },
+    m2: { matchId: "m2", occurredAt: "2026-08-01T12:00:00.000Z", rating: 1578, rd: 110.01, performanceSd: 85, ratingDelta: 12 },
+  },
   periods: {
     all: {
       summary: { rank: 1, rankedPlayerCount: 18, currentRating: 1578, currentRd: 110.01, ratingChange: 42, wins: 18, losses: 10, winRate: 64 },
-      ratingHistory: [
-        { matchId: "m1", occurredAt: "2026-07-20T12:00:00.000Z", rating: 1566, rd: 110, performanceSd: 200, ratingDelta: 8 },
-        { matchId: "m2", occurredAt: "2026-08-01T12:00:00.000Z", rating: 1578, rd: 110.01, performanceSd: 85, ratingDelta: 12 },
-      ],
+      ratingHistoryPointIds: ["m1", "m2"],
+      ratingHistoryBounds: [1346, 1786],
       flags: [{ key: "hot-streak", label: "Hot Streak", explanation: "Won the last 5 matches." }],
       matchups: [{
         key: "best-partner",
@@ -59,26 +57,33 @@ const readyModel: PlayerAnalyticsViewModel = {
     },
     "30d": {
       summary: { rank: 1, rankedPlayerCount: 18, currentRating: 1578, currentRd: 110.01, ratingChange: -3, wins: 1, losses: 1, winRate: 50 },
-      ratingHistory: [],
+      ratingHistoryPointIds: [],
+      ratingHistoryBounds: [0, 1],
       flags: [],
       matchups: [],
     },
     "90d": {
       summary: { rank: 1, rankedPlayerCount: 18, currentRating: 1578, currentRd: 110.01, ratingChange: 10, wins: 4, losses: 2, winRate: 67 },
-      ratingHistory: [], flags: [], matchups: [],
+      ratingHistoryPointIds: [], ratingHistoryBounds: [0, 1], flags: [], matchups: [],
     },
     "1y": {
       summary: { rank: 1, rankedPlayerCount: 18, currentRating: 1578, currentRd: 110.01, ratingChange: 25, wins: 10, losses: 5, winRate: 67 },
-      ratingHistory: [], flags: [], matchups: [],
+      ratingHistoryPointIds: [], ratingHistoryBounds: [0, 1], flags: [], matchups: [],
     },
   },
-};
+} as unknown as PlayerAnalyticsViewModel;
 
 describe("PlayerAnalyticsView", () => {
-  beforeEach(() => navigation.push.mockReset());
+  beforeEach(() => {
+    navigation.push.mockReset();
+    navigation.refresh.mockReset();
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(emptyHistoryPage), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+  });
 
   test("renders the all-period summary and reveals a selected flag explanation", () => {
-    render(<PlayerAnalyticsView model={readyModel} initialHistoryPage={emptyHistoryPage} />);
+    render(<PlayerAnalyticsView model={readyModel} />);
 
     expect(screen.getByRole("heading", { level: 1, name: "Analytics" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Go back" })).toBeNull();
@@ -98,7 +103,7 @@ describe("PlayerAnalyticsView", () => {
   });
 
   test("switches period snapshots locally and exposes empty states", () => {
-    render(<PlayerAnalyticsView model={readyModel} initialHistoryPage={emptyHistoryPage} />);
+    render(<PlayerAnalyticsView model={readyModel} />);
 
     fireEvent.click(screen.getByRole("button", { name: "30 days" }));
     expect(screen.getByRole("article", { name: "Win Rate" }).textContent).toBe("50%1–1Win Rate");
@@ -110,28 +115,129 @@ describe("PlayerAnalyticsView", () => {
   });
 
   test("switches groups by preserving the selected player route", () => {
-    render(<PlayerAnalyticsView model={readyModel} initialHistoryPage={emptyHistoryPage} />);
+    render(<PlayerAnalyticsView model={readyModel} />);
 
     fireEvent.change(screen.getByLabelText("Current group Downtown Rec"), { target: { value: "group-2" } });
     expect(navigation.push).toHaveBeenCalledWith("/groups/group-2/players/alice/analytics");
   });
 
-  test("lets touch and keyboard users select a chart point", () => {
-    render(<PlayerAnalyticsView model={readyModel} initialHistoryPage={emptyHistoryPage} />);
+  test("shows the latest sampled point without requesting or mounting exact history", async () => {
+    render(<PlayerAnalyticsView model={readyModel} />);
 
-    const selector = screen.getByLabelText("Inspect rating point");
-    const selectedPoint = screen.getByRole("status", { name: "Selected rating point" });
+    const selectedPoint = await screen.findByRole("status", { name: "Selected rating point" });
     expect(selectedPoint.textContent)
       .toContain("Aug 1, 2026: rating 1578?, performance range 1493–1663 (±85)");
-    expect(selectedPoint.textContent).not.toContain("change");
-    expect(selectedPoint.textContent).not.toContain("typical");
+    expect(screen.queryByLabelText("Inspect rating point")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 
-    fireEvent.change(selector, { target: { value: "m1" } });
+  test("loads the first exact-rating page only when its disclosure opens", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      points: [newestExactPoint, olderExactPoint],
+      nextCursor: null,
+      asOf: readyModel.asOf,
+      ratingVersion: "rating-v2",
+    }), { status: 200 }));
+    render(<PlayerAnalyticsView model={readyModel} />);
 
-    expect(selectedPoint.textContent)
-      .toContain("Jul 20, 2026: rating 1566, performance range 1366–1766 (±200)");
-    expect(selectedPoint.textContent).not.toContain("change");
-    expect(selectedPoint.textContent).not.toContain("typical");
+    expect(fetchMock).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByText("Inspect exact matches"));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "/api/groups/group-1/players/alice/analytics/history?period=all&asOf=2026-08-19T12%3A00%3A00.000Z&ratingVersion=rating-v2",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    ));
+    const selector = await screen.findByLabelText("Inspect rating point");
+    expect(selector.querySelectorAll("option")).toHaveLength(2);
+    expect(screen.getByRole("status", { name: "Selected exact rating point" }).textContent)
+      .toContain("rating 1581, deviation 94.25, consistency ±72");
+  });
+
+  test("paginates exact history with older and newer navigation", async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        points: [newestExactPoint], nextCursor: "older-cursor", asOf: readyModel.asOf, ratingVersion: "rating-v2",
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        points: [olderExactPoint], nextCursor: null, asOf: readyModel.asOf, ratingVersion: "rating-v2",
+      }), { status: 200 }));
+    render(<PlayerAnalyticsView model={readyModel} />);
+    fireEvent.click(await screen.findByText("Inspect exact matches"));
+    await waitFor(() => expect((screen.getByLabelText("Inspect rating point") as HTMLSelectElement).value).toBe("exact-2"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Show older matches" }));
+    await waitFor(() => expect(fetchMock.mock.calls[1]?.[0]).toContain("cursor=older-cursor"));
+    await waitFor(() => expect((screen.getByLabelText("Inspect rating point") as HTMLSelectElement).value).toBe("exact-1"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Show newer matches" }));
+    await waitFor(() => expect((screen.getByLabelText("Inspect rating point") as HTMLSelectElement).value).toBe("exact-2"));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("retries the same exact-history cursor after an older-page failure", async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        points: [newestExactPoint], nextCursor: "older-cursor", asOf: readyModel.asOf, ratingVersion: "rating-v2",
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 500 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        points: [olderExactPoint], nextCursor: null, asOf: readyModel.asOf, ratingVersion: "rating-v2",
+      }), { status: 200 }));
+    render(<PlayerAnalyticsView model={readyModel} />);
+    fireEvent.click(await screen.findByText("Inspect exact matches"));
+    await screen.findByLabelText("Inspect rating point");
+
+    fireEvent.click(screen.getByRole("button", { name: "Show older matches" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Could not load exact matches");
+    fireEvent.click(screen.getByRole("button", { name: "Retry loading exact matches" }));
+
+    await waitFor(() => expect(String(fetchMock.mock.calls[2]?.[0])).toContain("cursor=older-cursor"));
+    await waitFor(() => expect((screen.getByLabelText("Inspect rating point") as HTMLSelectElement).value).toBe("exact-1"));
+  });
+
+  test("clears stale exact pages and refreshes analytics after a rating-version conflict", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 409 }));
+    render(<PlayerAnalyticsView model={readyModel} />);
+    fireEvent.click(await screen.findByText("Inspect exact matches"));
+
+    expect(await screen.findByText("Ratings changed. Refreshing analytics…")).toBeTruthy();
+    expect(screen.queryByLabelText("Inspect rating point")).toBeNull();
+    expect(navigation.refresh).toHaveBeenCalledOnce();
+  });
+
+  test("mounts no more than 50 exact rating options from a response", async () => {
+    const points = Array.from({ length: 51 }, (_, index) => ({
+      ...newestExactPoint,
+      matchId: `exact-${index}`,
+      occurredAt: new Date(Date.UTC(2026, 7, 18, 12, 0, index)).toISOString(),
+    }));
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      points,
+      nextCursor: "older-cursor",
+      asOf: readyModel.asOf,
+      ratingVersion: "rating-v2",
+    }), { status: 200 }));
+    render(<PlayerAnalyticsView model={readyModel} />);
+    fireEvent.click(await screen.findByText("Inspect exact matches"));
+
+    const selector = await screen.findByLabelText("Inspect rating point");
+    expect(selector.querySelectorAll("option")).toHaveLength(50);
+  });
+
+  test("aborts an obsolete exact-history request when the analytics identity changes", async () => {
+    let exactSignal: AbortSignal | undefined;
+    fetchMock.mockImplementationOnce((_url, init: RequestInit) => {
+      exactSignal = init.signal as AbortSignal;
+      return new Promise<Response>(() => undefined);
+    });
+    const { rerender } = render(<PlayerAnalyticsView model={readyModel} />);
+    fireEvent.click(await screen.findByText("Inspect exact matches"));
+    await waitFor(() => expect(exactSignal).toBeDefined());
+
+    rerender(<PlayerAnalyticsView model={{ ...readyModel, group: readyModel.availableGroups[1] }} />);
+
+    expect(exactSignal?.aborted).toBe(true);
+    expect(screen.queryByLabelText("Inspect rating point")).toBeNull();
   });
 
   test("renders the projection updating state without partial summary cards", () => {
@@ -145,7 +251,6 @@ describe("PlayerAnalyticsView", () => {
           group: readyModel.group,
           availableGroups: readyModel.availableGroups,
         }}
-        initialHistoryPage={emptyHistoryPage}
       />,
     );
 
@@ -154,33 +259,83 @@ describe("PlayerAnalyticsView", () => {
     expect(screen.getByText("Match history")).toBeTruthy();
   });
 
-  test("renders player history as a collapsed embedded disclosure independent of period filters", () => {
-    const { container } = render(
-      <PlayerAnalyticsView model={readyModel} initialHistoryPage={emptyHistoryPage} />,
+  test("renders player history as a collapsed embedded disclosure independent of period filters", async () => {
+    fetchMock.mockImplementationOnce(() => new Promise<Response>(() => undefined));
+    render(
+      <PlayerAnalyticsView model={readyModel} />,
     );
 
-    const details = container.querySelector("details");
+    const details = screen.getByText("Match history").closest("details");
     expect(details?.open).toBe(false);
     expect(screen.getByText("Match history")).toBeTruthy();
-    expect(screen.getByRole("region", { name: "Alice Tan match history" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Alice Tan match history" })).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(screen.queryByPlaceholderText("Search matches")).toBeNull();
+
+    fireEvent.click(screen.getByText("Match history"));
+
+    expect(await screen.findByText("Loading match history…")).toBeTruthy();
+  });
+
+  test("fetches history on first expansion and retains it across close and reopen", async () => {
+    render(
+      <PlayerAnalyticsView model={readyModel} />,
+    );
+
+    const summary = screen.getByText("Match history");
+    const details = summary.closest("details");
+    fireEvent.click(summary);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/matches/history?groupId=group-1&playerId=alice",
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    });
+    expect(await screen.findByRole("region", { name: "Alice Tan match history" })).toBeTruthy();
+
+    fireEvent.click(summary);
+    fireEvent.click(summary);
+    expect(details?.open).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { name: "30 days" }));
     expect(screen.getByRole("region", { name: "Alice Tan match history" })).toBeTruthy();
   });
 
-  test("resets embedded history when the selected group changes", () => {
+  test("shows a match-history failure and retries from the disclosure", async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response(null, { status: 500 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(emptyHistoryPage), { status: 200 }));
+    render(<PlayerAnalyticsView model={readyModel} />);
+    fireEvent.click(screen.getByText("Match history"));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("Could not load match history");
+    fireEvent.click(screen.getByRole("button", { name: "Retry loading history" }));
+
+    expect(await screen.findByRole("region", { name: "Alice Tan match history" })).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("aborts obsolete history requests when the selected group changes", async () => {
+    let firstSignal: AbortSignal | undefined;
+    fetchMock.mockImplementationOnce((_url, init: RequestInit) => {
+      firstSignal = init.signal as AbortSignal;
+      return new Promise<Response>(() => undefined);
+    });
     const { rerender } = render(
-      <PlayerAnalyticsView model={readyModel} initialHistoryPage={emptyHistoryPage} />,
+      <PlayerAnalyticsView model={readyModel} />,
     );
+    fireEvent.click(screen.getByText("Match history"));
+    await waitFor(() => expect(firstSignal).toBeDefined());
 
     rerender(
       <PlayerAnalyticsView
         model={{ ...readyModel, group: readyModel.availableGroups[1] }}
-        initialHistoryPage={coryHistoryPage}
       />,
     );
 
-    expect(screen.getByText("Alice Tan vs Cory Shah")).toBeTruthy();
+    expect(firstSignal?.aborted).toBe(true);
+    expect(screen.queryByRole("region", { name: "Alice Tan match history" })).toBeNull();
   });
 });

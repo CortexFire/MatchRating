@@ -3,6 +3,13 @@ import { DEMO_GROUP_ID, signInAsDemoPlayer } from "./demo-auth";
 
 for (const width of [390, 430]) {
   test(`player analytics stays within the ${width}px mobile shell`, async ({ page }) => {
+    const matchHistoryRequests: string[] = [];
+    const exactHistoryRequests: string[] = [];
+    page.on("request", (request) => {
+      const url = request.url();
+      if (url.includes("/api/matches/history")) matchHistoryRequests.push(url);
+      if (url.includes("/analytics/history")) exactHistoryRequests.push(url);
+    });
     await page.setViewportSize({ width, height: 844 });
     await signInAsDemoPlayer(page, "alice@demo.matchrating.app");
     await page.goto("/home");
@@ -14,6 +21,17 @@ for (const width of [390, 430]) {
     await expect(page.getByRole("heading", { level: 1, name: "Analytics" })).toBeVisible();
     await expect(page.locator("header").getByText("Alice Tan", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
+    expect(matchHistoryRequests).toHaveLength(0);
+    expect(exactHistoryRequests).toHaveLength(0);
+
+    const exactHistorySummary = page.getByText("Inspect exact matches", { exact: true });
+    await expect(exactHistorySummary).toBeVisible();
+    await exactHistorySummary.click();
+    await expect.poll(() => exactHistoryRequests.length).toBe(1);
+    const exactSelector = page.getByLabel("Inspect rating point");
+    await expect(exactSelector).toBeVisible();
+    expect(await exactSelector.locator("option").count()).toBeLessThanOrEqual(50);
+
     await page.getByRole("button", { name: "30 days" }).click();
     await expect(page.getByRole("button", { name: "30 days" })).toHaveAttribute("aria-pressed", "true");
 
@@ -22,6 +40,7 @@ for (const width of [390, 430]) {
     await expect(historyDetails).not.toHaveAttribute("open", "");
     await historySummary.click();
     await expect(historyDetails).toHaveAttribute("open", "");
+    await expect.poll(() => matchHistoryRequests.length).toBe(1);
     const historyRegion = page.getByRole("region", { name: "Alice Tan match history" });
     await expect(historyRegion).toBeVisible();
     await expect(historyRegion).toHaveCSS("overflow-y", "auto");

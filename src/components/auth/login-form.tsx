@@ -7,7 +7,7 @@ import { signInWithOtp } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DEFAULT_AUTH_NEXT_PATH, getSafeAuthNextPath } from "@/lib/auth/next-path";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import styles from "./login-form.module.css";
 
 function redirectTo(url: string) {
   window.location.assign(url);
@@ -77,6 +77,7 @@ export function LoginForm({ initialNextPath = DEFAULT_AUTH_NEXT_PATH, initialMes
     setMessage("Signing in with Google.");
 
     try {
+      const { createSupabaseBrowserClient } = await import("@/lib/supabase/client");
       const supabase = createSupabaseBrowserClient();
       const { error } = await supabase.auth.signInWithIdToken({
         provider: "google",
@@ -139,20 +140,20 @@ export function LoginForm({ initialNextPath = DEFAULT_AUTH_NEXT_PATH, initialMes
   }
 
   return (
-    <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-      <div ref={googleButtonRef} className="flex min-h-11 w-full items-center justify-center" />
+    <form className={styles.form} onSubmit={handleSubmit}>
+      <div ref={googleButtonRef} className={styles.googleButton} />
       <Script
         id="google-identity-services"
         src="https://accounts.google.com/gsi/client"
         onReady={() => void initializeGoogleSignIn()}
         onError={() => setMessage("Could not load Google sign-in.")}
       />
-      <div className="flex items-center gap-3 text-xs font-semibold uppercase text-muted">
-        <span className="h-px flex-1 bg-stroke" />
+      <div className={styles.divider}>
+        <span className={styles.dividerLine} />
         or
-        <span className="h-px flex-1 bg-stroke" />
+        <span className={styles.dividerLine} />
       </div>
-      <label className="flex flex-col gap-2 text-sm font-semibold text-ink">
+      <label className={styles.emailLabel}>
         Email
         <Input
           type="email"
@@ -163,10 +164,10 @@ export function LoginForm({ initialNextPath = DEFAULT_AUTH_NEXT_PATH, initialMes
         />
       </label>
       <Button disabled={isPending} type="submit">
-        <Mail className="size-4" />
+        <Mail className={styles.mailIcon} />
         {isPending ? "Sending" : "Send login link"}
       </Button>
-      <p className="min-h-10 text-sm leading-5 text-muted">{message}</p>
+      <p className={styles.message}>{message}</p>
     </form>
   );
 }

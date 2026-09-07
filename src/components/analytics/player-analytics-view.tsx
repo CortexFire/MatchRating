@@ -1,34 +1,24 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { type ReactNode, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
-import {
-  Area,
-  CartesianGrid,
-  ComposedChart,
-  Line,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { ScreenHeader } from "@/components/app/screen-header";
-import { MatchHistoryList } from "@/components/match/match-history-list";
 import { RatingValue } from "@/components/ratings/rating-value";
 import {
   type AnalyticsPeriod,
   type AnalyticsPeriodSnapshot,
+  type AnalyticsRatingPoint,
   type PlayerAnalyticsViewModel,
 } from "@/lib/analytics/analytics-policy";
-import { type MatchHistoryPage } from "@/lib/matches/history-pagination";
-import {
-  buildRatingHistoryChartData,
-  formatRatingPointDetails,
-  formatRatingTooltipEntry,
-} from "./rating-history-chart-data";
+import { DeferredPlayerHistory } from "./deferred-player-history";
 import styles from "./player-analytics-view.module.css";
+
+const RatingHistoryChart = dynamic(() => import("./rating-history-chart").then((module) => module.RatingHistoryChart), {
+  loading: () => <p className={styles.chartLoading} role="status">Loading rating chart…</p>,
+});
 
 const PERIODS: Array<{ key: AnalyticsPeriod; label: string }> = [
   { key: "all", label: "All" },
@@ -37,13 +27,7 @@ const PERIODS: Array<{ key: AnalyticsPeriod; label: string }> = [
   { key: "1y", label: "1 year" },
 ];
 
-export function PlayerAnalyticsView({
-  model,
-  initialHistoryPage,
-}: {
-  model: PlayerAnalyticsViewModel;
-  initialHistoryPage: MatchHistoryPage;
-}) {
+export function PlayerAnalyticsView({ model }: { model: PlayerAnalyticsViewModel }) {
   const router = useRouter();
   const [period, setPeriod] = useState<AnalyticsPeriod>("all");
   const [expandedFlag, setExpandedFlag] = useState<string | null>(null);
@@ -80,6 +64,7 @@ export function PlayerAnalyticsView({
         </section>
       ) : (
         <AnalyticsContent
+          model={model}
           snapshot={model.periods[period]}
           period={period}
           onPeriodChange={(nextPeriod) => {
@@ -90,53 +75,37 @@ export function PlayerAnalyticsView({
           onFlagToggle={(key) => setExpandedFlag((current) => current === key ? null : key)}
         />
       )}
-      <PlayerHistoryDisclosure model={model} initialPage={initialHistoryPage} />
+      <DeferredPlayerHistory
+        key={`${model.group.id}:${model.subject.id}`}
+        groupId={model.group.id}
+        playerId={model.subject.id}
+        playerName={model.subject.name}
+      />
     </MobileShell>
   );
 }
 
-function PlayerHistoryDisclosure({
-  model,
-  initialPage,
-}: {
-  model: PlayerAnalyticsViewModel;
-  initialPage: MatchHistoryPage;
-}) {
-  return (
-    <section className={styles.playerHistorySection}>
-      <details className={styles.playerHistoryDetails}>
-        <summary className={styles.playerHistorySummary}>
-          <span>Match history</span>
-          <ChevronDown className={styles.playerHistoryChevron} aria-hidden="true" />
-        </summary>
-        <div className={styles.playerHistoryContent}>
-          <MatchHistoryList
-            key={`${model.group.id}:${model.subject.id}`}
-            initialPage={initialPage}
-            groupId={model.group.id}
-            playerId={model.subject.id}
-            variant="embedded"
-            regionLabel={`${model.subject.name} match history`}
-          />
-        </div>
-      </details>
-    </section>
-  );
-}
-
 function AnalyticsContent({
+  model,
   snapshot,
   period,
   onPeriodChange,
   expandedFlag,
   onFlagToggle,
 }: {
+  model: Extract<PlayerAnalyticsViewModel, { status: "ready" }>;
   snapshot: AnalyticsPeriodSnapshot;
   period: AnalyticsPeriod;
   onPeriodChange: (period: AnalyticsPeriod) => void;
   expandedFlag: string | null;
   onFlagToggle: (key: string) => void;
 }) {
+  const router = useRouter();
+  const points = useMemo(() => snapshot.ratingHistoryPointIds
+    .slice(0, 200)
+    .map((matchId: string) => model.historyPoints[matchId])
+    .filter((point: AnalyticsRatingPoint | undefined): point is AnalyticsRatingPoint => point !== undefined), [model.historyPoints, snapshot.ratingHistoryPointIds]);
+
   return (
     <>
       <section className={styles.historySection} aria-labelledby="rating-history-title">
@@ -155,7 +124,19 @@ function AnalyticsContent({
             </button>
           ))}
         </div>
-        <RatingHistoryChart snapshot={snapshot} />
+        {points.length ? (
+          <RatingHistoryChart
+            key={`${model.group.id}:${model.subject.id}:${period}:${model.asOf}:${model.ratingVersion}`}
+            points={points}
+            bounds={snapshot.ratingHistoryBounds}
+            groupId={model.group.id}
+            playerId={model.subject.id}
+            period={period}
+            asOf={model.asOf}
+            ratingVersion={model.ratingVersion}
+            onRatingVersionConflict={() => router.refresh()}
+          />
+        ) : <p className={styles.chartEmpty}>No completed matches in this period.</p>}
       </section>
 
       <section className={styles.summaryGrid} aria-label="Player summary">
@@ -215,71 +196,6 @@ function AnalyticsContent({
   );
 }
 
-function RatingHistoryChart({ snapshot }: { snapshot: AnalyticsPeriodSnapshot }) {
-  const points = snapshot.ratingHistory;
-  const [selectedMatchId, setSelectedMatchId] = useState(points.at(-1)?.matchId ?? "");
-  const selected = useMemo(
-    () => points.find((point) => point.matchId === selectedMatchId) ?? points.at(-1),
-    [points, selectedMatchId],
-  );
-
-  if (!points.length) return <p className={styles.chartEmpty}>No completed matches in this period.</p>;
-  const selectedValue = selected?.matchId ?? points.at(-1)?.matchId ?? "";
-  const chart = buildRatingHistoryChartData(points);
-
-  return (
-    <div className={styles.chartWrap}>
-      <div className={styles.chart} aria-hidden="true">
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={chart.points} margin={{ top: 12, right: 10, bottom: 0, left: -18 }}>
-            <CartesianGrid vertical={false} stroke="var(--stroke)" strokeDasharray="3 3" />
-            <XAxis dataKey="occurredAt" tickFormatter={shortDate} tick={{ fill: "var(--muted)", fontSize: 10 }} minTickGap={24} />
-            <YAxis domain={chart.yDomain} tick={{ fill: "var(--muted)", fontSize: 10 }} width={48} />
-            <Tooltip
-              labelFormatter={(value) => longDate(String(value))}
-              formatter={(_value, _name, item) => formatRatingTooltipEntry(item.payload)}
-              contentStyle={{ background: "var(--surface)", border: "1px solid var(--stroke)", borderRadius: 8, fontSize: 12 }}
-            />
-            <Area
-              type="monotone"
-              dataKey="performanceRange"
-              stroke="none"
-              fill="var(--muted)"
-              fillOpacity={0.18}
-              dot={false}
-              activeDot={false}
-              tooltipType="none"
-              isAnimationActive={false}
-            />
-            <Line type="monotone" dataKey="rating" stroke="var(--action)" strokeWidth={3} dot={{ r: 3, fill: "var(--surface)", strokeWidth: 2 }} activeDot={{ r: 5 }} />
-            <Line
-              type="monotone"
-              dataKey="latestRating"
-              stroke="transparent"
-              dot={{ r: 6, fill: "var(--action)", stroke: "var(--surface)", strokeWidth: 2 }}
-              activeDot={false}
-              connectNulls={false}
-              tooltipType="none"
-              isAnimationActive={false}
-            />
-          </ComposedChart>
-        </ResponsiveContainer>
-      </div>
-      <div className={styles.chartInspector}>
-        <label>
-          <span>Inspect match</span>
-          <select aria-label="Inspect rating point" value={selectedValue} onChange={(event) => setSelectedMatchId(event.target.value)}>
-          {points.map((point) => <option key={point.matchId} value={point.matchId}>{longDate(point.occurredAt)}</option>)}
-          </select>
-        </label>
-        <p role="status" aria-label="Selected rating point" aria-live="polite">
-          {selected ? `${longDate(selected.occurredAt)}: rating ${formatRatingPointDetails(selected)}` : ""}
-        </p>
-      </div>
-    </div>
-  );
-}
-
 function SummaryCard({ primary, secondary, label }: { primary: ReactNode; secondary: string; label: string }) {
   return (
     <article className={styles.summaryCard} aria-label={label}>
@@ -294,12 +210,4 @@ function formatSigned(value: number) {
   if (value > 0) return `+${value}`;
   if (value < 0) return `−${Math.abs(value)}`;
   return "0";
-}
-
-function shortDate(value: string) {
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(value));
-}
-
-function longDate(value: string) {
-  return new Intl.DateTimeFormat("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(value));
 }

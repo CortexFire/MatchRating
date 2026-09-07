@@ -1,0 +1,127 @@
+.chartWrap {
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 8px;
+}
+
+.chart {
+  height: 186px;
+  width: 100%;
+}
+
+.latestPoint,
+.inspectorContent p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.latestPoint {
+  padding: 4px 4px 8px;
+}
+
+.inspectorDetails {
+  border-top: 1px solid var(--stroke);
+}
+
+.inspectorSummary {
+  display: flex;
+  min-height: 44px;
+  cursor: pointer;
+  list-style: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--ink);
+  padding: 8px 4px 4px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.inspectorSummary::-webkit-details-marker {
+  display: none;
+}
+
+.inspectorChevron {
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+  transition: transform 150ms ease;
+}
+
+.inspectorDetails[open] .inspectorChevron {
+  transform: rotate(180deg);
+}
+
+.inspectorContent {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 4px 4px;
+}
+
+.inspectorField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.inspectorField select {
+  min-height: 44px;
+  width: 100%;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.pageNavigation {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pageNavigation button,
+.errorState button {
+  min-height: 44px;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pageNavigation button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.inspectorSummary:focus-visible,
+.inspectorField select:focus-visible,
+.pageNavigation button:focus-visible,
+.errorState button:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}
+
+.errorState {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.emptyState {
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+}

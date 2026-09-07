@@ -23,17 +23,20 @@ const groupId = "11111111-1111-4111-8111-111111111111";
 const playerId = "22222222-2222-4222-8222-222222222222";
 const emptySnapshot = {
   summary: { rank: 2, rankedPlayerCount: 8, currentRating: 1542, ratingChange: 0, wins: 0, losses: 0, winRate: null },
-  ratingHistory: [],
+  ratingHistoryPointIds: [],
+  ratingHistoryBounds: [0, 1] as [number, number],
   flags: [],
   matchups: [],
 };
 const model = {
   status: "ready" as const,
   asOf: "2026-08-19T12:00:00.000Z",
+  ratingVersion: "rating-v2",
   viewerUserId: "viewer-id",
   subject: { id: playerId, name: "Charlie Duong" },
   group: { id: groupId, name: "Downtown Rec" },
   availableGroups: [{ id: groupId, name: "Downtown Rec" }],
+  historyPoints: {},
   periods: { all: emptySnapshot, "30d": emptySnapshot, "90d": emptySnapshot, "1y": emptySnapshot },
 };
 
@@ -43,13 +46,13 @@ beforeEach(() => {
   mocks.listMatchHistoryPage.mockResolvedValue({ matches: [], nextCursor: null });
 });
 
-test("loads and renders one authorized player analytics model", async () => {
+test("loads analytics without eagerly requesting match history", async () => {
   const html = renderToStaticMarkup(await AnalyticsPageContent({
     params: Promise.resolve({ groupId, playerId }),
   }));
 
   expect(mocks.getPlayerAnalyticsData).toHaveBeenCalledWith(groupId, playerId);
-  expect(mocks.listMatchHistoryPage).toHaveBeenCalledWith({ groupId, playerId });
+  expect(mocks.listMatchHistoryPage).not.toHaveBeenCalled();
   expect(html).toContain("Analytics");
   expect(html).toContain("Charlie Duong");
   expect(html).toContain("Match history");
