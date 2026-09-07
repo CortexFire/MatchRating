@@ -5,7 +5,10 @@ import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { createTestDatabase } from './db-harness.mjs';
 import { createPerformanceFixture, FIXTURE_ACTOR, FIXTURE_GROUP } from './fixtures';
-import { projectPlayerAnalytics, type AnalyticsFactsPayload } from './reference-analytics-policy';
+import { projectPlayerAnalytics, type AnalyticsFactsPayload, type AnalyticsPeriodSnapshot } from './reference-analytics-policy';
+
+type RatingPoint = AnalyticsPeriodSnapshot['ratingHistory'][number];
+type ExactPage = { points: RatingPoint[]; hasMore: boolean };
 
 async function main() {
   const codeRoot = resolve(process.argv[2] ?? '.');
@@ -39,24 +42,25 @@ async function main() {
         }
         const ids = model.periods[period].ratingHistoryPointIds as string[];
         assert.ok(ids.length<=200,`${period} sample is bounded`);
-        const referencePoints = new Map(reference.periods[period].ratingHistory.map(p=>[p.matchId,p]));
+        const referencePoints: Map<string,RatingPoint> = new Map(reference.periods[period].ratingHistory.map(p=>[p.matchId,p]));
         for(const id of ids) assert.deepEqual(model.historyPoints[id],referencePoints.get(id),`exact sampled point ${id}`);
-        const full = reference.periods[period].ratingHistory;
-        const bounds = full.length ? [Math.min(...full.map(p=>p.rating-p.performanceSd))-20, Math.max(...full.map(p=>p.rating+p.performanceSd))+20] : [0,1];
+        const full: RatingPoint[] = reference.periods[period].ratingHistory;
+        const bounds: [number,number] = full.length ? [Math.min(...full.map(p=>p.rating-p.performanceSd))-20, Math.max(...full.map(p=>p.rating+p.performanceSd))+20] : [0,1];
         assert.deepEqual(model.periods[period].ratingHistoryBounds,bounds,`${period} full-series bounds`);
-        const expected = [...full].reverse();
-        const inspected = [];
+        const expected: RatingPoint[] = [...full].reverse();
+        const inspected: RatingPoint[] = [];
         let cursorAt: string|null = null;
         let cursorId: string|null = null;
         for (;;) {
-          const pageResult = await db.query('select public.get_player_analytics_history_v2($1::uuid,$2::uuid,$3::text,$4::timestamptz,$5::bigint,$6::timestamptz,$7::uuid,50) as page', [FIXTURE_GROUP,FIXTURE_ACTOR,period,model.asOf,model.ratingVersion,cursorAt,cursorId]);
-          const page = pageResult.rows[0].page;
+          const pageResult: { rows: { page: ExactPage }[] } = await db.query('select public.get_player_analytics_history_v2($1::uuid,$2::uuid,$3::text,$4::timestamptz,$5::bigint,$6::timestamptz,$7::uuid,50) as page', [FIXTURE_GROUP,FIXTURE_ACTOR,period,model.asOf,model.ratingVersion,cursorAt,cursorId]);
+          const page: ExactPage = pageResult.rows[0].page;
           assert.ok(page.points.length<=50,'exact page bounded to 50');
           inspected.push(...page.points);
           assert.ok(inspected.length<=expected.length,'pagination does not repeat points');
           if (!page.hasMore) break;
           assert.equal(page.points.length,50,'nonterminal page full');
           const last = page.points.at(-1);
+          assert.ok(last);
           cursorAt = last.occurredAt;
           cursorId = last.matchId;
         }
