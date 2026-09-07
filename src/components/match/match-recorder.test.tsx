@@ -1114,6 +1114,88 @@ describe("MatchRecorder", () => {
     );
   });
 
+  test("queues a cleared draft behind slow creation and waits for deletion before navigation", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    let resolveCreate!: (result: {
+      ok: true;
+      data: { draftId: string; outcome: "saved" };
+    }) => void;
+    let resolveDelete!: (result: {
+      ok: true;
+      data: { draftId: null; outcome: "deleted" };
+    }) => void;
+    const saveActiveMatchDraft = vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveCreate = resolve;
+      }))
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveDelete = resolve;
+      }));
+
+    render(
+      <NavigationSyncProvider>
+        <MatchRecorder
+          groupId="11111111-1111-4111-8111-111111111111"
+          groupName="Wednesday Club"
+          groupOptions={[
+            { id: "11111111-1111-4111-8111-111111111111", name: "Wednesday Club" },
+            { id: "22222222-2222-4222-8222-222222222222", name: "Downtown Rec" },
+          ]}
+          players={matchRecorderPlayers}
+          initialMatch={{
+            format: "singles",
+            teamAUserIds: ["alice"],
+            teamBUserIds: ["bea"],
+            games: [{ teamAScore: 21, teamBScore: 18 }],
+          }}
+          saveActiveMatchDraft={saveActiveMatchDraft}
+        />
+      </NavigationSyncProvider>,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(saveActiveMatchDraft).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByLabelText("Remove Alice from Team A"));
+    fireEvent.click(screen.getByLabelText("Remove Bea from Team B"));
+    fireEvent.change(screen.getByLabelText("Set 1 Team A score"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Set 1 Team B score"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Current group Wednesday Club"), {
+      target: { value: "22222222-2222-4222-8222-222222222222" },
+    });
+
+    expect(navigationMocks.push).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveCreate({ ok: true, data: { draftId: "draft-created", outcome: "saved" } });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(saveActiveMatchDraft).toHaveBeenCalledTimes(2);
+    expect(saveActiveMatchDraft).toHaveBeenLastCalledWith({
+      draftId: "draft-created",
+      groupId: "11111111-1111-4111-8111-111111111111",
+      format: "singles",
+      teamAUserIds: [],
+      teamBUserIds: [],
+      games: [{ teamAScore: null, teamBScore: null, winnerTeam: "A" }],
+    });
+    expect(navigationMocks.push).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveDelete({ ok: true, data: { draftId: null, outcome: "deleted" } });
+      await Promise.resolve();
+    });
+
+    expect(navigationMocks.push).toHaveBeenCalledWith(
+      "/groups/22222222-2222-4222-8222-222222222222/matches/new",
+    );
+  });
+
   test("attempts the latest draft sync on page hide without installing an unload warning", async () => {
     vi.useFakeTimers();
     const saveActiveMatchDraft = vi.fn(async () => ({

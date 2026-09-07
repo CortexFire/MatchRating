@@ -235,13 +235,22 @@ export function MatchRecorder({
   const enqueueDraftSync = useCallback(async (payload: ActiveMatchDraftInput) => {
     const save = saveActiveMatchDraftRef.current;
     if (!canEdit || !save || submissionInProgress.current) return;
-    if (!activeDraftId.current && isEmptyActiveMatchDraft(payload)) return;
+    if (
+      !activeDraftId.current
+      && isEmptyActiveMatchDraft(payload)
+      && !draftSaveQueue.current?.hasWork()
+    ) return;
     await draftSaveQueue.current?.enqueue(payload);
   }, [canEdit]);
 
   const flushDraftSync = useCallback(async (payload?: ActiveMatchDraftInput) => {
     if (!canEdit || !saveActiveMatchDraftRef.current) return;
-    if (payload && !activeDraftId.current && isEmptyActiveMatchDraft(payload)) return;
+    if (
+      payload
+      && !activeDraftId.current
+      && isEmptyActiveMatchDraft(payload)
+      && !draftSaveQueue.current?.hasWork()
+    ) return;
     await draftSaveQueue.current?.flush(payload);
   }, [canEdit]);
 
@@ -272,7 +281,11 @@ export function MatchRecorder({
     }
 
     const payload = currentDraft;
-    if (!activeDraftId.current && isEmptyActiveMatchDraft(payload)) return;
+    if (
+      !activeDraftId.current
+      && isEmptyActiveMatchDraft(payload)
+      && !draftSaveQueue.current?.hasWork()
+    ) return;
     const timeout = window.setTimeout(() => {
       if (autosaveTimeout.current === timeout) {
         autosaveTimeout.current = null;
