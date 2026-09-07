@@ -53,7 +53,6 @@ export async function ReviseMatchContent({ params }: ReviseMatchPageProps) {
         groupId={groupId}
         jobId={ratingStatus.id}
         status={ratingStatus.status}
-        canRetry={ratingStatus.canRetry}
         showPending={false}
       />
       <MatchRevisionRecorder

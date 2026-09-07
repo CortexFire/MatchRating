@@ -4,9 +4,7 @@ import {
   getGroup,
   getGroupMatchDetail,
   listCurrentUserGroups,
-  listCurrentUserMatches,
   listMatchHistoryPage,
-  listGroupMatches,
   listGroupPlayers,
 } from "./app-data";
 
@@ -420,56 +418,10 @@ describe("stored match reads", () => {
     }));
   });
 
-  test("keeps the recent current-user reader bounded without loading every participant revision", async () => {
-    await listCurrentUserMatches({ limit: 3 });
-
-    expect(rpc).toHaveBeenCalledWith("list_match_history_bundle_v2", expect.objectContaining({
-      p_group_id: null,
-      p_limit: 3,
-    }));
-    expect(from).not.toHaveBeenCalled();
-  });
-
-  test("orders one group's hydrated matches newest first", async () => {
-    const matches = await listGroupMatches(GROUP_ONE, { limit: 20 });
-
-    expect(matches.map((match) => match.id)).toEqual([MATCH_NEW, MATCH_OLD]);
-    expect(matches.every((match) => match.groupId === GROUP_ONE)).toBe(true);
-  });
-
-  test("limits the constrained newest-first match rows before hydration", async () => {
-    rowsByTable.matches = [
-      { id: "99999999-9999-4999-8999-999999999999", group_id: GROUP_ONE, active_revision_id: null, status: "confirmed", submitted_at: "2026-08-09T20:00:00.000Z", review_started_at: "2026-08-09T20:00:00.000Z" },
-      ...rowsByTable.matches,
-    ];
-
-    await listGroupMatches(GROUP_ONE, { limit: 5 });
-
-    expect(rpc).toHaveBeenCalledWith("list_match_history_bundle_v2", expect.objectContaining({
-      p_group_id: GROUP_ONE,
-      p_limit: 5,
-    }));
-    expect(queriesByTable.matches).toBeUndefined();
-  });
-
-  test("includes every stored match status for the group with equal-timestamp IDs descending", async () => {
-    rowsByTable.matches = [
-      { id: MATCH_OLD, group_id: GROUP_ONE, active_revision_id: REVISION_OLD, status: "confirmed", submitted_at: "2026-08-07T20:00:00.000Z", review_started_at: "2026-08-07T20:00:00.000Z" },
-      { id: MATCH_OTHER, group_id: GROUP_ONE, active_revision_id: REVISION_OTHER, status: "disputed", submitted_at: "2026-08-07T20:00:00.000Z", review_started_at: "2026-08-07T20:00:00.000Z" },
-      { id: MATCH_NEW, group_id: GROUP_ONE, active_revision_id: REVISION_NEW, status: "pending_confirmation", submitted_at: "2026-08-07T20:00:00.000Z", review_started_at: "2026-08-07T20:00:00.000Z" },
-    ];
-
-    const matches = await listGroupMatches(GROUP_ONE, { limit: 20 });
-
-    expect(matches.map((match) => match.id)).toEqual([MATCH_OTHER, MATCH_OLD, MATCH_NEW]);
-    expect(matches.map((match) => match.status)).toEqual(["disputed", "confirmed", "pending_confirmation"]);
-  });
-
   test("shares current-user group authorization across landing readers", async () => {
     await Promise.all([
       canCurrentUserReadGroup(GROUP_ONE),
       getGroup(GROUP_ONE),
-      listGroupMatches(GROUP_ONE, { limit: 20 }),
       listGroupPlayers(GROUP_ONE),
     ]);
 
@@ -718,7 +670,6 @@ describe("stored match reads", () => {
     await expect(canCurrentUserReadGroup(GROUP_ONE)).resolves.toBe(false);
     await expect(getGroup(GROUP_ONE)).rejects.toThrow("not an active member");
     await expect(listGroupPlayers(GROUP_ONE)).rejects.toThrow("not an active member");
-    await expect(listGroupMatches(GROUP_ONE, { limit: 20 })).resolves.toEqual([]);
     await expect(getGroupMatchDetail(GROUP_ONE, MATCH_NEW)).resolves.toBeNull();
   });
 

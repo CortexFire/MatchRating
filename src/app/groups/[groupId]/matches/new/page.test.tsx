@@ -13,8 +13,6 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("@/app/actions", () => ({
   createGuestPlayers: vi.fn(),
-  retryRatingRebuild: vi.fn(),
-  saveActiveMatchDraft: vi.fn(),
   syncActiveMatchDraft: vi.fn(),
   submitMatch: vi.fn(),
 }));
@@ -38,7 +36,7 @@ describe("NewMatchPage", () => {
     ],
     players: [],
     draft: null,
-    ratingStatus: { id: null, status: null, canRetry: false },
+    ratingStatus: { id: null, status: null },
   };
 
   beforeEach(() => {
@@ -82,7 +80,7 @@ describe("NewMatchPage", () => {
     mocks.getMatchRecorderPageData.mockResolvedValue({
       ...recorderData,
       groups: [routeGroup],
-      ratingStatus: { id: "44444444-4444-4444-8444-444444444444", status: "failed", canRetry: false },
+      ratingStatus: { id: "44444444-4444-4444-8444-444444444444", status: "failed" },
     });
 
     const html = renderToStaticMarkup(await NewMatchContent({

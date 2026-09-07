@@ -268,7 +268,7 @@ describe("transactional match actions", () => {
       error: null,
     });
 
-    const result = await actions.saveActiveMatchDraft({
+    const result = await actions.syncActiveMatchDraft({
       draftId: "33333333-3333-4333-8333-333333333333",
       groupId,
       format: "singles",
@@ -279,7 +279,7 @@ describe("transactional match actions", () => {
 
     expect(result).toEqual({
       ok: true,
-      data: { draftId: "33333333-3333-4333-8333-333333333333" },
+      data: { draftId: "33333333-3333-4333-8333-333333333333", outcome: "saved" },
     });
     expect(update).not.toHaveBeenCalled();
   });
@@ -548,7 +548,7 @@ describe("transactional match actions", () => {
       error: null,
     });
 
-    await actions.saveActiveMatchDraft({
+    await actions.syncActiveMatchDraft({
       draftId: "33333333-3333-4333-8333-333333333333",
       groupId,
       format: "singles",
@@ -586,7 +586,7 @@ describe("transactional match actions", () => {
       error: { code: "MRVAL", message: "This active match was already submitted." },
     });
 
-    const result = await actions.saveActiveMatchDraft({
+    const result = await actions.syncActiveMatchDraft({
       draftId: "33333333-3333-4333-8333-333333333333",
       groupId,
       format: "singles",
@@ -623,7 +623,7 @@ describe("transactional match actions", () => {
       error: null,
     });
 
-    const result = await actions.saveActiveMatchDraft({
+    const result = await actions.syncActiveMatchDraft({
       draftId: "33333333-3333-4333-8333-333333333333",
       groupId,
       format: "singles",
@@ -662,7 +662,7 @@ describe("transactional match actions", () => {
       error: { code: "MRVAL", message: "Only the match creator or a participant can edit this active match." },
     });
 
-    const result = await actions.saveActiveMatchDraft({
+    const result = await actions.syncActiveMatchDraft({
       draftId: "33333333-3333-4333-8333-333333333333",
       groupId,
       format: "singles",
@@ -702,7 +702,7 @@ describe("transactional match actions", () => {
       error: { code: "MRVAL", message: "This active match is unavailable or you no longer have access." },
     });
 
-    const result = await actions.saveActiveMatchDraft({
+    const result = await actions.syncActiveMatchDraft({
       draftId: "33333333-3333-4333-8333-333333333333",
       groupId,
       format: "singles",
@@ -858,35 +858,4 @@ describe("transactional match actions", () => {
     expect(supabaseMocks.rpc).not.toHaveBeenCalled();
   });
 
-  test("queues an admin retry with the supplied command ID", async () => {
-    supabaseMocks.rpc.mockResolvedValue({
-      data: {
-        ratingJobId: "44444444-4444-4444-8444-444444444444",
-        ratingStatus: "queued",
-      },
-      error: null,
-    });
-    const retry = (
-      actions as typeof actions & {
-        retryRatingRebuild: (input: { jobId: string; commandId: string }) => Promise<actions.ActionResult>;
-      }
-    ).retryRatingRebuild;
-
-    const result = await retry({
-      jobId: "44444444-4444-4444-8444-444444444444",
-      commandId: "99999999-9999-4999-8999-999999999999",
-    });
-
-    expect(result).toEqual({
-      ok: true,
-      data: {
-        ratingJobId: "44444444-4444-4444-8444-444444444444",
-        ratingStatus: "queued",
-      },
-    });
-    expect(supabaseMocks.rpc).toHaveBeenCalledWith("retry_rating_rebuild", {
-      p_command_id: "99999999-9999-4999-8999-999999999999",
-      p_job_id: "44444444-4444-4444-8444-444444444444",
-    });
-  });
 });

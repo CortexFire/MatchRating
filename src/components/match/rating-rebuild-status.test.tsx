@@ -24,27 +24,13 @@ describe("RatingRebuildStatus", () => {
         groupId="group-1"
         jobId="44444444-4444-4444-8444-444444444444"
         status="failed"
-        canRetry={false}
       />,
     );
     expect(screen.getByText("Match saved, but ratings need attention.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Retry ratings" })).toBeNull();
   });
 
-  test("does not expose a retry control when a failed rebuild is retryable", () => {
-    render(
-      <RatingRebuildStatus
-        groupId="group-1"
-        jobId="44444444-4444-4444-8444-444444444444"
-        status="failed"
-        canRetry
-      />,
-    );
-
-    expect(screen.queryByRole("button", { name: "Retry ratings" })).toBeNull();
-  });
-
-  test("keeps the retry control hidden when a queued job fails while polling", async () => {
+  test("shows a failed notice when a queued job fails while polling", async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       id: "55555555-5555-4555-8555-555555555555",
@@ -59,7 +45,6 @@ describe("RatingRebuildStatus", () => {
           groupId="group-1"
           jobId="44444444-4444-4444-8444-444444444444"
           status="queued"
-          canRetry={false}
         />,
       );
 
@@ -71,7 +56,7 @@ describe("RatingRebuildStatus", () => {
         "/api/groups/group-1/rating-status",
         expect.objectContaining({ cache: "no-store", signal: expect.any(AbortSignal) }),
       );
-      expect(screen.queryByRole("button", { name: "Retry ratings" })).toBeNull();
+      expect(screen.getByText("Match saved, but ratings need attention.")).toBeTruthy();
     } finally {
       vi.useRealTimers();
       vi.unstubAllGlobals();

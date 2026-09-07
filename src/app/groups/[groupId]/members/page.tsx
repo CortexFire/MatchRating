@@ -55,7 +55,6 @@ export async function MembersContent({
         groupId={groupId}
         jobId={ratingStatus.id}
         status={ratingStatus.status}
-        canRetry={ratingStatus.canRetry}
         refreshOnComplete
       />
       {players.length ? (

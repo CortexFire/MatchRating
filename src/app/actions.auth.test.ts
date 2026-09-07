@@ -133,55 +133,6 @@ describe("auth actions", () => {
     expect(redirectUrl.searchParams.get("next")).toBe("/onboarding");
   });
 
-  test("verifyEmailOtp verifies a six-digit email code", async () => {
-    const verifyEmailOtp = (
-      actions as typeof actions & {
-        verifyEmailOtp: (input: { email: string; token: string }) => Promise<actions.ActionResult>;
-      }
-    ).verifyEmailOtp;
-
-    const result = await verifyEmailOtp({
-      email: "player@example.com",
-      token: "123456",
-    });
-
-    expect(result.ok).toBe(true);
-    expect(supabaseMocks.auth.verifyOtp).toHaveBeenCalledWith({
-      email: "player@example.com",
-      token: "123456",
-      type: "email",
-    });
-    expect(cookieMocks.store.set).toHaveBeenCalledWith({
-      name: "__Host-matchrating-auth-intent",
-      value: "",
-      httpOnly: true,
-      sameSite: "lax",
-      path: "/",
-      maxAge: 0,
-      secure: true,
-    });
-  });
-
-  test("verifyEmailOtp rejects incomplete codes before calling Supabase", async () => {
-    const verifyEmailOtp = (
-      actions as typeof actions & {
-        verifyEmailOtp: (input: { email: string; token: string }) => Promise<actions.ActionResult>;
-      }
-    ).verifyEmailOtp;
-
-    const result = await verifyEmailOtp({
-      email: "player@example.com",
-      token: "123",
-    });
-
-    expect(result).toEqual({
-      ok: false,
-      message: "Enter the 6-digit code from your email.",
-    });
-    expect(supabaseMocks.auth.verifyOtp).not.toHaveBeenCalled();
-    expect(cookieMocks.store.set).not.toHaveBeenCalled();
-  });
-
   test("auth action errors are returned as user-safe messages", async () => {
     supabaseMocks.auth.signInWithOtp.mockResolvedValue({
       error: new Error("Email provider is unavailable"),
@@ -208,12 +159,4 @@ describe("auth actions", () => {
     expect(cookieMocks.store.set).not.toHaveBeenCalled();
   });
 
-  test("verifyEmailOtp preserves a pending callback intent when Supabase rejects the code", async () => {
-    supabaseMocks.auth.verifyOtp.mockResolvedValue({ error: new Error("Invalid code") });
-
-    const result = await actions.verifyEmailOtp({ email: "player@example.com", token: "123456" });
-
-    expect(result).toEqual({ ok: false, message: "Invalid code" });
-    expect(cookieMocks.store.set).not.toHaveBeenCalled();
-  });
 });

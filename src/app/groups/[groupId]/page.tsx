@@ -41,7 +41,6 @@ export async function GroupContent({ params }: GroupPageProps) {
         groupId={groupId}
         jobId={ratingStatus.id}
         status={ratingStatus.status}
-        canRetry={ratingStatus.canRetry}
         refreshOnComplete
       />
       <GroupMembersDisclosure groupId={groupId} players={players} inviteHref={`/groups/${groupId}/invite`} />

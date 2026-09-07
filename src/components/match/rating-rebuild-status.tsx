@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import clsx from "clsx";
+import styles from "./rating-rebuild-status.module.css";
 
 const ACTIVE_POLL_INTERVAL_MS = 2_000;
 
@@ -9,21 +11,18 @@ export type RatingRebuildStatusValue = "queued" | "running" | "completed" | "fai
 type RatingRebuildSnapshot = {
   id: string | null;
   status: RatingRebuildStatusValue;
-  canRetry: boolean;
 };
 
 export function RatingRebuildStatus({
   groupId,
   jobId,
   status,
-  canRetry = false,
   showPending = true,
   refreshOnComplete = false,
 }: {
   groupId: string;
   jobId?: string | null;
   status: RatingRebuildStatusValue;
-  canRetry?: boolean;
   showPending?: boolean;
   refreshOnComplete?: boolean;
 }) {
@@ -31,7 +30,6 @@ export function RatingRebuildStatus({
   const [current, setCurrent] = useState<RatingRebuildSnapshot>({
     id: jobId ?? null,
     status,
-    canRetry,
   });
   const refreshedCompletedJobId = useRef(status === "completed" ? jobId ?? null : null);
 
@@ -66,7 +64,6 @@ export function RatingRebuildStatus({
         const next = {
           id: data.id ?? null,
           status: data.status ?? null,
-          canRetry: data.canRetry === true,
         } satisfies RatingRebuildSnapshot;
         setCurrent(next);
         continuePolling = next.status === "queued" || next.status === "running";
@@ -112,12 +109,12 @@ export function RatingRebuildStatus({
 
   if (current.status === "queued" || current.status === "running") {
     if (!showPending) return null;
-    return <p className="rounded-lg border border-victory-stroke bg-victory p-3 text-sm font-semibold text-ink">Match saved. Ratings updating…</p>;
+    return <p className={clsx(styles.statusNotice, styles.pendingNotice)}>Match saved. Ratings updating…</p>;
   }
   if (current.status === "failed") {
     return (
-      <div className="flex flex-col gap-2 rounded-lg border border-stroke bg-surface p-3 text-sm text-ink">
-        <p className="font-semibold">Match saved, but ratings need attention.</p>
+      <div className={clsx(styles.statusNotice, styles.failedNotice)}>
+        <p className={styles.failedMessage}>Match saved, but ratings need attention.</p>
       </div>
     );
   }

@@ -15,15 +15,18 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.getGroupRatingRebuildStatus.mockResolvedValue({ id: null, status: null, canRetry: false });
+  mocks.getGroupRatingRebuildStatus.mockResolvedValue({ id: null, status: null });
   mocks.listGroupPlayers.mockResolvedValue([]);
 });
 
-test("renders rankings without the redundant group-isolation explanation", async () => {
+test("renders rankings without nonfunctional filters or search", async () => {
   const html = renderToStaticMarkup(await RankingsContent({ params: Promise.resolve({ groupId: "group-1" }) }));
 
   expect(html).toContain("Rankings");
   expect(html).not.toContain("Glicko-2 ratings are isolated to this group.");
+  expect(html).not.toContain("Search rankings");
+  expect(html).not.toContain("Singles");
+  expect(html).not.toContain("Doubles");
 });
 
 test("links every ranked player row to that player's analytics", async () => {

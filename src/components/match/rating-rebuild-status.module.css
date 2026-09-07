@@ -1,0 +1,25 @@
+.statusNotice {
+  padding: 0.75rem;
+  border: 1px solid;
+  border-radius: 0.5rem;
+  color: var(--ink);
+  font-size: 0.875rem;
+}
+
+.pendingNotice {
+  border-color: var(--victory-stroke);
+  background: var(--victory);
+  font-weight: 600;
+}
+
+.failedNotice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border-color: var(--stroke);
+  background: var(--surface);
+}
+
+.failedMessage {
+  font-weight: 600;
+}

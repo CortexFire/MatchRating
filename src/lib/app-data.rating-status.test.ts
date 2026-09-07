@@ -16,7 +16,7 @@ describe("getGroupRatingRebuildStatus", () => {
     supabaseMocks.createSupabaseServerClient.mockResolvedValue({ rpc: supabaseMocks.rpc });
   });
 
-  test("returns the job ID, persisted status, and retry permission", async () => {
+  test("returns the job ID and persisted status while accepting the database compatibility field", async () => {
     supabaseMocks.rpc.mockResolvedValue({
       data: {
         id: "44444444-4444-4444-8444-444444444444",
@@ -29,7 +29,6 @@ describe("getGroupRatingRebuildStatus", () => {
     await expect(getGroupRatingRebuildStatus("66666666-6666-4666-8666-666666666666")).resolves.toEqual({
       id: "44444444-4444-4444-8444-444444444444",
       status: "failed",
-      canRetry: true,
     });
   });
 
@@ -39,7 +38,6 @@ describe("getGroupRatingRebuildStatus", () => {
     await expect(getGroupRatingRebuildStatus("66666666-6666-4666-8666-666666666666")).resolves.toEqual({
       id: null,
       status: null,
-      canRetry: false,
     });
   });
 });

@@ -338,7 +338,6 @@ function toRatingStatus(status: Partial<AppRatingRebuildStatus> | null): AppRati
   return {
     id: status?.id ?? null,
     status: status?.status ?? null,
-    canRetry: status?.canRetry === true,
   };
 }
 

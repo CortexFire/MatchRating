@@ -32,14 +32,13 @@ beforeEach(() => {
     { id: "alice", name: "Alice Tan", initials: "AT", role: "Member", rating: 1500, rd: 350, performanceSd: 200, rank: 1, gamesPlayed: 1, status: "Active" },
     { id: "bea", name: "Bea Rivera", initials: "BR", role: "Member", rating: 1500, rd: 350, performanceSd: 200, rank: 2, gamesPlayed: 1, status: "Active" },
   ]);
-  mocks.getGroupRatingRebuildStatus.mockResolvedValue({ id: null, status: null, canRetry: false });
+  mocks.getGroupRatingRebuildStatus.mockResolvedValue({ id: null, status: null });
 });
 
 test("surfaces a failed rating rebuild on the revision route", async () => {
   mocks.getGroupRatingRebuildStatus.mockResolvedValue({
     id: "44444444-4444-4444-8444-444444444444",
     status: "failed",
-    canRetry: false,
   });
 
   const html = renderToStaticMarkup(await ReviseMatchContent({

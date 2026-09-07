@@ -91,13 +91,6 @@ type MembershipRow = {
   user_id: string;
 };
 
-type ProfileRow = {
-  id: string;
-  display_name: string;
-  is_guest?: boolean;
-  active_until?: string | null;
-};
-
 type RatingRow = {
   user_id: string;
   rating: number | string;
@@ -155,7 +148,6 @@ export type AppRatingRebuildStatusValue = "queued" | "running" | "completed" | "
 export type AppRatingRebuildStatus = {
   id: string | null;
   status: AppRatingRebuildStatusValue;
-  canRetry: boolean;
 };
 
 export async function getGroupRatingRebuildStatus(groupId: string): Promise<AppRatingRebuildStatus> {
@@ -166,24 +158,7 @@ export async function getGroupRatingRebuildStatus(groupId: string): Promise<AppR
   return {
     id: status?.id ?? null,
     status: status?.status ?? null,
-    canRetry: status?.canRetry === true,
   };
-}
-
-export async function getCurrentProfile(): Promise<AppProfile> {
-  const userId = await getCurrentUserId();
-  const service = createSupabaseServiceClient();
-  const { data, error } = await service
-    .from("profiles")
-    .select("id, display_name")
-    .eq("id", userId)
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  return toProfile(data as ProfileRow);
 }
 
 export async function listCurrentUserGroups(): Promise<AppGroup[]> {
@@ -227,17 +202,6 @@ export async function getGroup(groupId: string): Promise<AppGroup | null> {
     description: snapshot.group.description,
     memberCount: snapshot.memberships.length,
   };
-}
-
-export async function listGroupMatches(groupId: string, options: { limit: number }): Promise<AppMatchSummary[]> {
-  if (!(await canCurrentUserReadGroupCached(groupId))) return [];
-  const bundle = await queryMatchHistoryBundle({ groupId, limit: options.limit });
-  return buildHistoryMatchViews(bundle);
-}
-
-export async function listCurrentUserMatches(options: { limit: number }): Promise<AppMatchSummary[]> {
-  const bundle = await queryMatchHistoryBundle({ limit: options.limit });
-  return buildHistoryMatchViews(bundle);
 }
 
 const MATCH_HISTORY_PAGE_SIZE = 20;
@@ -422,14 +386,6 @@ async function getAuthorizedGroupMemberSnapshot(groupId: string) {
     throw new Error("You are not an active member of this group.");
   }
   return getGroupMemberSnapshotCached(groupId.toLowerCase());
-}
-
-function toProfile(row: ProfileRow): AppProfile {
-  return {
-    id: row.id,
-    name: row.display_name,
-    initials: initialsFor(row.display_name),
-  };
 }
 
 function initialsFor(name: string) {

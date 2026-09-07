@@ -114,21 +114,6 @@ const claimGuestProfilesSchema = z.object({
   guestProfileIds: z.array(z.string().min(1)).min(1).max(12),
 });
 
-const retryRatingSchema = z.object({
-  jobId: z.string().uuid(),
-  commandId: z.string().uuid(),
-});
-
-const emailOtpSchema = z.object({
-  email: z.string().email(),
-  token: z
-    .string()
-    .transform((value) => value.replace(/\D/g, ""))
-    .refine((value) => /^\d{6}$/.test(value), {
-      message: "Enter the 6-digit code from your email.",
-    }),
-});
-
 const activeDraftSchema = z.object({
   draftId: z.string().uuid().optional(),
   groupId: z.string().uuid(),
@@ -396,35 +381,6 @@ export async function signInWithOtp(email: string, nextPath = DEFAULT_AUTH_NEXT_
 }
 
 
-// Retained for a potential future code-entry flow. This verifier is email-only;
-// an SMS flow must request and verify a phone OTP through separate phone-specific handling.
-export async function verifyEmailOtp(input: {
-  email: string;
-  token: string;
-}): Promise<ActionResult<{ email: string }>> {
-  try {
-    const parsed = emailOtpSchema.parse(input);
-    const supabase = await createSupabaseServerClient();
-    const { error } = await supabase.auth.verifyOtp({
-      email: parsed.email,
-      token: parsed.token,
-      type: "email",
-    });
-
-    if (error) {
-      throw error;
-    }
-
-    const cookie = getAuthCallbackIntentCookieForTrustedPublicSite();
-    (await cookies()).set({ ...cookie, value: "", maxAge: 0 });
-
-    return { ok: true, data: { email: parsed.email }, message: "Signed in." };
-  } catch (error) {
-    return { ok: false, message: getActionErrorMessage(error, "Could not verify sign-in code.") };
-  }
-}
-
-
 export type InviteSummary = {
   groupId: string;
   groupName: string;
@@ -642,16 +598,6 @@ export async function joinGroupByInvite(token: string, metadata: CommandMetadata
   return result;
 }
 
-export async function leaveGroup(groupId: string, metadata: CommandMetadata = {}): Promise<ActionResult<{ groupId: string }>> {
-  const result = await executeCommand<{ groupId: string }>("command_leave_group", {
-    p_command_id: commandId(metadata),
-    p_group_id: groupId,
-  }, "Could not leave group.");
-  if (result.ok) revalidatePath(`/groups/${groupId}`);
-  return result;
-}
-
-
 type ActiveDraftInput = MatchSubmissionInput & { draftId?: string };
 type ActiveDraftSyncInput = ActiveMatchDraftInput & { draftId?: string };
 type ActiveDraftSyncResult = {
@@ -732,19 +678,6 @@ export async function syncActiveMatchDraft(
       message: error instanceof Error ? error.message : "Could not save active match.",
     };
   }
-}
-
-export async function saveActiveMatchDraft(
-  input: ActiveDraftInput,
-): Promise<ActionResult<{ draftId: string }>> {
-  const result = await syncActiveMatchDraft(input);
-  if (!result.ok) {
-    return result;
-  }
-  if (!result.data.draftId) {
-    return { ok: false, message: "Could not save an empty active match." };
-  }
-  return { ok: true, data: { draftId: result.data.draftId } };
 }
 
 async function getEditableDraft(draftId: string, userId: string, service: SupabaseService): Promise<EditableDraftRow> {
@@ -871,20 +804,4 @@ function revalidateMatchPaths(groupId: string, matchId: string) {
   revalidateRatingPaths(groupId);
   revalidatePath(`/groups/${groupId}/history`);
   revalidatePath(`/groups/${groupId}/matches/${matchId}`);
-}
-
-export async function retryRatingRebuild(
-  input: z.infer<typeof retryRatingSchema>,
-): Promise<ActionResult<{ ratingJobId: string; ratingStatus: "queued" }>> {
-  const parsed = retryRatingSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, message: parsed.error.issues[0]?.message ?? "Could not retry ratings." };
-  }
-  const result = await executeCommand<{ ratingJobId: string; ratingStatus: "queued" }>("retry_rating_rebuild", {
-    p_command_id: parsed.data.commandId,
-    p_job_id: parsed.data.jobId,
-  }, "Could not retry ratings.");
-  scheduleReturnedRatingJob(result);
-  if (result.ok) revalidatePath("/groups");
-  return result;
 }

@@ -3,13 +3,10 @@ export const unstable_instant = {
   samples: [{ params: { groupId: "00000000-0000-0000-0000-000000000000" } }],
 };
 
-import { Search } from "lucide-react";
 import { Suspense } from "react";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { PlayerRow } from "@/components/app/player-row";
 import { ScreenHeader } from "@/components/app/screen-header";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { RatingRebuildStatus } from "@/components/match/rating-rebuild-status";
 import { getGroupRatingRebuildStatus, listGroupPlayers } from "@/lib/app-data";
 import GroupLoading from "../loading";
@@ -36,21 +33,11 @@ export async function RankingsContent({ params }: RankingsPageProps) {
   return (
     <MobileShell active="Rank" recordHref={recordHref}>
       <ScreenHeader title="Rankings" backHref={`/groups/${groupId}`} />
-      <div className={styles.filters}>
-        <Badge tone="selected">Overall</Badge>
-        <Badge>Singles</Badge>
-        <Badge>Doubles</Badge>
-      </div>
-      <div className={styles.searchWrap}>
-        <Search className={styles.searchIcon} aria-hidden="true" />
-        <Input className={styles.searchInput} placeholder="Search rankings" />
-      </div>
       <RatingRebuildStatus
         key={ratingStatus.id ?? "no-rating-job"}
         groupId={groupId}
         jobId={ratingStatus.id}
         status={ratingStatus.status}
-        canRetry={ratingStatus.canRetry}
         refreshOnComplete
       />
       {rankedPlayers.length ? (

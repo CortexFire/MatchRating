@@ -25,12 +25,12 @@ const players = [
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.getGroup.mockResolvedValue({ id: groupId, name: "Wednesday Club", description: "", memberCount: 3 });
-  mocks.getGroupRatingRebuildStatus.mockResolvedValue({ id: null, status: null, canRetry: false });
+  mocks.getGroupRatingRebuildStatus.mockResolvedValue({ id: null, status: null });
   mocks.listGroupPlayers.mockResolvedValue(players);
 });
 
 test("shows when member ratings are still rebuilding", async () => {
-  mocks.getGroupRatingRebuildStatus.mockResolvedValue({ id: "job-1", status: "running", canRetry: false });
+  mocks.getGroupRatingRebuildStatus.mockResolvedValue({ id: "job-1", status: "running" });
 
   const html = renderToStaticMarkup(await MembersContent({ params: Promise.resolve({ groupId }) }));
 

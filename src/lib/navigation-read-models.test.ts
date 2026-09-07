@@ -166,7 +166,7 @@ describe("navigation read models", () => {
       { name: "Bea Rivera", rd: 88.1 },
       { name: "Aaron Unplayed", rd: 350 },
     ]);
-    expect(result?.ratingStatus).toEqual({ id: "77777777-7777-4777-8777-777777777777", status: "failed", canRetry: true });
+    expect(result?.ratingStatus).toEqual({ id: "77777777-7777-4777-8777-777777777777", status: "failed" });
     expect(result?.activeDrafts).toHaveLength(1);
     expect(result?.recentMatches).toHaveLength(1);
     expect(mocks.rpc.mock.calls).toEqual([["get_group_page_data", { p_group_id: groupId, p_match_limit: 5 }]]);

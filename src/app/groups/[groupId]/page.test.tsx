@@ -47,7 +47,7 @@ describe("GroupPage", () => {
     mocks.getGroupPageData.mockResolvedValue({
       group,
       activeDrafts: [draft],
-      ratingStatus: { id: "job-1", status: "running", canRetry: false },
+      ratingStatus: { id: "job-1", status: "running" },
       recentMatches,
       players,
     });

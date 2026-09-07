@@ -9,6 +9,7 @@ export const unstable_instant = {
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import clsx from "clsx";
 import { createGuestPlayers, submitMatch, syncActiveMatchDraft } from "@/app/actions";
 import { MobileShell } from "@/components/app/mobile-shell";
 import { MatchRecorder, type InitialMatchRecording } from "@/components/match/match-recorder";
@@ -16,6 +17,7 @@ import { RatingRebuildStatus } from "@/components/match/rating-rebuild-status";
 import { type MatchFormat } from "@/lib/matches/validation";
 import { getMatchRecorderPageData } from "@/lib/navigation-read-models";
 import GroupMatchLoading from "../loading";
+import styles from "./page.module.css";
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
@@ -48,14 +50,13 @@ export async function NewMatchContent({ params, searchParams }: NewMatchPageProp
         groupId={groupId}
         jobId={ratingStatus.id}
         status={ratingStatus.status}
-        canRetry={ratingStatus.canRetry}
         showPending={false}
       />
       {draftId && !draft ? (
-        <section className="flex min-h-full flex-col gap-4">
-          <h1 className="text-[22px] font-bold leading-7 text-ink">Active match expired</h1>
-          <p className="rounded-lg border border-stroke bg-surface p-4 text-sm text-muted">This active match expired. Start a new match.</p>
-          <Link className="inline-flex min-h-11 items-center justify-center rounded-lg bg-action px-4 text-sm font-semibold text-white" href={`/groups/${groupId}/matches/new`}>
+        <section className={clsx(styles.expiredRecovery)}>
+          <h1 className={styles.expiredTitle}>Active match expired</h1>
+          <p className={styles.expiredMessage}>This active match expired. Start a new match.</p>
+          <Link className={styles.restartLink} href={`/groups/${groupId}/matches/new`}>
             Start a new match
           </Link>
         </section>
