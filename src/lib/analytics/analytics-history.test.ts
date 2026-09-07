@@ -3,7 +3,10 @@ import {
   AnalyticsHistoryVersionConflictError,
   listExactAnalyticsHistoryPage,
 } from "./analytics-history";
-import { decodeAnalyticsHistoryCursor } from "./analytics-history-pagination";
+import {
+  decodeAnalyticsHistoryCursor,
+  encodeAnalyticsHistoryCursor,
+} from "./analytics-history-pagination";
 
 const mocks = vi.hoisted(() => ({
   createSupabaseServerClient: vi.fn(),
@@ -18,6 +21,8 @@ vi.mock("@/lib/supabase/server", () => ({
 const groupId = "11111111-1111-4111-8111-111111111111";
 const playerId = "22222222-2222-4222-8222-222222222222";
 const matchId = "33333333-3333-4333-8333-333333333333";
+const asOf = "2026-08-19T12:00:00.000Z";
+const overflowingRatingVersion = "9223372036854775808";
 
 describe("exact analytics history read", () => {
   beforeEach(() => {
@@ -41,6 +46,36 @@ describe("exact analytics history read", () => {
       period: "all",
       cursor: null,
     })).rejects.toThrow("You must be signed in to do that.");
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["request", {
+      groupId,
+      playerId,
+      period: "all",
+      asOf,
+      ratingVersion: overflowingRatingVersion,
+      cursor: null,
+    }, "Invalid analytics rating version"],
+    ["cursor", {
+      groupId,
+      playerId,
+      period: "all",
+      cursor: encodeAnalyticsHistoryCursor({
+        groupId,
+        playerId,
+        period: "all",
+        asOf,
+        ratingVersion: overflowingRatingVersion,
+        occurredAt: "2026-08-18T12:00:00.000Z",
+        matchId,
+      }),
+    }, "Invalid analytics history cursor"],
+  ])("rejects an overflowing rating version from the %s before RPC", async (_label, input, message) => {
+    await expect(listExactAnalyticsHistoryPage(input)).rejects.toThrow(
+      message,
+    );
     expect(mocks.rpc).not.toHaveBeenCalled();
   });
 

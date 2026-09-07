@@ -38,6 +38,7 @@ export class AnalyticsHistoryInputError extends Error {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PERIODS = new Set<AnalyticsPeriod>(["all", "30d", "90d", "1y"]);
 const RATING_VERSION_PATTERN = /^(0|[1-9]\d*)$/;
+const MAX_RATING_VERSION = "9223372036854775807";
 
 export function encodeAnalyticsHistoryCursor(cursor: AnalyticsHistoryCursor) {
   return Buffer.from(JSON.stringify({
@@ -144,7 +145,12 @@ function isAnalyticsPeriod(value: unknown): value is AnalyticsPeriod {
 }
 
 function validRatingVersion(value: unknown): value is string {
-  return typeof value === "string" && RATING_VERSION_PATTERN.test(value);
+  return typeof value === "string"
+    && RATING_VERSION_PATTERN.test(value)
+    && (
+      value.length < MAX_RATING_VERSION.length
+      || (value.length === MAX_RATING_VERSION.length && value <= MAX_RATING_VERSION)
+    );
 }
 
 function validTimestamp(value: unknown): value is string {
