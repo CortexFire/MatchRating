@@ -208,6 +208,7 @@ const MATCH_HISTORY_PAGE_SIZE = 20;
 
 export async function listMatchHistoryPage(input: MatchHistoryRequestInput = {}): Promise<MatchHistoryPage> {
   const request = normalizeMatchHistoryRequest(input);
+  await requireUserId();
   const bundle = await queryMatchHistoryBundle({ ...request, limit: MATCH_HISTORY_PAGE_SIZE + 1 });
   const hasNextPage = bundle.matches.length > MATCH_HISTORY_PAGE_SIZE;
   const pageRows = bundle.matches.slice(0, MATCH_HISTORY_PAGE_SIZE);

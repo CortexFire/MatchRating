@@ -110,6 +110,18 @@ describe("performance read contracts", () => {
     expect(rpc).toHaveBeenCalledWith("get_group_member_snapshot_v2", { p_group_id: GROUP_ID });
   });
 
+  test("rejects anonymous history reads before calling the authenticated-only RPC", async () => {
+    const authError = new Error("You must be signed in to do that.");
+    supabaseMocks.requireUserId.mockRejectedValueOnce(authError);
+    rpc.mockResolvedValue({
+      data: null,
+      error: { code: "42501", message: "permission denied for function list_match_history_bundle_v2" },
+    });
+
+    await expect(listMatchHistoryPage()).rejects.toBe(authError);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
   test("loads a complete cursor page and its rating data in one RPC", async () => {
     const matches = Array.from({ length: 21 }, (_, index) => {
       const suffix = String(index + 1).padStart(12, "0");
