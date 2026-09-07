@@ -61,7 +61,7 @@ type AnalyticsFactsBase = {
   availableGroups: AnalyticsGroup[];
 };
 
-export type AnalyticsFactsPayload = AnalyticsFactsBase & ({
+export type LegacyAnalyticsFactsPayload = AnalyticsFactsBase & ({
   status: "updating";
 } | {
   status: "ready";
@@ -96,7 +96,7 @@ export type MatchupInsight = {
   description: string;
 };
 
-export type AnalyticsPeriodSnapshot = {
+export type LegacyAnalyticsPeriodSnapshot = {
   summary: AnalyticsSummary;
   ratingHistory: Array<{
     matchId: string;
@@ -110,17 +110,92 @@ export type AnalyticsPeriodSnapshot = {
   matchups: MatchupInsight[];
 };
 
+export type LegacyPlayerAnalyticsViewModel = AnalyticsFactsBase & ({
+  status: "updating";
+} | {
+  status: "ready";
+  periods: Record<AnalyticsPeriod, LegacyAnalyticsPeriodSnapshot>;
+});
+
+export type AnalyticsRatingPoint = {
+  matchId: string;
+  occurredAt: string;
+  rating: number;
+  rd: number;
+  performanceSd: number;
+  ratingDelta: number;
+};
+
+export type AnalyticsPeriodSnapshot = {
+  summary: AnalyticsSummary;
+  flags: AnalyticsFlag[];
+  matchups: MatchupInsight[];
+  ratingHistoryPointIds: string[];
+  ratingHistoryBounds: [number, number];
+};
+
+export type AnalyticsCohortAggregate = {
+  userId: string;
+  matchCount: number;
+  ratingDelta: number;
+  doublesMatchCount: number;
+  distinctPartnerCount: number;
+};
+
+export type AnalyticsRelationshipAggregate = {
+  player: AnalyticsPerson;
+  kind: "partner" | "opponent";
+  matches: number;
+  wins: number;
+  gameCount: number;
+  gameWins: number;
+  expectedGameWins: number;
+};
+
+export type AggregatedAnalyticsPeriodFacts = {
+  matchCount: number;
+  wins: number;
+  gameCount: number;
+  gameWins: number;
+  expectedGameWins: number;
+  ratingDelta: number;
+  upsetWins: number;
+  residualCount: number;
+  residualSum: number;
+  residualSumSquares: number;
+  activePeerCount: number;
+  encounteredActiveCount: number;
+  cohort: AnalyticsCohortAggregate[];
+  relationships: AnalyticsRelationshipAggregate[];
+  ratingHistory: AnalyticsRatingPoint[];
+  ratingHistoryBounds: [number, number];
+};
+
+export type AggregatedAnalyticsFactsPayload = AnalyticsFactsBase & ({
+  status: "updating";
+} | {
+  status: "ready";
+  ratingVersion: string;
+  current: { rating: number; rd: number; rank: number; rankedPlayerCount: number };
+  currentWinStreak: number;
+  periods: Record<AnalyticsPeriod, AggregatedAnalyticsPeriodFacts>;
+});
+
 export type PlayerAnalyticsViewModel = AnalyticsFactsBase & ({
   status: "updating";
 } | {
   status: "ready";
+  ratingVersion: string;
+  historyPoints: Record<string, AnalyticsRatingPoint>;
   periods: Record<AnalyticsPeriod, AnalyticsPeriodSnapshot>;
 });
 
 const PERIODS: AnalyticsPeriod[] = ["all", "30d", "90d", "1y"];
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export function projectPlayerAnalytics(payload: AnalyticsFactsPayload): PlayerAnalyticsViewModel {
+export function projectLegacyPlayerAnalytics(
+  payload: LegacyAnalyticsFactsPayload,
+): LegacyPlayerAnalyticsViewModel {
   const base = {
     asOf: payload.asOf,
     viewerUserId: payload.viewerUserId,
@@ -136,11 +211,119 @@ export function projectPlayerAnalytics(payload: AnalyticsFactsPayload): PlayerAn
     periods: Object.fromEntries(PERIODS.map((period) => [
       period,
       projectPeriod(payload, period),
-    ])) as Record<AnalyticsPeriod, AnalyticsPeriodSnapshot>,
+    ])) as Record<AnalyticsPeriod, LegacyAnalyticsPeriodSnapshot>,
   };
 }
 
-function projectPeriod(payload: Extract<AnalyticsFactsPayload, { status: "ready" }>, period: AnalyticsPeriod) {
+export function projectAggregatedPlayerAnalytics(
+  payload: AggregatedAnalyticsFactsPayload,
+): PlayerAnalyticsViewModel {
+  const base = {
+    asOf: payload.asOf,
+    viewerUserId: payload.viewerUserId,
+    subject: payload.subject,
+    group: payload.group,
+    availableGroups: payload.availableGroups,
+  };
+  if (payload.status === "updating") return { ...base, status: "updating" };
+
+  const historyPoints: Record<string, AnalyticsRatingPoint> = {};
+  const periods = Object.fromEntries(PERIODS.map((period) => {
+    const facts = payload.periods[period];
+    for (const point of facts.ratingHistory) {
+      const existing = historyPoints[point.matchId];
+      if (existing && !sameRatingPoint(existing, point)) {
+        throw new Error(`Conflicting analytics chart point for match ${point.matchId}`);
+      }
+      historyPoints[point.matchId] = point;
+    }
+
+    return [period, {
+      summary: {
+        rank: payload.current.rank,
+        rankedPlayerCount: payload.current.rankedPlayerCount,
+        currentRating: Math.round(payload.current.rating),
+        currentRd: payload.current.rd,
+        ratingChange: round(facts.ratingDelta),
+        wins: facts.wins,
+        losses: facts.matchCount - facts.wins,
+        winRate: facts.matchCount ? Math.round((facts.wins / facts.matchCount) * 100) : null,
+      },
+      flags: buildAggregatedFlags(payload, facts),
+      matchups: buildMatchupsFromRelationships(facts.relationships),
+      ratingHistoryPointIds: facts.ratingHistory.map((point) => point.matchId),
+      ratingHistoryBounds: facts.ratingHistoryBounds,
+    } satisfies AnalyticsPeriodSnapshot];
+  })) as Record<AnalyticsPeriod, AnalyticsPeriodSnapshot>;
+
+  return {
+    ...base,
+    status: "ready",
+    ratingVersion: payload.ratingVersion,
+    historyPoints,
+    periods,
+  };
+}
+
+export function sampleAnalyticsRatingPoints(
+  input: AnalyticsRatingPoint[],
+): AnalyticsRatingPoint[] {
+  const points = [...input].sort(compareRatingPoints);
+  if (points.length <= 200) return points;
+
+  const selected = new Map<string, AnalyticsRatingPoint>();
+  const retain = (point: AnalyticsRatingPoint) => selected.set(point.matchId, point);
+  retain(points[0]);
+  retain(points.at(-1)!);
+
+  const interior = points.slice(1, -1);
+  const buckets = Array.from({ length: 49 }, () => [] as AnalyticsRatingPoint[]);
+  interior.forEach((point, index) => {
+    buckets[Math.floor(index * 49 / interior.length)].push(point);
+  });
+
+  for (const bucket of buckets) {
+    if (!bucket.length) continue;
+    retain(extreme(bucket, (point) => point.rating, "min"));
+    retain(extreme(bucket, (point) => point.rating, "max"));
+    retain(extreme(bucket, (point) => point.rating - point.performanceSd, "min"));
+    retain(extreme(bucket, (point) => point.rating + point.performanceSd, "max"));
+  }
+
+  return [...selected.values()].sort(compareRatingPoints);
+}
+
+function sameRatingPoint(left: AnalyticsRatingPoint, right: AnalyticsRatingPoint) {
+  return left.matchId === right.matchId
+    && left.occurredAt === right.occurredAt
+    && left.rating === right.rating
+    && left.rd === right.rd
+    && left.performanceSd === right.performanceSd
+    && left.ratingDelta === right.ratingDelta;
+}
+
+function compareRatingPoints(left: AnalyticsRatingPoint, right: AnalyticsRatingPoint) {
+  return Date.parse(left.occurredAt) - Date.parse(right.occurredAt)
+    || left.matchId.localeCompare(right.matchId);
+}
+
+function extreme(
+  points: AnalyticsRatingPoint[],
+  score: (point: AnalyticsRatingPoint) => number,
+  direction: "min" | "max",
+) {
+  return [...points].sort((left, right) => {
+    const scoreOrder = direction === "min"
+      ? score(left) - score(right)
+      : score(right) - score(left);
+    return scoreOrder || compareRatingPoints(left, right);
+  })[0];
+}
+
+function projectPeriod(
+  payload: Extract<LegacyAnalyticsFactsPayload, { status: "ready" }>,
+  period: AnalyticsPeriod,
+) {
   const matches = payload.matches
     .filter((item) => inPeriod(item.occurredAt, period, payload.asOf))
     .sort(compareMatches);
@@ -175,7 +358,7 @@ function projectPeriod(payload: Extract<AnalyticsFactsPayload, { status: "ready"
     })),
     flags: buildFlags({ payload, matches, cohort, partnerCounts, gameCount, gameWins, expectedGameWins }),
     matchups: buildMatchups(matches),
-  } satisfies AnalyticsPeriodSnapshot;
+  } satisfies LegacyAnalyticsPeriodSnapshot;
 }
 
 function buildFlags({
@@ -187,7 +370,7 @@ function buildFlags({
   gameWins,
   expectedGameWins,
 }: {
-  payload: Extract<AnalyticsFactsPayload, { status: "ready" }>;
+  payload: Extract<LegacyAnalyticsFactsPayload, { status: "ready" }>;
   matches: AnalyticsMatchFact[];
   cohort: Map<string, { matchCount: number; ratingDelta: number; doublesMatchCount: number }>;
   partnerCounts: Map<string, number>;
@@ -252,18 +435,140 @@ function buildFlags({
   return flags;
 }
 
-type Relationship = {
-  player: AnalyticsPerson;
-  kind: "partner" | "opponent";
-  matches: number;
-  wins: number;
-  gameCount: number;
-  gameWins: number;
-  expectedGameWins: number;
-};
+function buildAggregatedFlags(
+  payload: Extract<AggregatedAnalyticsFactsPayload, { status: "ready" }>,
+  facts: AggregatedAnalyticsPeriodFacts,
+) {
+  const flags: AnalyticsFlag[] = [];
+  if (payload.currentWinStreak >= 4) {
+    flags.push(flag("hot-streak", "Hot Streak", `Won the last ${payload.currentWinStreak} matches.`));
+  }
+
+  if (facts.activePeerCount && facts.encounteredActiveCount / facts.activePeerCount >= 0.6) {
+    flags.push(flag(
+      "social-butterfly",
+      "Social Butterfly",
+      `Played with or against ${facts.encounteredActiveCount} of ${facts.activePeerCount} active players.`,
+    ));
+  }
+
+  if (facts.upsetWins >= 3) {
+    flags.push(flag(
+      "giant-slayer",
+      "Giant Slayer",
+      `Won ${facts.upsetWins} matches despite being the clear underdog.`,
+    ));
+  }
+
+  const expectedRate = facts.gameCount ? facts.expectedGameWins / facts.gameCount : 0;
+  if (facts.matchCount >= 5 && expectedRate < 0.4) {
+    flags.push(flag(
+      "tough-schedule",
+      "Tough Schedule",
+      `Faced tougher-than-average competition across the last ${facts.matchCount} matches.`,
+    ));
+  }
+
+  const subjectCohort = facts.cohort.find((item) => item.userId === payload.subject.id) ?? {
+    userId: payload.subject.id,
+    matchCount: facts.matchCount,
+    ratingDelta: facts.ratingDelta,
+    doublesMatchCount: 0,
+    distinctPartnerCount: 0,
+  };
+  const activeCohort = facts.cohort.filter((item) => item.matchCount > 0);
+  if (
+    activeCohort.length
+    && subjectCohort.matchCount >= percentile(activeCohort.map((item) => item.matchCount), 0.8)
+  ) {
+    flags.push(flag(
+      "very-active",
+      "Very Active",
+      `Played ${subjectCohort.matchCount} matches, ranking among the group’s most active players.`,
+    ));
+  }
+
+  const climbers = activeCohort.filter((item) => item.matchCount >= 5);
+  const roundedRatingGain = Math.round(subjectCohort.ratingDelta);
+  if (
+    subjectCohort.matchCount >= 5
+    && roundedRatingGain >= 1
+    && climbers.length
+    && subjectCohort.ratingDelta >= percentile(climbers.map((item) => item.ratingDelta), 0.8)
+  ) {
+    flags.push(flag(
+      "fast-climber",
+      "Fast Climber",
+      `Gained ${roundedRatingGain} rating points in this period.`,
+    ));
+  }
+
+  const actualRate = facts.gameCount ? facts.gameWins / facts.gameCount : 0;
+  if (facts.matchCount >= 5 && actualRate - expectedRate >= 0.1) {
+    flags.push(flag(
+      "overperformer",
+      "Overperformer",
+      `Won ${percent(actualRate)} of games when matchups predicted a ${percent(expectedRate)} win rate.`,
+    ));
+  }
+
+  const residualMean = facts.residualCount ? facts.residualSum / facts.residualCount : 0;
+  const residualVariance = facts.residualCount
+    ? Math.max(0, facts.residualSumSquares / facts.residualCount - residualMean ** 2)
+    : 0;
+  if (
+    facts.matchCount >= 8
+    && Math.sqrt(residualVariance) <= 0.2
+    && Math.abs(residualMean) < 0.1
+  ) {
+    flags.push(flag(
+      "consistent",
+      "Consistent",
+      `Results closely matched expected performance across ${facts.matchCount} matches.`,
+    ));
+  }
+
+  if (payload.current.rank === 1) {
+    flags.push(flag("group-leader", "Group Leader", `Currently ranked #1 in ${payload.group.name}.`));
+  }
+
+  const doublesPlayers = activeCohort
+    .filter((item) => item.doublesMatchCount >= 3)
+    .map((item) => item.distinctPartnerCount);
+  if (
+    subjectCohort.distinctPartnerCount >= 5
+    && doublesPlayers.length
+    && subjectCohort.distinctPartnerCount >= percentile(doublesPlayers, 0.75)
+  ) {
+    flags.push(flag(
+      "team-player",
+      "Team Player",
+      `Partnered with ${subjectCohort.distinctPartnerCount} different players in this period.`,
+    ));
+  }
+
+  if (
+    facts.matchCount >= 8
+    && facts.wins / facts.matchCount >= 0.75
+    && actualRate >= expectedRate
+  ) {
+    flags.push(flag(
+      "dominant",
+      "Dominant",
+      `Won ${facts.wins} of ${facts.matchCount} matches.`,
+    ));
+  }
+  return flags;
+}
+
+type Relationship = AnalyticsRelationshipAggregate;
 
 function buildMatchups(matches: AnalyticsMatchFact[]) {
-  const relationships = aggregateRelationships(matches).filter((item) => item.matches >= 3);
+  return buildMatchupsFromRelationships(aggregateRelationships(matches));
+}
+
+function buildMatchupsFromRelationships(aggregates: AnalyticsRelationshipAggregate[]) {
+  const relationships = aggregates.filter((item) => item.matches >= 3);
   const partners = relationships.filter((item) => item.kind === "partner");
   const opponents = relationships.filter((item) => item.kind === "opponent");
   const insights: MatchupInsight[] = [];

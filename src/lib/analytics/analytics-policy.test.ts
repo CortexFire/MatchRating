@@ -1,8 +1,12 @@
 import { describe, expect, test } from "vitest";
 import {
-  projectPlayerAnalytics,
-  type AnalyticsFactsPayload,
+  projectAggregatedPlayerAnalytics,
+  projectLegacyPlayerAnalytics,
+  sampleAnalyticsRatingPoints,
+  type AggregatedAnalyticsFactsPayload,
+  type AggregatedAnalyticsPeriodFacts,
   type AnalyticsMatchFact,
+  type LegacyAnalyticsFactsPayload,
 } from "./analytics-policy";
 
 const alice = { id: "alice", name: "Alice Tan" };
@@ -44,7 +48,7 @@ test("projects each match's canonical post-match consistency into rating history
   ]);
 });
 
-function facts(overrides: Partial<AnalyticsFactsPayload> = {}): AnalyticsFactsPayload {
+function facts(overrides: Partial<LegacyAnalyticsFactsPayload> = {}): LegacyAnalyticsFactsPayload {
   return {
     status: "ready",
     asOf: "2026-08-19T12:00:00.000Z",
@@ -61,15 +65,15 @@ function facts(overrides: Partial<AnalyticsFactsPayload> = {}): AnalyticsFactsPa
   };
 }
 
-function allPeriod(overrides: Partial<AnalyticsFactsPayload>) {
-  const result = projectPlayerAnalytics(facts(overrides));
+function allPeriod(overrides: Partial<LegacyAnalyticsFactsPayload>) {
+  const result = projectLegacyPlayerAnalytics(facts(overrides));
   if (result.status !== "ready") throw new Error("Expected ready analytics");
   return result.periods.all;
 }
 
 describe("player analytics policy", () => {
   test("keeps current rank and rating fixed while period performance changes", () => {
-    const result = projectPlayerAnalytics(facts({
+    const result = projectLegacyPlayerAnalytics(facts({
       matches: [
         match("old", "2025-01-01T12:00:00.000Z", { matchWon: false, gameWins: 0, ratingAfter: 1490, ratingDelta: -10 }),
         match("recent", "2026-08-10T12:00:00.000Z", { ratingBefore: 1490, ratingAfter: 1510, ratingDelta: 20 }),
@@ -117,7 +121,7 @@ describe("player analytics policy", () => {
         format: index < 5 ? "doubles" : "singles",
       },
     ));
-    const result = projectPlayerAnalytics(facts({
+    const result = projectLegacyPlayerAnalytics(facts({
       matches,
       cohortDaily: [
         { userId: "alice", statDate: "2026-08-01", matchCount: 8, ratingDelta: 80, doublesMatchCount: 5 },
@@ -383,7 +387,7 @@ describe("player analytics policy", () => {
         opponents: [{ id: "dev", name: "Dev Okafor" }],
       })),
     ];
-    const result = projectPlayerAnalytics(facts({ matches }));
+    const result = projectLegacyPlayerAnalytics(facts({ matches }));
 
     expect(result.status).toBe("ready");
     if (result.status !== "ready") return;
@@ -394,7 +398,7 @@ describe("player analytics policy", () => {
   });
 
   test("preserves the updating state without inventing partial analytics", () => {
-    const result = projectPlayerAnalytics({
+    const result = projectLegacyPlayerAnalytics({
       status: "updating",
       asOf: "2026-08-19T12:00:00.000Z",
       viewerUserId: "alice",
@@ -405,5 +409,319 @@ describe("player analytics policy", () => {
 
     expect(result).toEqual(expect.objectContaining({ status: "updating", subject: alice }));
     expect("periods" in result).toBe(false);
+  });
+});
+
+function aggregatePeriod(overrides: Partial<AggregatedAnalyticsPeriodFacts> = {}) {
+  return {
+    matchCount: 0,
+    wins: 0,
+    gameCount: 0,
+    gameWins: 0,
+    expectedGameWins: 0,
+    ratingDelta: 0,
+    upsetWins: 0,
+    residualCount: 0,
+    residualSum: 0,
+    residualSumSquares: 0,
+    activePeerCount: 2,
+    encounteredActiveCount: 0,
+    cohort: [
+      { userId: "alice", matchCount: 0, ratingDelta: 0, doublesMatchCount: 0, distinctPartnerCount: 0 },
+      { userId: "bea", matchCount: 0, ratingDelta: 0, doublesMatchCount: 0, distinctPartnerCount: 0 },
+      { userId: "cory", matchCount: 0, ratingDelta: 0, doublesMatchCount: 0, distinctPartnerCount: 0 },
+    ],
+    relationships: [],
+    ratingHistory: [],
+    ratingHistoryBounds: [0, 1] as [number, number],
+    ...overrides,
+  };
+}
+
+function aggregatedFacts(
+  period: ReturnType<typeof aggregatePeriod>,
+): AggregatedAnalyticsFactsPayload {
+  return {
+    status: "ready",
+    asOf: "2026-08-19T12:00:00.000Z",
+    ratingVersion: "7",
+    viewerUserId: "alice",
+    subject: alice,
+    group: { id: "group-1", name: "Downtown Rec" },
+    availableGroups: [{ id: "group-1", name: "Downtown Rec" }],
+    current: { rating: 1580, rd: 110.01, rank: 1, rankedPlayerCount: 3 },
+    currentWinStreak: 8,
+    periods: { all: period, "30d": period, "90d": period, "1y": period },
+  };
+}
+
+describe("bounded player analytics policy", () => {
+  test("matches the legacy oracle for summaries, flags, relationships, and exact point values", () => {
+    const matches = Array.from({ length: 8 }, (_, index) => match(
+      `match-${index + 1}`,
+      `2026-08-${String(index + 1).padStart(2, "0")}T12:00:00.000Z`,
+      { opponents: [cory], expectedGameWins: 0.4 },
+    ));
+    const legacy = projectLegacyPlayerAnalytics(facts({
+      matches,
+      cohortDaily: [
+        { userId: "alice", statDate: "2026-08-01", matchCount: 8, ratingDelta: 80, doublesMatchCount: 0 },
+        { userId: "bea", statDate: "2026-08-01", matchCount: 5, ratingDelta: 30, doublesMatchCount: 0 },
+      ],
+    }));
+    const points = matches.map((item) => ({
+      matchId: item.id,
+      occurredAt: item.occurredAt,
+      rating: 1510,
+      rd: 109.75,
+      performanceSd: 200,
+      ratingDelta: 10,
+    }));
+    const bounded = projectAggregatedPlayerAnalytics(aggregatedFacts(aggregatePeriod({
+      matchCount: 8,
+      wins: 8,
+      gameCount: 8,
+      gameWins: 8,
+      expectedGameWins: 3.1999999999999997,
+      ratingDelta: 80,
+      upsetWins: 0,
+      residualCount: 8,
+      residualSum: 4.8,
+      residualSumSquares: 2.88,
+      encounteredActiveCount: 1,
+      cohort: [
+        { userId: "alice", matchCount: 8, ratingDelta: 80, doublesMatchCount: 0, distinctPartnerCount: 0 },
+        { userId: "bea", matchCount: 5, ratingDelta: 30, doublesMatchCount: 0, distinctPartnerCount: 0 },
+        { userId: "cory", matchCount: 0, ratingDelta: 0, doublesMatchCount: 0, distinctPartnerCount: 0 },
+      ],
+      relationships: [{
+        player: cory,
+        kind: "opponent",
+        matches: 8,
+        wins: 8,
+        gameCount: 8,
+        gameWins: 8,
+        expectedGameWins: 3.1999999999999997,
+      }],
+      ratingHistory: points,
+      ratingHistoryBounds: [1290, 1730],
+    })));
+
+    expect(legacy.status).toBe("ready");
+    expect(bounded.status).toBe("ready");
+    if (legacy.status !== "ready" || bounded.status !== "ready") return;
+
+    for (const period of ["all", "30d", "90d", "1y"] as const) {
+      expect(bounded.periods[period].summary).toEqual(legacy.periods[period].summary);
+      expect(bounded.periods[period].flags).toEqual(legacy.periods[period].flags);
+      expect(bounded.periods[period].matchups).toEqual(legacy.periods[period].matchups);
+      expect(bounded.periods[period].ratingHistoryPointIds).toEqual(
+        legacy.periods[period].ratingHistory.map((point) => point.matchId),
+      );
+    }
+    expect(bounded.ratingVersion).toBe("7");
+    expect(bounded.historyPoints).toEqual(Object.fromEntries(points.map((point) => [point.matchId, point])));
+  });
+
+  test("deduplicates overlapping period samples into one point dictionary", () => {
+    const point = {
+      matchId: "shared-match",
+      occurredAt: "2026-08-18T12:00:00.000Z",
+      rating: 1580,
+      rd: 110.01,
+      performanceSd: 85,
+      ratingDelta: 12,
+    };
+    const payload = aggregatedFacts(aggregatePeriod({ ratingHistory: [point] }));
+
+    const result = projectAggregatedPlayerAnalytics(payload);
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") return;
+    expect(result.historyPoints).toEqual({ "shared-match": point });
+    expect(Object.values(result.periods).every((period) => (
+      period.ratingHistoryPointIds[0] === "shared-match"
+    ))).toBe(true);
+  });
+
+  test("matches the legacy oracle across every flag threshold family", () => {
+    const featuredMatches = Array.from({ length: 8 }, (_, index) => match(
+      `featured-parity-${index + 1}`,
+      `2026-08-${String(index + 1).padStart(2, "0")}T12:00:00.000Z`,
+      {
+        expectedGameWins: 0.8,
+        partners: index < 5 ? [{ id: `partner-${index}`, name: `Partner ${index}` }] : [],
+        opponents: index % 2 === 0 ? [bea] : [cory],
+        format: index < 5 ? "doubles" : "singles",
+      },
+    ));
+    const featuredLegacy = allPeriod({
+      matches: featuredMatches,
+      cohortDaily: [
+        { userId: "alice", statDate: "2026-08-01", matchCount: 8, ratingDelta: 80, doublesMatchCount: 5 },
+        { userId: "bea", statDate: "2026-08-01", matchCount: 6, ratingDelta: 20, doublesMatchCount: 4 },
+        { userId: "cory", statDate: "2026-08-01", matchCount: 4, ratingDelta: -5, doublesMatchCount: 3 },
+      ],
+      cohortPartners: [
+        ...Array.from({ length: 5 }, (_, index) => ({
+          userId: "alice",
+          relatedUserId: `partner-${index}`,
+          statDate: "2026-08-01",
+        })),
+        { userId: "bea", relatedUserId: "p1", statDate: "2026-08-01" },
+        { userId: "cory", relatedUserId: "p2", statDate: "2026-08-01" },
+      ],
+    }).flags;
+    const featuredBounded = projectAggregatedPlayerAnalytics(aggregatedFacts(aggregatePeriod({
+      matchCount: 8,
+      wins: 8,
+      gameCount: 8,
+      gameWins: 8,
+      expectedGameWins: 6.3999999999999995,
+      ratingDelta: 80,
+      residualCount: 8,
+      residualSum: 1.5999999999999999,
+      residualSumSquares: 0.31999999999999984,
+      encounteredActiveCount: 2,
+      cohort: [
+        { userId: "alice", matchCount: 8, ratingDelta: 80, doublesMatchCount: 5, distinctPartnerCount: 5 },
+        { userId: "bea", matchCount: 6, ratingDelta: 20, doublesMatchCount: 4, distinctPartnerCount: 1 },
+        { userId: "cory", matchCount: 4, ratingDelta: -5, doublesMatchCount: 3, distinctPartnerCount: 1 },
+      ],
+    })));
+
+    const underdogMatches = Array.from({ length: 8 }, (_, index) => match(
+      `underdog-parity-${index + 1}`,
+      `2026-08-${String(index + 1).padStart(2, "0")}T13:00:00.000Z`,
+      { expectedGameWins: 0.3 },
+    ));
+    const underdogLegacy = allPeriod({ matches: underdogMatches }).flags;
+    const underdogBounded = projectAggregatedPlayerAnalytics(aggregatedFacts(aggregatePeriod({
+      matchCount: 8,
+      wins: 8,
+      gameCount: 8,
+      gameWins: 8,
+      expectedGameWins: 2.4,
+      ratingDelta: 80,
+      upsetWins: 8,
+      residualCount: 8,
+      residualSum: 5.6,
+      residualSumSquares: 3.9199999999999995,
+    })));
+
+    const consistentMatches = Array.from({ length: 8 }, (_, index) => match(
+      `consistent-parity-${index + 1}`,
+      `2026-08-${String(index + 1).padStart(2, "0")}T14:00:00.000Z`,
+      { gameCount: 2, gameWins: 1, expectedGameWins: 1 },
+    ));
+    const consistentLegacy = allPeriod({ matches: consistentMatches }).flags;
+    const consistentBounded = projectAggregatedPlayerAnalytics(aggregatedFacts(aggregatePeriod({
+      matchCount: 8,
+      wins: 8,
+      gameCount: 16,
+      gameWins: 8,
+      expectedGameWins: 8,
+      ratingDelta: 80,
+      residualCount: 8,
+      residualSum: 0,
+      residualSumSquares: 0,
+    })));
+
+    for (const [bounded, legacy] of [
+      [featuredBounded, featuredLegacy],
+      [underdogBounded, underdogLegacy],
+      [consistentBounded, consistentLegacy],
+    ] as const) {
+      expect(bounded.status).toBe("ready");
+      if (bounded.status !== "ready") continue;
+      expect(bounded.periods.all.flags).toEqual(legacy);
+    }
+  });
+
+  test("matches the legacy oracle for every retained relationship insight", () => {
+    const partnerMatches = Array.from({ length: 4 }, (_, index) => match(
+      `partner-parity-${index}`,
+      `2026-08-0${index + 1}T12:00:00.000Z`,
+      {
+        matchWon: index < 3,
+        gameCount: 1,
+        gameWins: index < 3 ? 1 : 0,
+        expectedGameWins: 0.4,
+        partners: [bea],
+        opponents: [],
+      },
+    ));
+    const opponentMatches = Array.from({ length: 4 }, (_, index) => match(
+      `opponent-parity-${index}`,
+      `2026-08-1${index + 1}T12:00:00.000Z`,
+      {
+        matchWon: index < 2,
+        gameCount: 3,
+        gameWins: index < 2 ? 2 : 1,
+        expectedGameWins: 2.25,
+        partners: [],
+        opponents: [cory],
+      },
+    ));
+    const legacy = allPeriod({ matches: [...partnerMatches, ...opponentMatches] }).matchups;
+    const bounded = projectAggregatedPlayerAnalytics(aggregatedFacts(aggregatePeriod({
+      relationships: [
+        {
+          player: bea,
+          kind: "partner",
+          matches: 4,
+          wins: 3,
+          gameCount: 4,
+          gameWins: 3,
+          expectedGameWins: 1.6,
+        },
+        {
+          player: cory,
+          kind: "opponent",
+          matches: 4,
+          wins: 2,
+          gameCount: 12,
+          gameWins: 6,
+          expectedGameWins: 9,
+        },
+      ],
+    })));
+
+    expect(bounded.status).toBe("ready");
+    if (bounded.status !== "ready") return;
+    expect(bounded.periods.all.matchups).toEqual(legacy);
+  });
+
+  test("samples full histories with deterministic extrema and never exceeds 200 points", () => {
+    const points = Array.from({ length: 203 }, (_, index) => ({
+      matchId: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      occurredAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
+      rating: index === 2 || index === 3 ? 1000 : 1500 + (index % 3),
+      rd: 100,
+      performanceSd: index === 4 ? 700 : 80,
+      ratingDelta: 1,
+    }));
+
+    const sampled = sampleAnalyticsRatingPoints(points);
+
+    expect(sampled.length).toBeLessThanOrEqual(200);
+    expect(sampled[0]).toEqual(points[0]);
+    expect(sampled.at(-1)).toEqual(points.at(-1));
+    expect(sampled).toContainEqual(points[2]);
+    expect(sampled).not.toContainEqual(points[3]);
+    expect(sampled).toContainEqual(points[4]);
+  });
+
+  test("preserves every point when the history already fits the contract", () => {
+    const points = Array.from({ length: 200 }, (_, index) => ({
+      matchId: `match-${index}`,
+      occurredAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
+      rating: 1500 + index,
+      rd: 100,
+      performanceSd: 80,
+      ratingDelta: 1,
+    }));
+
+    expect(sampleAnalyticsRatingPoints(points)).toEqual(points);
   });
 });
