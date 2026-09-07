@@ -54,6 +54,7 @@ describe("analytics exact-history route", () => {
   test.each([
     [new AnalyticsHistoryInputError("Invalid analytics period"), 400, "Invalid analytics period"],
     [{ code: "MR401", message: "Authentication required" }, 401, "Unauthorized"],
+    [new Error("You must be signed in to do that."), 401, "Unauthorized"],
     [{ code: "MR403", message: "Analytics history is inaccessible" }, 403, "Forbidden"],
     [new AnalyticsHistoryVersionConflictError(), 409, "Ratings changed; refresh analytics"],
     [new Error("database unavailable"), 500, "Could not load analytics history"],

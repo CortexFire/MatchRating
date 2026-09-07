@@ -6,6 +6,7 @@ import {
   type AnalyticsHistoryRequestInput,
 } from "./analytics-history-pagination";
 import { type AnalyticsRatingPoint } from "./analytics-policy";
+import { comparePostgresTimestamps, isPostgresTimestamp } from "./postgres-timestamp";
 
 export type ExactAnalyticsHistoryPage = {
   points: AnalyticsRatingPoint[];
@@ -28,6 +29,10 @@ export async function listExactAnalyticsHistoryPage(
 ): Promise<ExactAnalyticsHistoryPage> {
   const request = normalizeAnalyticsHistoryRequest(input);
   const client = await createSupabaseServerClient();
+  const { data: authData, error: authError } = await client.auth.getUser();
+  if (authError || !authData.user) {
+    throw new Error("You must be signed in to do that.");
+  }
   const { data, error } = await client.rpc("get_player_analytics_history_v2", {
     p_group_id: request.groupId,
     p_user_id: request.playerId,
@@ -93,10 +98,9 @@ function isHistoryRpcPayload(value: unknown): value is HistoryRpcPayload {
   return points.every((point, index) => {
     if (!index) return true;
     const previous = points[index - 1];
-    const previousTime = Date.parse(previous.occurredAt);
-    const currentTime = Date.parse(point.occurredAt);
-    return previousTime > currentTime
-      || (previousTime === currentTime && previous.matchId.localeCompare(point.matchId) > 0);
+    const timestampOrder = comparePostgresTimestamps(previous.occurredAt, point.occurredAt);
+    return timestampOrder > 0
+      || (timestampOrder === 0 && previous.matchId.localeCompare(point.matchId) > 0);
   });
 }
 
@@ -105,7 +109,7 @@ function validRatingVersion(value: unknown): value is string {
 }
 
 function validTimestamp(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0 && Number.isFinite(Date.parse(value));
+  return isPostgresTimestamp(value);
 }
 
 function errorCode(error: unknown) {

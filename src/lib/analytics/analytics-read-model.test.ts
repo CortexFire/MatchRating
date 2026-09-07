@@ -106,6 +106,70 @@ describe("player analytics read model", () => {
     });
   });
 
+  test("preserves PostgreSQL microsecond ordering before applying the match ID tie-break", async () => {
+    const earlierId = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+    const laterId = "11111111-1111-4111-8111-111111111111";
+    mocks.rpc.mockResolvedValue({
+      data: readyPayload({
+        ratingHistory: [
+          {
+            matchId: earlierId,
+            occurredAt: "2026-08-18T12:00:00.123100Z",
+            rating: 1579,
+            rd: 110,
+            performanceSd: 86,
+            ratingDelta: 11,
+          },
+          {
+            matchId: laterId,
+            occurredAt: "2026-08-18T12:00:00.123900Z",
+            rating: 1580,
+            rd: 109.8,
+            performanceSd: 85,
+            ratingDelta: 12,
+          },
+        ],
+      }),
+      error: null,
+    });
+
+    const result = await getPlayerAnalyticsData(groupId, playerId);
+
+    expect(result?.status).toBe("ready");
+    if (!result || result.status !== "ready") return;
+    expect(result.periods.all.ratingHistoryPointIds).toEqual([earlierId, laterId]);
+  });
+
+  test("uses the match ID tie-break for equal instants expressed with different offsets", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: readyPayload({
+        ratingHistory: [
+          {
+            matchId: "11111111-1111-4111-8111-111111111111",
+            occurredAt: "2026-08-18T07:00:00.123100-05:00",
+            rating: 1579,
+            rd: 110,
+            performanceSd: 86,
+            ratingDelta: 11,
+          },
+          {
+            matchId: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+            occurredAt: "2026-08-18T12:00:00.123100Z",
+            rating: 1580,
+            rd: 109.8,
+            performanceSd: 85,
+            ratingDelta: 12,
+          },
+        ],
+      }),
+      error: null,
+    });
+
+    await expect(getPlayerAnalyticsData(groupId, playerId)).resolves.toMatchObject({
+      status: "ready",
+    });
+  });
+
   test("preserves the bounded updating response", async () => {
     mocks.rpc.mockResolvedValue({
       data: {

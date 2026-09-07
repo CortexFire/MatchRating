@@ -7,6 +7,7 @@ import {
   type AnalyticsRatingPoint,
   type PlayerAnalyticsViewModel,
 } from "./analytics-policy";
+import { comparePostgresTimestamps, isPostgresTimestamp } from "./postgres-timestamp";
 
 const PERIODS: AnalyticsPeriod[] = ["all", "30d", "90d", "1y"];
 
@@ -126,9 +127,10 @@ function isChronological(points: AnalyticsRatingPoint[]) {
   return points.every((point, index) => {
     if (!index) return true;
     const previous = points[index - 1];
-    return Date.parse(previous.occurredAt) < Date.parse(point.occurredAt)
+    const timestampOrder = comparePostgresTimestamps(previous.occurredAt, point.occurredAt);
+    return timestampOrder < 0
       || (
-        previous.occurredAt === point.occurredAt
+        timestampOrder === 0
         && previous.matchId.localeCompare(point.matchId) < 0
       );
   });
@@ -165,7 +167,7 @@ function validRatingVersion(value: unknown): value is string {
 }
 
 function validTimestamp(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0 && Number.isFinite(Date.parse(value));
+  return isPostgresTimestamp(value);
 }
 
 function uniqueStrings(values: string[]) {

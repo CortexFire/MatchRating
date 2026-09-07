@@ -7,6 +7,7 @@ import { decodeAnalyticsHistoryCursor } from "./analytics-history-pagination";
 
 const mocks = vi.hoisted(() => ({
   createSupabaseServerClient: vi.fn(),
+  getUser: vi.fn(),
   rpc: vi.fn(),
 }));
 
@@ -21,7 +22,26 @@ const matchId = "33333333-3333-4333-8333-333333333333";
 describe("exact analytics history read", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.createSupabaseServerClient.mockResolvedValue({ rpc: mocks.rpc });
+    mocks.getUser.mockResolvedValue({
+      data: { user: { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" } },
+      error: null,
+    });
+    mocks.createSupabaseServerClient.mockResolvedValue({
+      auth: { getUser: mocks.getUser },
+      rpc: mocks.rpc,
+    });
+  });
+
+  test("rejects anonymous requests before invoking the authenticated RPC", async () => {
+    mocks.getUser.mockResolvedValue({ data: { user: null }, error: null });
+
+    await expect(listExactAnalyticsHistoryPage({
+      groupId,
+      playerId,
+      period: "all",
+      cursor: null,
+    })).rejects.toThrow("You must be signed in to do that.");
+    expect(mocks.rpc).not.toHaveBeenCalled();
   });
 
   test("returns at most 50 newest-first exact points and an identity-bound cursor", async () => {
@@ -94,6 +114,88 @@ describe("exact analytics history read", () => {
       ratingVersion: "7",
       cursor: null,
     })).resolves.toMatchObject({ points: [], nextCursor: null });
+  });
+
+  test("preserves PostgreSQL microsecond order before applying the match ID tie-break", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: {
+        asOf: "2026-08-19T12:00:00.000000Z",
+        ratingVersion: "7",
+        points: [
+          {
+            matchId: "11111111-1111-4111-8111-111111111111",
+            occurredAt: "2026-08-18T12:00:00.123900Z",
+            rating: 1580,
+            rd: 109.8,
+            performanceSd: 85,
+            ratingDelta: 12,
+          },
+          {
+            matchId: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+            occurredAt: "2026-08-18T12:00:00.123100Z",
+            rating: 1579,
+            rd: 110,
+            performanceSd: 86,
+            ratingDelta: 11,
+          },
+        ],
+        hasMore: false,
+      },
+      error: null,
+    });
+
+    await expect(listExactAnalyticsHistoryPage({
+      groupId,
+      playerId,
+      period: "all",
+      cursor: null,
+    })).resolves.toMatchObject({
+      points: [
+        { occurredAt: "2026-08-18T12:00:00.123900Z" },
+        { occurredAt: "2026-08-18T12:00:00.123100Z" },
+      ],
+    });
+  });
+
+  test("applies descending match IDs when offsets represent the same instant", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: {
+        asOf: "2026-08-19T12:00:00Z",
+        ratingVersion: "7",
+        points: [
+          {
+            matchId: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+            occurredAt: "2026-08-18T12:00:00.123100Z",
+            rating: 1580,
+            rd: 109.8,
+            performanceSd: 85,
+            ratingDelta: 12,
+          },
+          {
+            matchId: "11111111-1111-4111-8111-111111111111",
+            occurredAt: "2026-08-18T07:00:00.123100-05:00",
+            rating: 1579,
+            rd: 110,
+            performanceSd: 86,
+            ratingDelta: 11,
+          },
+        ],
+        hasMore: false,
+      },
+      error: null,
+    });
+
+    await expect(listExactAnalyticsHistoryPage({
+      groupId,
+      playerId,
+      period: "all",
+      cursor: null,
+    })).resolves.toMatchObject({
+      points: [
+        { matchId: "ffffffff-ffff-4fff-8fff-ffffffffffff" },
+        { matchId: "11111111-1111-4111-8111-111111111111" },
+      ],
+    });
   });
 
   test("maps a version-guard failure to a stable conflict error", async () => {
